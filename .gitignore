@@ -4,8 +4,6 @@ node_modules
 *.blend
 *.blend1
 
-assets
-
 /public/assets/models/ak47Hands.glb
 
 /public/assets/models/sponza.glb

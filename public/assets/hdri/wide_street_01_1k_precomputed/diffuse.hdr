@@ -1,0 +1,5 @@
+#?RADIANCE
+FORMAT=32-bit_rle_rgbe
+
+-Y 16 +X 32
+}ŸÊ€}žÉ€zœÇ€xšÆ€v™Å€t˜Å€t˜Å€wšÇ€{Ê€~ Ì€~ Ì€¡Í€£Ï€ƒ¥Ñ€†§Ó€‚¥Ñ€~¡Ï€yÌ€£Ð€„©Õ€ˆ­Ù€Š¯Û€Š¯Û€ˆ¬Ø€‡©Ô€†§Ñ€ƒ£Í€€¡Ë€ Ê€¡Ë€€¢Í€~ Ë€`¨€l‹±€f„«€e„¬€f†®€hˆ°€g…®€h‡°€q’¼€zšÄ€{È€~¡Ë€¢Î€‚¤Ñ€±Ý€Š®Ú€°Ü€±Ý€“µá€’µá€³ß€’¶ã€Ž²ß€‰ªÕ€‰©Ó€„¥Ð€{œÆ€v˜Ã€u–À€p¸€pº€nŽ¶€Xu˜€Up”€Oj€RlŽ€Up“€Sn‘€Yt–€]x›€b}¢€lŒ³€m´€~Å€{œÅ€„¦Ð€‰¬Ö€²Ý€“µß€š¼å€“¶â€Ž²Þ€˜ºã€•·á€“µß€Š¬Ö€ƒ¤Î€…¤Ë€w˜À€z—½€l‹±€g†¬€b~£€]yž€°î|©äsŸÚv¢Ý}ªä€®ê‹º÷Jb‚€Xr’€Zu—€d€£€iˆ¯€{™À€ Ç€‹¬Ô€Ž¯Ö€˜¹á€›¼ä€œ»á€™¸ß€šºâ€­Ô€Ž¬Ñ€ŠªÒ€ Ç€|™¿€t´€j…¨€^z€Uo‘€QkŒ€Ha€Zƒ·Sz«Ms¥Lq¢Pv¦W~°dŒ¿v Õ…³íLdƒ€WpŽ€a}Ÿ€oŠ¬€{˜»€‡¤Ç€®Ó€—µÙ€™·Û€˜¶Ù€ž»Þ€™¶Ù€•¯Ï€Ž«Î€Š¦È€w’´€rŒ­€k„¤€[u•€Tl‹€‰¸ów¢Új”ÊFh’EeDb‰DaˆDb‰EeGi”Os¡c‹¼w¡Ô‹¹ñXp€e~œ€oˆ§€{”²€ˆ£Ã€©É€”¯Í€’­Í€—°Ï€–°Í€‹£Á€†ž»€}•²€r‹©€h€€Wmˆ€ŸÉþ‚«Þo•ÆU{«Il™Ha‚Ž¾û~Œºô~‹¸ñ~‹¹ó~½ú~HbƒJfŠLl“Wz¤s™Ç·æTh€au€n„Ÿ€v§€ˆµ€‰Ÿ¸€“§½€Ž¤½€‹ ¸€†·€{‘ª€s‡Ÿ€cwŽ€Wj‚€—¼êzŸÌaƒ®Lm–JhŽIdˆ”¹é~’µà~‘±Ú~¯×~°Ù~’´ß~”ºé~–Áö~Me‚Oj‹Tr—lŒ²‹¬Ô¥Èò_q†€j}’€v‡œ€x‰œ€~¢€zŒ €| €u…™€l}€bs‡€«Êï•´Úx–»Zx›Nj‹Le„—Äý~•¾ò~˜±Ð~—­É~–«Ä~–©Á~–ªÃ~—­È~˜±Ñ~š·Ü~œ¾è~ Æö~Rh‚Vn‹jƒ¡…ž¼ ¹×²Ìë»×ökw†€huƒ€iuƒ€gs‚€ÇÜöµËç¤ºÓŒ¤Áo… Wm‰Qf€žÅõ~œ¿ë~š¹á~™µÙ~ª»~œ§µ~›¥°~›£®~›¤¯~œ¦´~œª»~ž®Ä~Ÿ´Î~¢»Ù~§Âä~¬Ëñ~³Õþ~asˆzŒ ‘£·®Â§·Ê´ÀÎ­¼Í«ºÌ™¦¶‹š«|Šœgv‰­Ìð~§Äç~£¾ß~¡¹×~Ÿ´Ð~ž°É~­Â~ £¨~ ¡£~ŸŸŸ~Ÿž~Ÿžž~Ÿ ¢~ £¨~¡§¯~¢«·~¥±À~©¶È~­½Ñ~±ÃÙ~·Êá~¼Ñè~ÊÞõ~qz„}„Œ€ˆ‘‚ˆ|‚‰t{‚ÍÛë~·ÅÖ~±¿Ñ~¬ºÌ~¨¶È~¥²Ã~£®¾~¢«¸~¡¨³~ ¦­~¢˜~¢›”~¢™~¢˜~¢™~¢š“~¢˜~£ ž~¥¤¤~¨¨«~ª¬±~­±¶~±µ¼~´¹À~¸¼Ã~º¿Ä~¼¿Ã~½¿Á~½½¾~»»º~¹¸·~·¶µ~µ´³~²±²~¯¯±~­­°~ª«®~§¨¬~¥¦©~¤£¥~£¡¡~£Ÿœ~¤—‹~¤–ˆ~£•†~£”„~£”…~£–ˆ~¤˜‹~¥š~§•~©¡™~¬¤ž~®§¢~°ª¥~³¬§~µ­§~¶®§~·­¥~·¬¢~¶ªž~µ¨š~´¦™~³¦˜~²¥™~±¥›~¯¥œ~­¤œ~«£œ~©¡š~¨Ÿ˜~¦–~¥›’~¥™~¥”ƒ~¤“~¤’€~¤‘~¤’~¥“~¦”„~§–‡~©™Š~ª›~¬~® “~°¡•~±£–~³£–~³¤•~´£”~´¢‘~³¡~³Ÿ~²ŸŒ~²Ÿ~±ŸŽ~±Ÿ~°Ÿ~®ž~­~«œ~ªš~¨™‹~§—‰~¦•†~¨”‚~§“~§’€~§’€~§“€~§“~¨”‚~©–„~ª—…~«˜‡~­š‰~®›Š~¯œ‹~°Œ~±ž~±ž~²žŒ~²žŒ~²žŒ~²žŒ~²ž‹~²‹~±‹~±‹~°œŠ~¯›Š~®š‰~­™‰~¬˜‡~ª—†~©–…~©•ƒ~¬˜†~¬—†~¬—†~¬—…~¬—†~¬—†~¬˜†~¬˜†~­˜†~­™‡~®™‡~®™ˆ~®šˆ~¯šˆ~¯›‰~¯›‰~°›‰~°›‰~°›‰~°›‰~°›‰~°›‰~¯›‰~¯›‰~¯š‰~®šˆ~®šˆ~®™ˆ~­™‡~­˜‡~­˜†~¬˜†~
