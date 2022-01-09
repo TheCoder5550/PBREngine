@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+  <title>Page Title</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;400&display=swap" rel="stylesheet">
+
+  <style>
+
+    .hidden {
+      display: none !important;
+    }
+
+    .fadeOut {
+      animation: fadeOut 0.4s linear;
+    }
+
+    @keyframes fadeOut {
+      from {
+        opacity: 1;
+      }
+
+      to {
+        opacity: 0;
+      }
+    }
+
+    :root {
+      font-family: 'Oswald', sans-serif;
+
+      --team: #1db676;
+      --teamDark: #147c51;
+      --enemy: #d43e20;
+    }
+
+    body {
+      background: black;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    .ingameUI {
+      pointer-events: none;
+    }
+
+    .lobbyUI {
+      pointer-events: none;
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+    }
+
+    .lobbyUI * {
+      pointer-events: auto;
+    }
+
+    .navigation {
+      display: flex;
+      flex-direction: column;
+      position: absolute;
+      top: 50px;
+      left: 50px;
+      width: 200px;
+
+      background: red;
+    }
+
+    .navigation a {
+      width: 100%;
+      padding: 10px;
+      text-decoration: none;
+      color: white;
+    }
+    .navigation a:hover {
+      text-decoration: underline;
+    }
+
+    .loading {
+      pointer-events: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.5);
+    }
+
+    #loadingStatus {
+      font-size: 100px;
+      color: white;
+    }
+
+    .gameUI {
+      pointer-events: none;
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+    }
+
+    .killAlert {
+      position: absolute;
+      bottom: 200px;
+
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+    }
+
+    .killAlert .special {
+      font-size: 30px;
+    }
+
+    .killAlert .player {
+      font-size: 20px;
+      color: gray;
+    }
+
+    .killAlert .kills {
+      color: red;
+      font-size: 40px;
+    }
+
+    .gameUI .topRight {
+      position: absolute;
+
+      right: 10px;
+      top: 10px;
+    }
+
+    .gameUI .topRight .kills {
+      margin: 10px;
+      padding: 3px 8px;
+      background: rgba(0, 0, 0, 0.5);
+      color: white;
+    }
+
+    .gameUI .bottomLeft {
+      position: absolute;
+
+      left: 20px;
+      bottom: 20px;
+    }
+
+    .gameUI .bottomLeft .healthContainer {
+      width: 175px;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(0, 0, 0, 0.5);
+      position: relative;
+      overflow: hidden;
+
+      box-shadow: 0 0 7px 1px var(--team);
+    }
+    
+    .gameUI .bottomLeft .healthContainer .currentHealth {
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--team);
+      position: absolute;
+    }
+
+    .gameUI .bottomLeft .healthContainer .healthAnimation {
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      transition: right 0.7s;
+      background: var(--teamDark);
+      position: absolute;
+    }
+
+    .gameUI .bottomRight {
+      position: absolute;
+
+      right: 20px;
+      bottom: 20px;
+
+      color: var(--team);
+      text-shadow: 0 0 5px black;
+    }
+
+  </style>
+</head>
+<body>
+  <!-- <div class="lobbyUI">
+    <div class="navigation">
+      <a href="#">Item</a>
+      <a href="#">Item</a>
+      <a href="#">Item</a>
+    </div>
+  </div> -->
+
+  <div class="gameUI">
+    <div class="bottomLeft">
+      <div class="healthContainer">
+        <div class="healthAnimation"></div>
+        <div class="currentHealth"></div>
+      </div>
+    </div>
+
+    <div class="bottomRight">
+      <span class="ammo">30 / 30</span>
+    </div>
+
+    <div class="topRight">
+      <span class="kills">0 kills</span>
+    </div>
+
+    <div class="hidden killAlert">
+      <span class="special">REVENGE</span>
+      <span class="player">You killed PlayerName</span>
+      <span class="kills">0 kills</span>
+    </div>
+  </div>
+
+  <div class="loading">
+    <span id="loadingStatus">Loading script</span>
+  </div>
+
+  <script src="fakeConsole.js"></script>
+  <script src="Stats.js"></script>
+  <script src="gamepadManager.js"></script>
+  <script src="object-watch.js"></script>
+  <script src="helper.js"></script>
+  <script src="quaternion.js"></script>
+  <script src="vector.js"></script>
+  <script src="matrix.js"></script>
+  <script src="algebra.js"></script>
+  <script src="gameCanvas-5.0.js"></script>
+  <script src="HDRReader.js"></script>
+  <script src="weapon.js"></script>
+  <script src="renderEngine.js"></script>
+  <script src='webgl.js'></script>
+</body>
+</html>
