@@ -1,0 +1,16 @@
+# Commit to local repo
+git commit -m "message"
+
+# Add to staging
+git add <file>
+# All files (that have changed?)
+git add .
+
+# Remove all staged files
+git reset HEAD -- .
+
+# Remove latest commit
+git reset --soft HEAD~1
+
+# Check if ahead of remote repo
+git status

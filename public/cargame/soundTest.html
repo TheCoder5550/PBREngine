@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+
+  <!-- <script src="../../node_modules/tone/build/Tone.js"></script> -->
+</head>
+<body>
+  <script>
+
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+const context = new AudioContext();
+
+var source;
+var rpmChange = 0;
+var rpm = 1000;
+var hasClicked = false;
+
+var idleURL = "./engineSound/idle.wav";
+var idleSound = null;
+var samples = [
+  { rpm: 1500, on: "./engineSound/low_on.wav", off: "./engineSound/low_off.wav" },
+  { rpm: 4000, on: "./engineSound/med_on.wav", off: "./engineSound/med_off.wav" },
+  { rpm: 7000, on: "./engineSound/high_on.wav", off: "./engineSound/high_off.wav" }
+];
+
+window.onclick = async function() {
+  for (var i of samples) {
+    var onSample = await loadSample(i.on);
+    var offSample = await loadSample(i.off);
+
+    var { source, gainNode } = playSample(onSample);
+    i.onSource = source;
+    i.onGain = gainNode;
+
+    gainNode.gain.value = 0;
+
+    var { source, gainNode } = playSample(offSample);
+    i.offSource = source;
+    i.offGain = gainNode;
+
+    gainNode.gain.value = 0;
+  }
+
+  // idleSound = playSample(await loadSample(idleURL));
+  // idleSound.gainNode.gain.value = 0;
+
+  hasClicked = true;
+}
+
+var keys = [];
+
+loop();
+function loop() {
+  if (keys[38]) {
+    rpm += 100;
+    rpmChange -= (rpmChange - 1) * 0.1;
+  }
+  else {
+    rpmChange -= (rpmChange - 0) * 0.1;
+  }
+  rpm -= 50;
+  rpm = Math.max(1000, Math.min(8000, rpm));
+
+  if (hasClicked) {
+    for (var sample of samples) {
+      sample.onGain.gain.value = Math.exp(-(10 ** (-6.7)) * Math.pow(rpm - sample.rpm, 2)) * (Math.max(0, rpmChange) / 2 + 0.5);
+      sample.onSource.playbackRate.value = rpm / sample.rpm;
+    }
+  }
+  
+  requestAnimationFrame(loop);
+}
+
+function loadSample(url) {
+  return fetch(url)
+    .then(response => response.arrayBuffer())
+    .then(buffer => context.decodeAudioData(buffer));
+}
+
+function playSample(sample) {
+  var gainNode = context.createGain();
+  gainNode.connect(context.destination);
+
+  const source = context.createBufferSource();
+  source.buffer = sample;
+  source.loop = true;
+  source.connect(gainNode);
+  source.start(0);
+
+  return {
+    source,
+    gainNode
+  };
+}
+
+document.onkeydown = function(e) {
+  keys[e.keyCode] = true;
+}
+
+document.onkeyup = function(e) {
+  keys[e.keyCode] = false;
+}
+
+  </script>
+</body>
+</html>
