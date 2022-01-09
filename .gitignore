@@ -6,3 +6,13 @@ node_modules
 
 cargame
 assets
+
+./public/assets/models/ak47Hands.glb
+
+./public/assets/models/sponza.glb
+
+./public/assets/models/swat.glb
+
+./public/assets/models/swatStatic.glb
+
+./public/cargame/map.glb
