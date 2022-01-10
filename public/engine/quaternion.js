@@ -103,6 +103,10 @@ export default class Quaternion {
     return new Quaternion(qx, qy, qz, qw);
   };
 
+  static eulerVector(v) {
+    return Quaternion.euler(v.x, v.y, v.z);
+  }
+
   static toEulerAngles(q) {
     var [x, y, z, w] = [q.x, q.y, q.z, q.w];
 

@@ -56,7 +56,8 @@
   
   <script type="module">
 
-    import Renderer, { Scene, OrbitCamera } from "./engine/renderEngine.js";
+    import Renderer, { Scene } from "./engine/renderer.js";
+    import OrbitCamera from "./engine/orbitCamera.js";
     import Vector from "./engine/vector.js";
 
     var stats = new Stats();
@@ -89,7 +90,7 @@
       renderer.postprocessing.exposure = 1;
 
       scene = new Scene();
-      scene.sunIntensity = Vector.fill(1);
+      scene.sunIntensity = Vector.fill(3);
       scene.smoothSkybox = true;
       // scene.skyboxVisible = false;
       renderer.add(scene);
@@ -101,16 +102,12 @@
       // camera = new FlyCamera(renderer, {position: new Vector(0, 0, 3), near: 0.1, far: 300, layer: 0, fov: 20});
       camera = new OrbitCamera(renderer, {position: new Vector(0, 0, 3), near: 0.1, far: 300, layer: 0, fov: 20});
 
-      renderer.on("resize", function() {
-        camera.camera.setAspect(renderer.aspect);
-      });
-
       // await renderer.CreatePBRGrid(scene, 10, 10);
       // var model = scene.add(await renderer.loadGLTF("./assets/models/FlightHelmet.glb"));
       var model = scene.add(await renderer.loadGLTF("./assets/models/PH_Metallic_Beryllium_Orange.glb"));
       // var model = scene.add(await renderer.loadGLTF("./assets/models/DamagedHelmet.glb"));
       // var model = scene.add(await renderer.loadGLTF("./assets/models/test/AlphaBlendModeTest.glb"));
-      // var model = scene.add(await renderer.loadGLTF("./assets/models/dancingMonster.glb"));
+      // var model = scene.add(await renderer.loadGLTF("./assets/models/test/Fox.glb"));
       // model.transform.position.y -= 2.1;
       // model.transform.scale = Vector.fill(0.01);
 
@@ -118,21 +115,7 @@
       function loop() {
         time += 1 / 60;
 
-        // camera.transform.position = Vector.multiply(Matrix.getForward(camera.transform.worldMatrix), cameraDistance);
-        // camera.transform.rotation = new Vector(0, 0, 0.4);
-        // camera.updateMatrices();
-
-        camera.update(1 / 60);
-
-        // // camera.position = new Vector(0, 0, -cameraDistance);
-        // camera.rotation = rotation;
-        // camera.updateMatrices();
-        // camera.position = Vector.multiply(Matrix.getForward(camera.viewMatrix), cameraDistance);
-        // // camera.rotation = Vector.zero();
-        // camera.updateMatrices();
-
-        // model.transform.rotation = Quaternion.euler(rotation.x, rotation.y, rotation.z);
-
+        // camera.update(1 / 60);
         scene.update(1 / 60);
         renderer.render(camera.camera);
 

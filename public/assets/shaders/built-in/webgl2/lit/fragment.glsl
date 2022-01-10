@@ -377,9 +377,7 @@ void main() {
 
   if (useNormalMap) {
     if (vTangent != vec3(0)) {
-      vec3 s = sampleTexture(normalTexture, vUV).rgb;
-      // s.g = 1. - s.g;
-      vec3 tangentNormal = s * 2. - 1.;
+      vec3 tangentNormal = sampleTexture(normalTexture, vUV).rgb * 2. - 1.;
       // tangentNormal.g *= -1.;
       // tangentNormal = normalStrength(tangentNormal, 10.);
       N = normalize(vTBN * tangentNormal);

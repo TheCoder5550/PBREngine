@@ -1,6 +1,6 @@
 "use strict";
 
-import Renderer, { GameObject, Scene, Camera, PhysicsEngine, Rigidbody, SphereCollider, AudioListener3D, findMaterials } from "../engine/renderEngine.js";
+import Renderer, { GameObject, Scene, Camera, PhysicsEngine, Rigidbody, SphereCollider, AudioListener3D, findMaterials } from "../engine/renderer.js";
 import Vector from "../engine/vector.js";
 import Matrix from "../engine/matrix.js";
 import Quaternion from "../engine/quaternion.js";

@@ -4398,6 +4398,13 @@ function Transform(matrix, position, rotation, scale) {
     }
   });
 
+  // bruh optimize (maybe???)
+  Object.defineProperty(this, 'forward', {
+    get: function() {
+      return Matrix.getForward(_this.worldMatrix);
+    }
+  });
+
   function everythingHasChanged() {
     if (_this.gameObject) {
       _this.gameObject.traverse(o => {
@@ -4645,219 +4652,6 @@ function Camera(settings = {}) {
   this.setFOV = function(fov) {
     this.fov = fov;
     Matrix.setPerspectiveFov(this.projectionMatrix, this.aspect, this.fov * Math.PI / 180);
-  }
-}
-
-function FlyCamera(renderer, cameraSettings) {
-  var _this = this;
-  this.eulerAngles = Vector.zero();
-  this.baseSpeed = 3;
-  this.sprintSpeed = 15;
-  this.speed = this.baseSpeed; 
-
-  this.camera = new Camera(cameraSettings);
-  this.camera.setAspect(renderer.aspect);
-
-  renderer.canvas.addEventListener("mousedown", function(e) {
-    renderer.lockPointer();
-  });
-
-  renderer.canvas.addEventListener("mousemove", function(e) {
-    if (renderer.isPointerLocked()) {
-      _this.eulerAngles.x -= e.movementY * 0.002;
-      _this.eulerAngles.y -= e.movementX * 0.002;
-    }
-  });
-
-  this.update = function(dt) {
-    this.speed = renderer.getKey(16) ? this.sprintSpeed : this.baseSpeed;
-
-    if (renderer.getKey([87])) {
-      var c = Math.cos(this.eulerAngles.x);
-      this.camera.transform.position.x += Math.cos(this.eulerAngles.y + Math.PI / 2) * this.speed * dt * c;
-      this.camera.transform.position.z += -1 * Math.sin(this.eulerAngles.y + Math.PI / 2) * this.speed * dt * c;
-      this.camera.transform.position.y += Math.sin(this.eulerAngles.x) * this.speed * dt;
-    }
-    if (renderer.getKey([83])) {
-      var c = Math.cos(this.eulerAngles.x);
-      this.camera.transform.position.x -= Math.cos(this.eulerAngles.y + Math.PI / 2) * this.speed * dt * c;
-      this.camera.transform.position.z -= -1 * Math.sin(this.eulerAngles.y + Math.PI / 2) * this.speed * dt * c;
-      this.camera.transform.position.y -= Math.sin(this.eulerAngles.x) * this.speed * dt;
-    }
-    if (renderer.getKey([65])) {
-      this.camera.transform.position.x -= Math.cos(this.eulerAngles.y) * this.speed * dt;
-      this.camera.transform.position.z -= -1 * Math.sin(this.eulerAngles.y) * this.speed * dt;
-    }
-    if (renderer.getKey([68])) {
-      this.camera.transform.position.x += Math.cos(this.eulerAngles.y) * this.speed * dt;
-      this.camera.transform.position.z += -1 * Math.sin(this.eulerAngles.y) * this.speed * dt;
-    }
-  
-    var rotSpeed = 3;
-    if (renderer.getKey([37])) {
-      this.eulerAngles.y += rotSpeed * dt;
-    }
-    if (renderer.getKey([39])) {
-      this.eulerAngles.y -= rotSpeed * dt;
-    }
-    if (renderer.getKey([38])) {
-      this.eulerAngles.x += rotSpeed * dt;
-    }
-    if (renderer.getKey([40])) {
-      this.eulerAngles.x -= rotSpeed * dt;
-    }
-
-    this.camera.transform.rotation = Quaternion.euler(this.eulerAngles.x, this.eulerAngles.y, this.eulerAngles.z);
-  }
-}
-
-// bruh add to own file
-function OrbitCamera(renderer, cameraSettings) {
-  var _this = this;
-  this.distance = 5;
-  var center = Vector.zero();
-  var rotation = new Vector(0, Math.PI / 2, 0);
-  var rotationMatrix = Matrix.identity();
-  setRotationMatrix();
-  
-  this.camera = new Camera(cameraSettings);
-  this.camera.setAspect(renderer.aspect);
-
-  renderer.canvas.style.cursor = "grab";
-
-  renderer.canvas.addEventListener("mousedown", function(e) {
-    renderer.canvas.style.cursor = "grabbing";
-  });
-
-  document.addEventListener("mouseup", function(e) {
-    renderer.canvas.style.cursor = "grab";
-  });
-
-  renderer.canvas.addEventListener('contextmenu', function(e) {
-    e.preventDefault();
-  });
-  
-  renderer.canvas.addEventListener("mousemove", function(e) {
-    if (renderer.mouse.left) {
-      rotation.x += e.movementY * 0.005;
-      rotation.y += e.movementX * 0.005;
-
-      setRotationMatrix();
-    }
-    else if (renderer.mouse.right) {
-      var f = 0.0006 * _this.distance;
-      var v = Matrix.transformVector(rotationMatrix, new Vector(-e.movementX * f, e.movementY * f, 0));
-
-      center.x += -v.z;
-      center.y += v.y;
-      center.z += -v.x;
-    }
-  });
-
-  var lastTouch = {x: 0, y: 0};
-  var canSwipe = true;
-
-  renderer.canvas.addEventListener("touchstart", function(e) {
-    lastTouch.x = e.touches[0].clientX;
-    lastTouch.y = e.touches[0].clientY;
-
-    if (e.touches.length > 1) {
-      canSwipe = false;
-    }
-    else {
-      canSwipe = true;
-    }
-
-    if (e.touches.length == 2) {
-      lastTouch.x = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      lastTouch.y = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-    }
-
-    e.preventDefault();
-  });
-
-  renderer.canvas.addEventListener("touchmove", function(e) {
-    if (canSwipe) {
-      var dx = e.touches[0].clientX - lastTouch.x;
-      var dy = e.touches[0].clientY - lastTouch.y;
-
-      var m = 0.005;// * Math.min(2, _this.distance - 0.9);
-      rotation.x += dy * m;
-      rotation.y += dx * m;
-      setRotationMatrix();
-
-      lastTouch.x = e.touches[0].clientX;
-      lastTouch.y = e.touches[0].clientY;
-    }
-
-    if (e.touches.length == 2) {
-      var px = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      var py = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-
-      var dx = px - lastTouch.x;
-      var dy = py - lastTouch.y;
-
-      var f = 0.0006 * _this.distance;
-      var v = Matrix.transformVector(rotationMatrix, new Vector(-dx * f, dy * f, 0));
-
-      center.x += -v.z;
-      center.y += v.y;
-      center.z += -v.x;
-
-      lastTouch.x = px;
-      lastTouch.y = py;
-    }
-
-    e.preventDefault();
-  });
-
-  document.addEventListener('touchmove', function(event) {
-    if (event.scale !== 1) {
-        event.preventDefault();
-    }
-  }, { passive: false });
-
-  renderer.canvas.addEventListener("wheel", function(e) {
-    _this.distance += e.deltaY * 0.001 * _this.distance;
-    _this.distance = Math.max(0, _this.distance);
-    e.preventDefault();
-  });
-
-  var lastScale = 1;
-
-  renderer.canvas.addEventListener('gesturestart', function(e) {
-    lastScale = e.scale;
-  }, false);
-
-  renderer.canvas.addEventListener('gesturechange', function(e) {
-    var dScale = lastScale / e.scale;
-    lastScale = e.scale;
-
-    _this.distance *= dScale;
-    _this.distance = Math.max(0, _this.distance);
-
-    e.preventDefault();
-  }, false);
-  
-  this.update = function() {
-    this.camera.transform.matrix = Matrix.lookAt(new Vector(
-      center.x + Math.cos(rotation.y) * Math.cos(rotation.x) * this.distance,
-      center.y + Math.sin(rotation.x) * this.distance,
-      center.z + Math.sin(rotation.y) * Math.cos(rotation.x) * this.distance
-    ), center, Math.abs(limitRange(rotation.x)) > Math.PI / 2 ? Vector.down() : Vector.up());
-  }
-  
-  function limitRange(a) {
-    a = a % (Math.PI * 2);
-    return a + (Math.abs(a) > Math.PI ? Math.PI * 2 * -Math.sign(a) : 0);
-  }
-
-  function setRotationMatrix() {
-    Matrix.identity(rotationMatrix);
-    Matrix.transform([
-      ["ry", rotation.y],
-      ["rx", rotation.x]
-    ], rotationMatrix);
   }
 }
 
@@ -6070,8 +5864,6 @@ export {
   Transform,
   Scene,
   Camera,
-  FlyCamera,
-  OrbitCamera,
   AnimationController,
   AnimationData,
   AudioListener3D,

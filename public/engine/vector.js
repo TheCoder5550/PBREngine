@@ -1,6 +1,6 @@
 "use strict";
 
-import { clamp } from "./helper.js";
+import { clamp, lerp } from "./helper.js";
 
 export default class Vector {
   constructor(x = 0, y = 0, z = 0) {
@@ -66,6 +66,13 @@ export default class Vector {
     };
   }
 
+  static addTo(dst, v) {
+    dst.x += v.x;
+    dst.y += v.y;
+    dst.z += v.z;
+    return dst;
+  }
+
   static subtract(a, b) {
     return {
       x: a.x - b.x,
@@ -74,12 +81,26 @@ export default class Vector {
     };
   }
 
+  static subtractTo(dst, v) {
+    dst.x -= v.x;
+    dst.y -= v.y;
+    dst.z -= v.z;
+    return dst;
+  }
+
   static multiply(v, scalar) {
     return {
       x: v.x * scalar,
       y: v.y * scalar,
       z: v.z * scalar
     };
+  }
+
+  static multiplyTo(dst, scalar) {
+    dst.x *= scalar;
+    dst.y *= scalar;
+    dst.z *= scalar;
+    return dst;
   }
 
   static negate(v) {
@@ -94,6 +115,13 @@ export default class Vector {
     };
   }
 
+  static compMultiplyTo(dst, v) {
+    dst.x *= v.x;
+    dst.y *= v.y;
+    dst.z *= v.z;
+    return dst;
+  }
+
   static divide(v, scalar) {
     return {
       x: v.x / scalar,
@@ -102,12 +130,26 @@ export default class Vector {
     };
   }
 
+  static divideTo(dst, scalar) {
+    dst.x /= scalar;
+    dst.y /= scalar;
+    dst.z /= scalar;
+    return dst;
+  }
+
   static compDivide(a, b) {
     return {
       x: a.x / b.x,
       y: a.y / b.y,
       z: a.z / b.z
     };
+  }
+
+  static compDivideTo(dst, v) {
+    dst.x /= v.x;
+    dst.y /= v.y;
+    dst.z /= v.z;
+    return dst;
   }
 
   static average(a, b) {
