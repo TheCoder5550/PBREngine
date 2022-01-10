@@ -2,6 +2,8 @@ if (typeof module != "undefined") {
   Vector = require("./vector.js");
 }
 
+import Vector from "./vector.js";
+
 function _fillFloat32Array(array, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) {
   array[0] = a;
   array[1] = b;
@@ -23,7 +25,7 @@ function _fillFloat32Array(array, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p
   return array;
 }
 
-class Matrix {
+export default class Matrix {
   /*
 
 

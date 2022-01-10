@@ -1,3 +1,5 @@
+import Vector from "./vector.js";
+
 function AABBToAABB(a, b) {
   return a.tr.x >= b.bl.x && a.bl.x <= b.tr.x && 
          a.tr.y >= b.bl.y && a.bl.y <= b.tr.y && 
@@ -381,4 +383,19 @@ function ClosestPointOnLineSegment(A, B, Point) {
 
 function saturate(t) {
   return Math.max(0, Math.min(1, t));
+}
+
+export {
+  AABBToAABB,
+  closestPointToTriangle,
+  closestPointOnPlane,
+  closestPointOnTriangle,
+  rayToTriangle,
+  rayToPlane,
+  AABBToTriangle,
+  rayToAABB,
+  getTriangleNormal,
+  sphereToTriangle,
+  capsuleToTriangle,
+  ClosestPointOnLineSegment
 }

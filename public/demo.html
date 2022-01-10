@@ -44,18 +44,20 @@
     // window.mobileCheck() && new FakeConsole("right", 300);
   </script>
 
+  <script src="gameCanvas-5.0.js"></script>
   <script src="gamepadManager.js"></script>
-  <script src="object-watch.js"></script>
-  <script src="helper.js"></script>
+  <!-- <script src="helper.js"></script>
   <script src="quaternion.js"></script>
   <script src="vector.js"></script>
   <script src="matrix.js"></script>
   <script src="algebra.js"></script>
-  <script src="gameCanvas-5.0.js"></script>
   <script src="HDRReader.js"></script>
-  <script src="renderEngine.js"></script>
+  <script src="renderEngine.js"></script> -->
   
-  <script>
+  <script type="module">
+
+    import Renderer, { Scene, OrbitCamera } from "./engine/renderEngine.js";
+    import Vector from "./engine/vector.js";
 
     var stats = new Stats();
     stats.showPanel(0);
@@ -79,12 +81,12 @@
         version: 2,
         disableLitInstanced: true,
         disableUnlitInstanced: true,
-        // disableLitSkinned: true,
+        disableLitSkinned: true,
         disableLitBillboard: true,
         disableTrailLit: true
       });
 
-      // renderer.postprocessing.exposure = -1;
+      renderer.postprocessing.exposure = 1;
 
       scene = new Scene();
       scene.sunIntensity = Vector.fill(1);
@@ -105,10 +107,10 @@
 
       // await renderer.CreatePBRGrid(scene, 10, 10);
       // var model = scene.add(await renderer.loadGLTF("./assets/models/FlightHelmet.glb"));
-      // var model = scene.add(await renderer.loadGLTF("./assets/models/PH_Metallic_Beryllium_Orange.glb"));
+      var model = scene.add(await renderer.loadGLTF("./assets/models/PH_Metallic_Beryllium_Orange.glb"));
       // var model = scene.add(await renderer.loadGLTF("./assets/models/DamagedHelmet.glb"));
       // var model = scene.add(await renderer.loadGLTF("./assets/models/test/AlphaBlendModeTest.glb"));
-      var model = scene.add(await renderer.loadGLTF("./assets/models/dancingMonster.glb"));
+      // var model = scene.add(await renderer.loadGLTF("./assets/models/dancingMonster.glb"));
       // model.transform.position.y -= 2.1;
       // model.transform.scale = Vector.fill(0.01);
 

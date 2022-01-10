@@ -137,3 +137,19 @@ function hideElement(element) {
 function showElement(element) {
   element.classList.remove("hidden");
 }
+
+export {
+  xor,
+  clamp,
+  lerp,
+  inverseLerp,
+  roundNearest,
+  Float32ToFloat16,
+  Uint8ToUint32,
+  Float32Concat,
+  watchGlobal,
+  isMobile,
+  fadeOutElement,
+  hideElement,
+  showElement
+};

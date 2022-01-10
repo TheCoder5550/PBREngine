@@ -1,5 +1,11 @@
 "use strict";
 
+import Renderer, { GameObject, Scene, Camera, PhysicsEngine, Rigidbody, SphereCollider, AudioListener3D, findMaterials } from "../engine/renderEngine.js";
+import Vector from "../engine/vector.js";
+import Matrix from "../engine/matrix.js";
+import Quaternion from "../engine/quaternion.js";
+import { clamp, lerp } from "../engine/helper.js";
+
 var loadingScreen = document.querySelector(".loadingScreen");
 var loadingStatus = loadingScreen.querySelector(".status");
 var loader = loadingScreen.querySelector(".loader");
@@ -64,6 +70,7 @@ async function setup() {
     path: "../",
     clearColor: [1, 0, 0, 1],
     shadowSizes: [16, 64],
+    shadowBiases: [-0.0005, -0.001],
 
     // Mobile
     version: 2,

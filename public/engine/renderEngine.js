@@ -1,3 +1,39 @@
+import Vector from "./vector.js";
+import Matrix from "./matrix.js";
+import Quaternion from "./quaternion.js";
+
+import { LoadHDR, CreateHDR } from "./HDRReader.js";
+import {
+  xor,
+  clamp,
+  lerp,
+  inverseLerp,
+  roundNearest,
+  Float32ToFloat16,
+  Uint8ToUint32,
+  Float32Concat,
+  watchGlobal,
+  isMobile,
+  fadeOutElement,
+  hideElement,
+  showElement
+} from "./helper.js";
+
+import {
+  AABBToAABB,
+  closestPointToTriangle,
+  closestPointOnPlane,
+  closestPointOnTriangle,
+  rayToTriangle,
+  rayToPlane,
+  AABBToTriangle,
+  rayToAABB,
+  getTriangleNormal,
+  sphereToTriangle,
+  capsuleToTriangle,
+  ClosestPointOnLineSegment
+} from "./algebra.js";
+
 var ENUMS = {
   RENDERPASS: { SHADOWS: 0b001, OPAQUE: 0b010, ALPHA: 0b100 }
 };
@@ -33,6 +69,7 @@ function Renderer() {
   var lit;
   var litInstanced;
   var litSkinned;
+  var unlitInstanced;
 
   // var _loadedPrograms = {};
   // Object.defineProperty(this, 'lit', {
@@ -1555,8 +1592,8 @@ function Renderer() {
     assertProgram(program);
 
     this.program = program;
-    this.exposure = 1//1.5;
-    this.gamma = 3;//2.2;
+    this.exposure = 0;
+    this.gamma = 2.2;
 
     this.colorBuffers = [];
   
@@ -1820,6 +1857,9 @@ function Renderer() {
         var shadowmap = this.shadowmaps[i];
         shadowmap.updateModelMatrix(cameraPosition);
         shadowmap.bind();
+
+        // bruh
+        var scene = renderer.scenes[renderer.currentScene];
         scene.render({
           projectionMatrix: shadowmap.shadowPerspeciveMatrix,
           viewMatrix: shadowmap.shadowViewMatrix,
@@ -6022,4 +6062,29 @@ function sleep(ms) {
 
 function isPowerOf2(value) {
   return (value & (value - 1)) == 0;
+}
+
+export default Renderer;
+export {
+  GameObject,
+  Transform,
+  Scene,
+  Camera,
+  FlyCamera,
+  OrbitCamera,
+  AnimationController,
+  AnimationData,
+  AudioListener3D,
+  AudioSource3D,
+  CreateCubeCollider,
+  AABBCollider,
+  MeshCollider,
+  Octree,
+  AABB,
+  PhysicsEngine,
+  Collider,
+  SphereCollider,
+  CapsuleCollider,
+  Rigidbody,
+  findMaterials
 }

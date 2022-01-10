@@ -1,4 +1,6 @@
-class Quaternion {
+import Matrix from "./matrix.js";
+
+export default class Quaternion {
   constructor(x = 0, y = 0, z = 0, w = 0) {
     return {x, y, z, w};
   }

@@ -344,3 +344,8 @@ async function LoadHDR(path, exposure = 1, gamma = 1) {
     oReq.send(null);
   });
 }
+
+export {
+  CreateHDR,
+  LoadHDR
+};
