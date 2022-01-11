@@ -5,9 +5,20 @@ import Quaternion from "./quaternion.js";
 
 export default function OrbitCamera(renderer, cameraSettings) {
   var _this = this;
-  this.distance = 5;
+  var _distance = 5;
+
+  Object.defineProperty(this, 'distance', {
+    get: function() {
+      return _distance;
+    },
+    set: function(val) {
+      _distance = val;
+      updateCameraMatrix();
+    }
+  });
+
   var center = Vector.zero();
-  var rotation = new Vector(0, Math.PI / 2, 0);
+  var rotation = new Vector(0, 0, 0);
   var rotationMatrix = Matrix.identity();
   setRotationMatrix();
   

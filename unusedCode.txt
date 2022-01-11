@@ -1,0 +1,33 @@
+  // // vec4 baseColor = texture(albedoTexture, vUV);
+  // vec4 baseColor = useTexture ? texture(albedoTexture, vUV) : vec4(1);
+  // if (baseColor.a < 0.1) {
+  //   discard;
+  // }
+
+  // vec3 viewDirection = normalize(vec3(inverseViewMatrix * vec4(0, 0, 0, 1)) - vPosition); 
+  // vec3 H = normalize(sunDirection + viewDirection);
+
+  // vec3 worldNormal = normalize(mat3(modelMatrix) * vNormal);
+  // if (useNormalMap) {
+  //   // vec3 worldTangent = normalize(mat3(modelMatrix) * vTangent);
+
+  //   // float normalMapStrength = 0.3;
+  //   // vec3 normalMap = tangentToObject(worldNormal, worldTangent, normalStrength(vec3(texture(normalTexture, vUV)) * 2. - 1., normalMapStrength));
+  //   // worldNormal = normalMap;
+
+  //   worldNormal = perturb_normal(worldNormal, viewDirection, vUV);
+  // }
+
+  // float shadowAmount = getShadowAmount();
+
+  // float reflectionSharpness = 0.;//10.
+  // vec3 reflection = textureLod(u_specularIBL, reflect(-viewDirection, worldNormal), reflectionSharpness).xyz;
+  // vec3 specular = vec3(specularIntensity) * pow(clamp(dot(worldNormal, H), 0., 1.), specularSharpness) * 1.5;
+
+  // float shade = (dot(worldNormal, sunDirection) * 0.5 + 0.5) * 1.2;
+  // // float shade = clamp(dot(worldNormal, sunDirection), 0.3, 1.) * 1.7;
+  // vec3 shadowColor = vec3(39, 38, 43) / 255.;
+  // vec3 color = (float(shadowAmount == 1.) * specular + albedo * baseColor.rgb * shade * 1.5) * mix(shadowColor, vec3(1), shadowAmount);
+
+  // vec3 outputColor = color + reflection * 0.1;
+  // fragColor = vec4(outputColor, 1);

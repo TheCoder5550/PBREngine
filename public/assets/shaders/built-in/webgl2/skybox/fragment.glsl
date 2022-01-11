@@ -4,13 +4,14 @@ precision mediump float;
 layout (location = 0) out vec4 fragColor;
 
 in vec4 vPosition;
- 
+
+uniform float environmentIntensity;
 uniform samplerCube skybox;
 uniform mat4 viewDirectionProjectionInverse;
 
 void main() {
   vec4 t = viewDirectionProjectionInverse * vPosition;
-  vec3 col = texture(skybox, normalize(t.xyz / t.w)).rgb;
+  vec3 col = texture(skybox, normalize(t.xyz / t.w)).rgb * environmentIntensity;
 
   fragColor = vec4(col, 1);
 }

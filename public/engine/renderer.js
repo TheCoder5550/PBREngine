@@ -41,9 +41,13 @@ var ENUMS = {
 // bruh make Renderer a module
 // bruh load shaders as javascript with import
 
+// bruh make lit shader template
+
 function Renderer() {
   var renderer = this;
   var gl;
+  var time = 0;
+  var lastUpdate;
 
   this.eventHandler = new EventHandler();
 
@@ -69,7 +73,6 @@ function Renderer() {
   var lit;
   var litInstanced;
   var litSkinned;
-  var unlitInstanced;
 
   // var _loadedPrograms = {};
   // Object.defineProperty(this, 'lit', {
@@ -303,7 +306,7 @@ function Renderer() {
       this.litInstanced = litInstanced = await loadLitInstancedProgram(this.path);
 
     if (!settings.disableUnlitInstanced)
-      this.unlitInstanced = unlitInstanced = await loadUnlitInstancedProgram(this.path);
+      this.unlitInstanced = await loadUnlitInstancedProgram(this.path);
 
     if (!settings.disableLitSkinned)
       litSkinned = await loadLitSkinnedProgram(this.path);
@@ -328,6 +331,24 @@ function Renderer() {
     // gl.bindTexture(gl.TEXTURE_2D, this.splitsumTexture);
 
     logGLError("Missed error");
+
+    lastUpdate = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  function loop() {
+    var ft = getFrameTime();
+    time += ft;
+    renderer.eventHandler.fireEvent("renderloop", ft, time);
+    requestAnimationFrame(loop);
+  }
+
+  function getFrameTime() {
+    var now = performance.now();
+    var frameTime = (now - lastUpdate) / 1000;
+    lastUpdate = now;
+  
+    return frameTime;
   }
 
   this.render = function(camera, secondaryCameras) {
@@ -703,12 +724,12 @@ function Renderer() {
     var mat = new Material(this.diffuseCubemapProgram, [
       {type: "1i", name: "environmentMap", texture: true, arguments: [0]}
     ], [{type: gl.TEXTURE_CUBE_MAP, texture: cubemap}]);
-    mat.doubleSided = true;
   
     return await this.createCubemapFromCube(mat, res);
   }
   
   this.createCubemapFromCube = async function(mat, res) {
+    mat.doubleSided = true;
     var cube = new GameObject("Cubemap", {
       meshRenderer: new MeshRenderer([mat], [new MeshData(getCubeData())]),
       castShadows: false
@@ -776,7 +797,7 @@ function Renderer() {
         inverseViewMatrix: Matrix.inverse(views[i])
       });
 
-      await sleep(1000);
+      await sleep(200);
     }
 
     gl.enable(gl.CULL_FACE);
@@ -813,7 +834,6 @@ function Renderer() {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, newCubemap);
   
-    // gl.activeTexture(gl.TEXTURE5);
     for (var i = 0; i < 6; i++) {
       gl.bindTexture(gl.TEXTURE_CUBE_MAP, newCubemap);
       gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, gl.RGBA32F, res, res, 0, gl.RGBA, getFloatTextureType(), null);
@@ -830,36 +850,46 @@ function Renderer() {
     // Viewport
     gl.viewport(0, 0, res, res);
   
-    // for (var i = 0; i < 6; i++) {
-    //   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, newCubemap, 0);
-    //   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    for (var i = 0; i < 6; i++) {
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, newCubemap, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    //   var camera = {
-    //     projectionMatrix: projectionMatrix,
-    //     viewMatrix: views[i],
-    //     inverseViewMatrix: Matrix.inverse(views[i]),
-    //     cameraMatrix: Matrix.inverse(views[i])
-    //   };
+      var camera = {
+        projectionMatrix: projectionMatrix,
+        viewMatrix: views[i],
+        inverseViewMatrix: Matrix.inverse(views[i]),
+        cameraMatrix: Matrix.inverse(views[i])
+      };
 
-    //   var scene = this.scenes[this.currentScene];
-    //   if (scene.skyboxVisible) {
-    //     this.skybox.render(camera);
-    //   }
+      var scene = this.scenes[this.currentScene];
 
-    //   gl.activeTexture(gl.TEXTURE0);
-    //   gl.bindTexture(gl.TEXTURE_2D, this.blankTexture);
+      if (scene.skyboxVisible) {
+        this.skybox.render(camera, scene.skyboxCubemap);
+      }
 
-    //   gl.activeTexture(gl.TEXTURE20);
-    //   gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+      gl.activeTexture(gl.TEXTURE0 + diffuseCubemapUnit);
+      gl.bindTexture(gl.TEXTURE_CUBE_MAP, scene.diffuseCubemap);
 
-    //   gl.activeTexture(gl.TEXTURE21);
-    //   gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+      gl.activeTexture(gl.TEXTURE0 + specularCubemapUnit);
+      gl.bindTexture(gl.TEXTURE_CUBE_MAP, scene.specularCubemap);
 
-    //   gl.activeTexture(gl.TEXTURE22);
-    //   gl.bindTexture(gl.TEXTURE_2D, this.splitsumTexture);
+      gl.activeTexture(gl.TEXTURE0 + splitsumUnit);
+      gl.bindTexture(gl.TEXTURE_2D, this.splitsumTexture);
 
-    //   scene.render(camera);
-    // }
+      gl.colorMask(true, true, true, false);
+
+      gl.disable(gl.BLEND);
+      scene.render(camera, { renderPass: ENUMS.RENDERPASS.OPAQUE });
+
+      gl.enable(gl.BLEND);
+      gl.depthMask(false);
+      scene.render(camera, { renderPass: ENUMS.RENDERPASS.ALPHA });
+      gl.depthMask(true);
+
+      gl.colorMask(true, true, true, true);
+
+      bindVertexArray(null);
+    }
   
     return newCubemap;
   }
@@ -1576,10 +1606,10 @@ function Renderer() {
       }
     }
 
-    this.fireEvent = function(name, data = null) {
+    this.fireEvent = function(name, ...args) {
       if (this.events[name]) {
         for (var func of this.events[name].functions) {
-          func(data);
+          func(...args);
         }
         return true;
       }
@@ -2033,6 +2063,7 @@ function Renderer() {
   
     this.uniformLocations = {
       viewDirectionProjectionInverse: gl.getUniformLocation(this.program, "viewDirectionProjectionInverse"),
+      environmentIntensity: gl.getUniformLocation(this.program, "environmentIntensity"),
       skybox: gl.getUniformLocation(this.program, "skybox")
     };
 
@@ -2047,6 +2078,9 @@ function Renderer() {
       Matrix.multiply(camera.projectionMatrix, matrix, matrix);
       Matrix.inverse(matrix, matrix);
 
+      // bruh
+      var scene = renderer.scenes[renderer.currentScene];
+      gl.uniform1f(this.uniformLocations.environmentIntensity, scene.environmentIntensity);
       gl.uniformMatrix4fv(this.uniformLocations.viewDirectionProjectionInverse, false, matrix);
 
       gl.activeTexture(gl.TEXTURE0);
@@ -2307,6 +2341,21 @@ function Renderer() {
       if (this.uniformLocations["projectionMatrix"] != null)  gl.uniformMatrix4fv(this.uniformLocations["projectionMatrix"], false, camera.projectionMatrix);
       if (this.uniformLocations["viewMatrix"] != null)        gl.uniformMatrix4fv(this.uniformLocations["viewMatrix"], false, camera.viewMatrix);
       if (this.uniformLocations["inverseViewMatrix"] != null) gl.uniformMatrix4fv(this.uniformLocations["inverseViewMatrix"], false, camera.inverseViewMatrix);
+    
+      gl.uniform1f(gl.getUniformLocation(_program, "environmentIntensity"), currentScene.environmentIntensity);
+
+      // bruh
+      var lights = currentScene.getLights();
+      gl.uniform1i(gl.getUniformLocation(_program, "nrLights"), lights.length);
+
+      for (var i = 0; i < lights.length; i++) {
+        var light = lights[i];
+        gl.uniform1i(gl.getUniformLocation(_program, `lights[${i}].type`), light.type);
+        gl.uniform3f(gl.getUniformLocation(_program, `lights[${i}].position`), light.position.x, light.position.y, light.position.z);
+        if (light.direction) gl.uniform3f(gl.getUniformLocation(_program, `lights[${i}].direction`), light.direction.x, light.direction.y, light.direction.z);
+        if ("angle" in light)  gl.uniform1f(gl.getUniformLocation(_program, `lights[${i}].angle`), light.angle);
+        gl.uniform3f(gl.getUniformLocation(_program, `lights[${i}].color`), light.color[0], light.color[1], light.color[2]);
+      }
     }
   
     this.bindModelMatrixUniform = function(matrix) {
@@ -4510,22 +4559,33 @@ function Scene(name) {
   this.sunIntensity = Vector.multiply(new Vector(1, 0.9, 0.85), 10);
   this.skyboxVisible = true;
   this.smoothSkybox = false;
+  this.environmentIntensity = 1;
 
-  var identityMat = Matrix.identity();
-
-  this.loadEnvironment = async function(hdrFolder = "./assets/hdri/precomputed", res = 1024) {
+  this.loadEnvironment = async function(settings = {}) {
     if (this.renderer) {
-      // var program = await this.renderer.createProgramFromFile(`../assets/shaders/built-in/webgl${renderer.version}/procedualSkybox`);
-      // var mat = new this.renderer.Material(program);
-      // var skyboxCubemap = this.skyboxCubemap = await this.renderer.createCubemapFromCube(mat, res);
+      var res = settings.res ?? 1024;
+      if (settings.hdrFolder) {
+        var hdrFolder = settings.hdrFolder;
 
-      this.skyboxCubemap = await this.renderer.createCubemapFromHDR(hdrFolder + "/skybox.hdr", res);
+        this.skyboxCubemap = await this.renderer.createCubemapFromHDR(hdrFolder + "/skybox.hdr", res);
       
-      try {
-        this.diffuseCubemap = await this.renderer.createCubemapFromHDR(hdrFolder + "/diffuse.hdr", res);
+        try {
+          // bruh res should be 32
+          this.diffuseCubemap = await this.renderer.createCubemapFromHDR(hdrFolder + "/diffuse.hdr", res);
+        }
+        catch (e) {
+          console.warn("No prebaked diffuse map. Generating one...");
+          this.diffuseCubemap = await this.renderer.getDiffuseCubemap(this.skyboxCubemap);
+        }
       }
-      catch (e) {
-        console.warn("No prebaked diffuse map. Generating one...");
+      else if (settings.cubemap) {
+        this.skyboxCubemap = settings.cubemap;
+        this.diffuseCubemap = await this.renderer.getDiffuseCubemap(this.skyboxCubemap);
+      }
+      else {
+        var program = await this.renderer.createProgramFromFile(this.renderer.path + `assets/shaders/built-in/webgl${this.renderer.version}/procedualSkybox`);
+        var mat = new this.renderer.Material(program);
+        this.skyboxCubemap = await this.renderer.createCubemapFromCube(mat, res);
         this.diffuseCubemap = await this.renderer.getDiffuseCubemap(this.skyboxCubemap);
       }
 
@@ -4558,6 +4618,32 @@ function Scene(name) {
     this.root.render(...arguments);
   }
 
+  this.getLights = function() {
+    var allLights = [];
+
+    this.root.traverse(g => {
+      var lights = g.findComponents("Light");
+      if (lights) {
+        for (var light of lights) {
+          allLights.push({
+            type: light.type,
+            position: g.transform.position,
+            direction: g.transform.forward,
+            angle: light.angle,
+            color: light.color
+          });
+        }
+      }
+    });
+
+    return allLights;
+
+    return [
+      { type: 0, position: new Vector(1, 1, 1.5), color: [100, 1000, 1000] },
+      { type: 0, position: new Vector(-1, 1, 1.5), color: [1000, 500, 100] }
+    ];
+  }
+
   // this.render = function(camera, overrideMaterial, shadowPass) {
   //   if ((camera.layer ?? 0) == 0) {
   //     // skybox.render(camera);
@@ -4565,6 +4651,43 @@ function Scene(name) {
 
   //   this.root.render(camera, overrideMaterial, shadowPass);
   // }
+}
+
+// bruh not done
+function Light() {
+  this.gameObject = null;
+  this.angle = Math.PI / 3;
+  this.color = [1, 0.5, 0.1];
+  this.type = 0;
+
+  this.kelvinToRgb = function(k, intensity = 1) {
+    var retColor = [0, 0, 0];
+	
+    k = clamp(k, 1000, 40000) / 100;
+    
+    if (k <= 66) {
+      retColor[0] = 1;
+      retColor[1] = clamp(0.39008157876901960784 * Math.log(k) - 0.63184144378862745098, 0, 1);
+    }
+    else {
+    	var t = k - 60;
+      retColor[0] = clamp(1.29293618606274509804 * Math.pow(t, -0.1332047592), 0, 1);
+      retColor[1] = clamp(1.12989086089529411765 * Math.pow(t, -0.0755148492), 0, 1);
+    }
+    
+    if (k > 66)
+      retColor[2] = 1;
+    else if (k <= 19)
+      retColor[2] = 0;
+    else
+      retColor[2] = clamp(0.54320678911019607843 * Math.log(k - 10) - 1.19625408914, 0, 1);
+
+    retColor[0] *= intensity;
+    retColor[1] *= intensity;
+    retColor[2] *= intensity;
+
+    return retColor;
+  }
 }
 
 /*
@@ -5753,9 +5876,6 @@ class Rigidbody {
         ["rz", this.angles.z],
         ["ry", this.angles.y]
       ]);
-
-      // Bruh
-      // this.gameObject.transform.rotation = this.angles;
     }
   }
 }
@@ -5766,7 +5886,7 @@ class Rigidbody {
 
 */
 
-function findMaterials(name, obj = scene.root, output = []) {
+function FindMaterials(name, obj = scene.root, output = []) {
   if (obj.meshRenderer) {
     for (var mat of obj.meshRenderer.materials) {
       if (mat.name == name) {
@@ -5776,7 +5896,7 @@ function findMaterials(name, obj = scene.root, output = []) {
   }
 
   for (var child of obj.children) {
-    findMaterials(name, child, output);
+    FindMaterials(name, child, output);
   }
 
   return output;
@@ -5863,6 +5983,7 @@ export {
   GameObject,
   Transform,
   Scene,
+  Light,
   Camera,
   AnimationController,
   AnimationData,
@@ -5878,5 +5999,5 @@ export {
   SphereCollider,
   CapsuleCollider,
   Rigidbody,
-  findMaterials
+  FindMaterials
 }
