@@ -35,13 +35,18 @@ import {
 } from "./algebra.js";
 
 var ENUMS = {
-  RENDERPASS: { SHADOWS: 0b001, OPAQUE: 0b010, ALPHA: 0b100 }
+  RENDERPASS: { SHADOWS: 0b001, OPAQUE: 0b010, ALPHA: 0b100 },
+  LIGHT: { POINT: 0, SPOT: 1 }
 };
 
-// bruh make Renderer a module
 // bruh load shaders as javascript with import
 
 // bruh make lit shader template
+
+// bruh use drawingBufferWidth instead of canvas.width
+// bruh resize every frame if width doesnt match clientWidth
+
+// bruh make setter for every uniform in material
 
 function Renderer() {
   var renderer = this;
@@ -246,6 +251,7 @@ function Renderer() {
     }
     else if (this.version == 1) {
       this.getExtension('OES_element_index_uint');
+      this.getExtension('OES_standard_derivatives');
       this.getExtension("EXT_shader_texture_lod");
 
       this.floatTextures = this.getExtension("OES_texture_float");
@@ -413,7 +419,7 @@ function Renderer() {
 
   Object.defineProperty(this, 'aspect', {
     get: function() {
-      return gl.canvas.width / gl.canvas.height;
+      return gl.canvas.clientWidth / gl.canvas.clientHeight;
     }
   });
 
@@ -4367,6 +4373,7 @@ function Transform(matrix, position, rotation, scale) {
         // _rotation = val;
         Matrix.fromQuaternion(_rotation, _rotationMatrix);
         // _rotationMatrix = Matrix.fromQuaternion(_rotation);
+
         _lastRotation = Quaternion.copy(val);
       }
     }

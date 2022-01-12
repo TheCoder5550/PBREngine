@@ -2,6 +2,7 @@ if (typeof module != "undefined") {
   Vector = require("./vector.js");
 }
 
+import Quaternion from "./quaternion.js";
 import Vector from "./vector.js";
 
 function _fillFloat32Array(array, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) {
@@ -452,6 +453,7 @@ export default class Matrix {
   static fromQuaternion(q, dst) {
     dst = dst || new Float32Array(16);
 
+    q = Quaternion.normalize(q);
     _fillFloat32Array(dst,
       1 - 2*q.y*q.y - 2*q.z*q.z, 2*q.x*q.y - 2*q.z*q.w, 2*q.x*q.z + 2*q.y*q.w, 0,
       2*q.x*q.y + 2*q.z*q.w, 1 - 2*q.x*q.x - 2*q.z*q.z, 2*q.y*q.z - 2*q.x*q.w, 0,
@@ -459,6 +461,8 @@ export default class Matrix {
       0, 0, 0, 1
     );
     Matrix.transpose(dst, dst);
+
+    console.log(dst);
 
     return dst;
   }

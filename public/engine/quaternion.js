@@ -126,6 +126,15 @@ export default class Quaternion {
     return [roll, pitch, yaw];
   }
 
+  static angleAxis(angle, axis) {
+    return new Quaternion(
+      axis.x * Math.sin(angle / 2),
+      axis.y * Math.sin(angle / 2),
+      axis.z * Math.sin(angle / 2),
+      Math.sin(angle / 2)
+    );
+  }
+
   static fromMatrix(m) {
     var trace = Matrix.get(m, 0, 0) + Matrix.get(m, 1, 1) + Matrix.get(m, 2, 2);
     if (trace > 0) {

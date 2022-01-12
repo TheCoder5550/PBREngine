@@ -18,7 +18,7 @@ export default function OrbitCamera(renderer, cameraSettings) {
   });
 
   var center = Vector.zero();
-  var rotation = new Vector(0, 0, 0);
+  var rotation = new Vector(0, Math.PI / 2, 0);
   var rotationMatrix = Matrix.identity();
   setRotationMatrix();
   
@@ -73,6 +73,7 @@ export default function OrbitCamera(renderer, cameraSettings) {
       lastTouch.y = (e.touches[0].clientY + e.touches[1].clientY) / 2;
     }
 
+    updateCameraMatrix();
     e.preventDefault();
   });
 
@@ -166,6 +167,8 @@ export default function OrbitCamera(renderer, cameraSettings) {
   function updateCameraMatrix() {
     _this.camera.transform.rotation = Quaternion.eulerVector(rotation);
     _this.camera.transform.position = Vector.add(center, Vector.multiply(_this.camera.transform.forward, -_this.distance));
+
+    // console.log(_this.camera.transform.rotation,_this.camera.transform.position );
 
     // _this.camera.transform.matrix = Matrix.lookAt(new Vector(
     //   center.x + Math.cos(rotation.y) * Math.cos(rotation.x) * _this.distance,

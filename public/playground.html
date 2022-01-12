@@ -41,7 +41,7 @@
       return check;
     };
 
-    // window.mobileCheck() && new FakeConsole("right", 300);
+    window.mobileCheck() && new FakeConsole("right", 300);
   </script>
 
   <script src="gamepadManager.js"></script>
@@ -52,6 +52,7 @@
     import OrbitCamera from "./engine/orbitCamera.js";
     import Vector from "./engine/vector.js";
     import Quaternion from "./engine/quaternion.js";
+    import Matrix from "./engine/matrix.js";
 
     var stats = new Stats();
     stats.showPanel(0);
@@ -85,7 +86,7 @@
       scene = new Scene();
       scene.environmentIntensity = 0.5;
       scene.sunIntensity = Vector.fill(4 * 0);
-      scene.smoothSkybox = true;
+      // scene.smoothSkybox = true;
       // scene.skyboxVisible = false;
       renderer.add(scene);
       await scene.loadEnvironment({
