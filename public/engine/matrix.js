@@ -462,8 +462,6 @@ export default class Matrix {
     );
     Matrix.transpose(dst, dst);
 
-    console.log(dst);
-
     return dst;
   }
 

@@ -2221,8 +2221,10 @@ function Renderer() {
         uniform.arguments = Array.isArray(values) ? values : [values];
       }
       else if (activeUniforms[name]) {
+        var t = activeUniforms[name].typeString;
         this.uniforms.push({
-          type: getUniformSetType(activeUniforms[name].typeString),
+          texture: t.indexOf("SAMPLER") !== -1,
+          type: getUniformSetType(t),
           name,
           arguments: Array.isArray(values) ? values : [values]
         });
