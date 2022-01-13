@@ -483,32 +483,3 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 
   return vec4(col, _albedo.a);
 }
-
-// mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv) {
-//     // get edge vectors of the pixel triangle
-//     vec3 dp1 = dFdx( p );
-//     vec3 dp2 = dFdy( p );
-//     vec2 duv1 = dFdx( uv );
-//     vec2 duv2 = dFdy( uv );
- 
-//     // solve the linear system
-//     vec3 dp2perp = cross( dp2, N );
-//     vec3 dp1perp = cross( N, dp1 );
-//     vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-//     vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
- 
-//     // construct a scale-invariant frame 
-//     float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
-//     return mat3( T * invmax, B * invmax, N );
-// }
-
-// vec3 perturb_normal( vec3 N, vec3 V, vec2 texcoord, float strength ) {
-//   // assume N, the interpolated vertex normal and 
-//   // V, the view vector (vertex to eye)
-//   vec3 map = sampleTexture(normalTexture, texcoord).xyz;
-//   map = map * 255./127. - 128./127.;
-//   map = normalStrength(map, strength);
-
-//   mat3 TBN = cotangent_frame(N, V, texcoord);
-//   return normalize(TBN * map);
-// }
