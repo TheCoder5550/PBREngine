@@ -1,6 +1,6 @@
 "use strict";
 
-import Renderer, { GameObject, Scene, Camera, PhysicsEngine, Rigidbody, SphereCollider, AudioListener3D, findMaterials } from "../engine/renderer.js";
+import Renderer, { GameObject, Scene, Camera, PhysicsEngine, Rigidbody, SphereCollider, AudioListener3D, FindMaterials } from "../engine/renderer.js";
 import Vector from "../engine/vector.js";
 import Matrix from "../engine/matrix.js";
 import Quaternion from "../engine/quaternion.js";
@@ -68,7 +68,7 @@ async function setup() {
   setLoadingStatus("Setting up renderer");
   await renderer.setup({
     path: "../",
-    clearColor: [1, 0, 0, 1],
+    clearColor: [0, 0, 1, 1],
     shadowSizes: [16, 64],
     shadowBiases: [-0.0005, -0.001],
 
@@ -84,7 +84,10 @@ async function setup() {
   renderer.add(scene);
 
   setLoadingStatus("Loading environment");
-  await scene.loadEnvironment("../assets/hdri/wide_street_01_1k_precomputed");
+  await scene.loadEnvironment({
+    hdrFolder: "../assets/hdri/wide_street_01_1k_precomputed",
+    res: 256
+  });
 
   var solidColorInstanceProgram = await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/solidColor");
 
@@ -141,25 +144,25 @@ async function setup() {
     sidewaysFriction: 1.5
   });
   await car.setup("./porsche.glb");
-  findMaterials("paint", car.gameObject)?.[0]?.setUniform("metallic", 0.2);
-  findMaterials("window", car.gameObject)?.[0]?.setUniform("albedo", [0, 0, 0, 0.99]);
+  FindMaterials("paint", car.gameObject)?.[0]?.setUniform("metallic", 0.2);
+  FindMaterials("window", car.gameObject)?.[0]?.setUniform("albedo", [0, 0, 0, 0.99]);
 
   function updateCarColor() {
     var c = hexToRgb(carColorInput.value);
     var e = parseFloat(carEmissionInput.value);
-    findMaterials("paint", car.gameObject)?.[0]?.setUniform("albedo", [c.r, c.g, c.b, 1]);
-    findMaterials("paint", car.gameObject)?.[0]?.setUniform("emissiveFactor", [c.r * e, c.g * e, c.b * e]);
+    FindMaterials("paint", car.gameObject)?.[0]?.setUniform("albedo", [c.r, c.g, c.b, 1]);
+    FindMaterials("paint", car.gameObject)?.[0]?.setUniform("emissiveFactor", [c.r * e, c.g * e, c.b * e]);
   }
 
   carColorInput.oninput = updateCarColor;
   carEmissionInput.oninput = updateCarColor;
 
   carMetallicInput.oninput = function() {
-    findMaterials("paint", car.gameObject)?.[0]?.setUniform("metallic", parseFloat(carMetallicInput.value));
+    FindMaterials("paint", car.gameObject)?.[0]?.setUniform("metallic", parseFloat(carMetallicInput.value));
   }
 
   carRoughnessInput.oninput = function() {
-    findMaterials("paint", car.gameObject)?.[0]?.setUniform("roughness", parseFloat(carRoughnessInput.value));
+    FindMaterials("paint", car.gameObject)?.[0]?.setUniform("roughness", parseFloat(carRoughnessInput.value));
   }
 
   physicsEngine.fixedUpdate = function(dt) {
@@ -189,33 +192,42 @@ async function setup() {
     loadingScreen.style.display = "none";
     loop();
   }
+
+  window.renderer = renderer;
+  window.scene = scene;
+  window.camera = mainCamera;
+  window.FindMaterials = FindMaterials;
 }
 
 function loop() {
-  var frameTime = getFrameTime();
-  debugLines.clear();
+  // var frameTime = getFrameTime();
+  // debugLines.clear();
 
-  if (keybindings.getInputDown("resetGame")) {
-    car.rb.velocity = Vector.zero();
-    car.rb.angularVelocity = Vector.zero();
-    car.rb.angles = Vector.zero();
+  // if (keybindings.getInputDown("resetGame")) {
+  //   car.rb.velocity = Vector.zero();
+  //   car.rb.angularVelocity = Vector.zero();
+  //   car.rb.angles = Vector.zero();
 
-    car.rb.position = Vector.zero();
-    car.gameObject.transform.position = Vector.zero();
-  }
+  //   car.rb.position = Vector.zero();
+  //   car.gameObject.transform.position = Vector.zero();
+  // }
 
-  physicsEngine.update();
-  if (car) car.update(frameTime);
-  scene.update(physicsEngine.dt);
+  // physicsEngine.update();
+  // if (car) car.update(frameTime);
+  // scene.update(physicsEngine.dt);
 
-  cameraControls(frameTime);
+  // cameraControls(frameTime);
+
+  // renderer.render(mainCamera);
+  // // debugLines.render(mainCamera);
+  // renderUI(frameTime);
+
+  // stats.update();
+  // rafID = requestAnimationFrame(loop);
+
 
   renderer.render(mainCamera);
-  // debugLines.render(mainCamera);
-  renderUI(frameTime);
-
-  stats.update();
-  rafID = requestAnimationFrame(loop);
+  requestAnimationFrame(loop);
 }
 
 function renderUI(dt) {
@@ -507,7 +519,7 @@ function Car(settings = {}) {
     // this.wheels[0].friction *= 1.2;
     // this.wheels[1].friction *= 1.2;
 
-    brakeMat = findMaterials("tex_shiny", this.gameObject)[0];
+    brakeMat = FindMaterials("tex_shiny", this.gameObject)[0];
   }
 
   this.reset = function() {

@@ -265,7 +265,7 @@ function getTriangleNormal(triangle) {
 function sphereToTriangle(center, radius, p0, p1, p2, doubleSided = false) {
   var N = getTriangleNormal([p0, p1, p2]);
   var dist = Vector.dot(Vector.subtract(center, p0), N); // signed distance between sphere and plane
-  if (!doubleSided && dist > 0)
+  if (!doubleSided && dist < 0)
     return false; // can pass through back side of triangle (optional)
   if (dist < -radius || dist > radius)
     return false; // no intersection
@@ -334,7 +334,7 @@ function sphereToTriangle(center, radius, p0, p1, p2, doubleSided = false) {
     return {
       normal: penetration_normal,
       depth: penetration_depth,
-      point: Vector.add(center, Vector.multiply(penetration_normal, -penetration_depth))
+      point: Vector.add(center, Vector.multiply(penetration_normal, -len))
     };
   }
 

@@ -107,6 +107,12 @@ vec3 Spotlight (vec3 worldPos, vec3 N, vec3 V, vec3 lightPos, vec3 dir, float an
 vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, float _metallic, float _roughness, float _ao);
 
 void main() {
+  // fragColor = vec4(mod(abs(vUV), vec2(1.)), 0, 1);
+  // return;
+
+  // fragColor = vec4(abs(vTangent), 1);
+  // return;
+
   vec4 currentAlbedo = useTexture ? sampleTexture(albedoTexture, vUV) : vec4(1);
   currentAlbedo *= albedo;
   currentAlbedo *= vec4(vec3(1) - vColor, 1);

@@ -18,7 +18,7 @@ export default function OrbitCamera(renderer, cameraSettings) {
   });
 
   var center = Vector.zero();
-  var rotation = new Vector(0, Math.PI / 2, 0);
+  var rotation = new Vector(0, 0, 0);
   var rotationMatrix = Matrix.identity();
   setRotationMatrix();
   
@@ -40,7 +40,7 @@ export default function OrbitCamera(renderer, cameraSettings) {
     e.preventDefault();
   });
   
-  renderer.canvas.addEventListener("mousemove", function(e) {
+  window.addEventListener("mousemove", function(e) {
     if (renderer.mouse.left) {
       rotation.x += -e.movementY * 0.005;
       rotation.y += -e.movementX * 0.005;

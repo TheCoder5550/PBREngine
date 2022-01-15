@@ -48,6 +48,10 @@ var ENUMS = {
 
 // bruh make setter for every uniform in material
 
+// bruh only bind override material once when rendering shadowmap
+
+// bruh skin shadows
+
 function Renderer() {
   var renderer = this;
   var gl;
@@ -178,6 +182,13 @@ function Renderer() {
     }
 
     console.log("Webgl version " + this.version + " loaded!");
+
+    // var oldF = gl.texImage2D
+    // gl["texImage2D"] = extendF;
+    // function extendF() {
+    //   oldF.call(gl, ...arguments);
+    //   console.log("texImage2D");
+    // }
 
     this.canvas.addEventListener("webglcontextlost", e => {
       console.error("WebGL context lost!");
@@ -1064,7 +1075,7 @@ function Renderer() {
 
   async function loadLitSkinnedProgram(path) {
     console.log("Lit skinned");
-    return await renderer.createProgramFromFile(path + `assets/shaders/built-in/webgl${renderer.version}/lit/vertexSkinned.glsl`, path + `assets/shaders/built-in/webgl${renderer.version}/lit/fragmentSkinned.glsl`);
+    return await renderer.createProgramFromFile(path + `assets/shaders/built-in/webgl${renderer.version}/lit/vertexSkinned.glsl`, path + `assets/shaders/built-in/webgl${renderer.version}/lit/fragment.glsl`);
   }
 
   async function loadLitBillboardProgram(path) {
@@ -1370,9 +1381,15 @@ function Renderer() {
       }
     });
     this.material = CreateLitMaterial({metallic: 1, albedoColor: [0.003, 0.003, 0.003, 1], albedoTexture: loadTexture(renderer.path + "assets/textures/skidmarksSoft.png")}, renderer.trailProgram);
+    this.material.setUniform("opaque", 0);
+    this.material.setUniform("alphaCutoff", 0);
+
     this.drawMode = gl.TRIANGLE_STRIP;
 
     this.attribLocations = this.meshData.getAttribLocations(this.material.program);
+
+    var meshRenderer = new MeshRenderer(this.material, this.meshData);
+    meshRenderer.drawMode = gl.TRIANGLE_STRIP;
 
     this.update = function(dt) {
       var newPos = this.emitPosition ? Vector.copy(this.emitPosition) : Matrix.getPosition(this.gameObject.transform.worldMatrix);
@@ -1435,17 +1452,23 @@ function Renderer() {
       }
     }
 
-    this.render = function(camera, matrix, shadowPass = false) {
-      var md = this.meshData;
-      var mat = this.material;
+    this.render = function(camera, matrix, shadowPass = false, opaquePass = true) {
+      // if (!opaquePass) {
+      //   var md = this.meshData;
+      //   var mat = this.material;
 
-      useProgram(mat.program);
-      md.bindBuffers(mat.program, this.attribLocations);
-      
-      mat.bindModelMatrixUniform(identity);
-      mat.bindUniforms(camera);
+      //   useProgram(mat.program);
+      //   md.bindBuffers(mat.program, this.attribLocations);
+        
+      //   mat.bindModelMatrixUniform(identity);
+      //   mat.bindUniforms(camera);
 
-      gl.drawArrays(this.drawMode, 0, positions.length * 2);
+      //   gl.drawArrays(this.drawMode, 0, positions.length * 2);
+      // }
+
+      if (!shadowPass) {
+        meshRenderer.render(camera, identity, shadowPass, opaquePass);
+      }
     }
   }
 
@@ -2160,6 +2183,7 @@ function Renderer() {
     assertProgram(program);
     var _program = program;
 
+    this.name = "No name";
     this.doubleSided = false;
     this.uniforms = uniforms;
     this.textures = textures;
@@ -2259,6 +2283,9 @@ function Renderer() {
       this.uniformLocations["viewMatrix"] = gl.getUniformLocation(this.program, "viewMatrix");
       this.uniformLocations["inverseViewMatrix"] = gl.getUniformLocation(this.program, "inverseViewMatrix");
       this.uniformLocations["modelMatrix"] = gl.getUniformLocation(this.program, "modelMatrix");
+
+      this.uniformLocations["environmentIntensity"] = gl.getUniformLocation(this.program, "environmentIntensity");
+      this.uniformLocations["nrLights"] = gl.getUniformLocation(this.program, "nrLights");
   
       for (var i = 0; i < this.uniforms.length; i++) {
         var uniform = this.uniforms[i];
@@ -2301,7 +2328,7 @@ function Renderer() {
       for (var name in activeUniforms) {
         var uniform = activeUniforms[name];
 
-        if (!this.getUniform(name)) {
+        if (!this.getUniform(name) && uniform.typeString.indexOf("SAMPLER") !== -1) {
           var location = gl.getUniformLocation(_program, name);
           if (uniform.typeString == "SAMPLER_2D") {
             gl.uniform1i(location, splitsumUnit);
@@ -2309,7 +2336,7 @@ function Renderer() {
           else if (uniform.typeString == "SAMPLER_CUBE") {
             gl.uniform1i(location, diffuseCubemapUnit);
           }
-          else if (uniform.typeString.indexOf("SAMPLER") !== -1) {
+          else {
             gl.uniform1i(location, 20 + i);
             i++;
           }
@@ -2350,14 +2377,15 @@ function Renderer() {
       if (this.uniformLocations["viewMatrix"] != null)        gl.uniformMatrix4fv(this.uniformLocations["viewMatrix"], false, camera.viewMatrix);
       if (this.uniformLocations["inverseViewMatrix"] != null) gl.uniformMatrix4fv(this.uniformLocations["inverseViewMatrix"], false, camera.inverseViewMatrix);
     
-      gl.uniform1f(gl.getUniformLocation(_program, "environmentIntensity"), currentScene.environmentIntensity);
+      gl.uniform1f(this.uniformLocations["environmentIntensity"], currentScene.environmentIntensity);
 
       // bruh
       var lights = currentScene.getLights();
-      gl.uniform1i(gl.getUniformLocation(_program, "nrLights"), lights.length);
+      gl.uniform1i(this.uniformLocations["nrLights"], lights.length);
 
       for (var i = 0; i < lights.length; i++) {
         var light = lights[i];
+        // bruh get uniform location
         gl.uniform1i(gl.getUniformLocation(_program, `lights[${i}].type`), light.type);
         gl.uniform3f(gl.getUniformLocation(_program, `lights[${i}].position`), light.position.x, light.position.y, light.position.z);
         if (light.direction) gl.uniform3f(gl.getUniformLocation(_program, `lights[${i}].direction`), light.direction.x, light.direction.y, light.direction.z);
@@ -2368,6 +2396,15 @@ function Renderer() {
   
     this.bindModelMatrixUniform = function(matrix) {
       gl.uniformMatrix4fv(this.uniformLocations["modelMatrix"], false, matrix);
+    }
+
+    this.setCulling = function() {
+      if (this.doubleSided) {
+        gl.disable(gl.CULL_FACE);
+      }
+      else {
+        gl.enable(gl.CULL_FACE);
+      }
     }
 
     Object.defineProperty(this, 'program', {
@@ -2405,6 +2442,7 @@ function Renderer() {
     this.jointTexture = gl.createTexture();
     gl.activeTexture(gl.TEXTURE0 + this.textureIndex);
     gl.bindTexture(gl.TEXTURE_2D, this.jointTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4, this.joints.length, 0, gl.RGBA, getFloatTextureType(), null);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -2427,7 +2465,8 @@ function Renderer() {
       
       gl.activeTexture(gl.TEXTURE0 + this.textureIndex);
       gl.bindTexture(gl.TEXTURE_2D, this.jointTexture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4, this.joints.length, 0, gl.RGBA, getFloatTextureType(), this.jointData);
+      // gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4, this.joints.length, 0, gl.RGBA, getFloatTextureType(), this.jointData);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 4, this.joints.length, gl.RGBA, getFloatTextureType(), this.jointData);
     }
   }
   
@@ -2445,6 +2484,8 @@ function Renderer() {
       this.uniformLocations[i].u_jointTexture = gl.getUniformLocation(mat.program, "u_jointTexture"),
       this.uniformLocations[i].u_numJoints = gl.getUniformLocation(mat.program, "u_numJoints")
     }
+
+    // bruh store attrib locations like MeshRenderer
   
     this.copy = function() {
       var mats = [];
@@ -2475,25 +2516,21 @@ function Renderer() {
         useProgram(mat.program);
         md.bindBuffers(mat.program);
   
+        mat.bindModelMatrixUniform(matrix);
+        mat.bindUniforms(camera);
         if (!shadowPass && renderer.shadowCascades) {
           renderer.shadowCascades.setUniforms(mat.program, mat.uniformLocations);
         }
-  
-        this.skin.updateMatrixTexture();
-  
-        mat.bindModelMatrixUniform(matrix);
-        mat.bindUniforms(camera);
 
-        // bruh why does order matter ^^^
+        // bruh why does order matter ^^^ (activeTexture and bindTexture (skin) vvvvvvv)
         if (!shadowPass) {
           gl.uniform1i(this.uniformLocations[i].u_jointTexture, this.skin.textureIndex);
           gl.uniform1f(this.uniformLocations[i].u_numJoints, this.skin.joints.length);
         }
+
+        this.skin.updateMatrixTexture();
   
-        gl.activeTexture(gl.TEXTURE0 + this.skin.textureIndex);
-        gl.bindTexture(gl.TEXTURE_2D, this.skin.jointTexture);
-  
-        // bruh fix for other mesh renderers
+        mat.setCulling();
         md.drawCall(this.drawMode);
       }
     }
@@ -2572,6 +2609,7 @@ function Renderer() {
           }
           mat.bindUniforms(camera);
   
+          mat.setCulling();
           drawElementsInstanced(this.drawMode, md.indices.length, md.indexType, 0, this.matrices.length);
         }
       }
@@ -2607,12 +2645,7 @@ function Renderer() {
           renderer.shadowCascades.setUniforms(mat.program, mat.uniformLocations);
         }
   
-        if (mat.doubleSided) {
-          gl.disable(gl.CULL_FACE);
-        }
-        else {
-          gl.enable(gl.CULL_FACE);
-        }
+        mat.setCulling();
         md.drawCall(this.drawMode);
       }
     }
@@ -2623,10 +2656,6 @@ function Renderer() {
         var newMat = mat.copy();
         newMat.program = litInstanced;
         mats.push(newMat);
-
-        // mats.push(CreateLitMaterial({
-        //   albedoTexture: mat.getUniform("albedoTexture")
-        // }, litInstanced));
       }
 
       var i = new MeshInstanceRenderer(mats, this.meshData, {
@@ -2736,7 +2765,12 @@ function Renderer() {
         gl.drawElements(drawMode, this.indices.length, this.indexType, 0);
       }
       else if (this.data.position) {
-        gl.drawArrays(drawMode, 0, this.data.position.bufferData.length);
+        if (drawMode == gl.TRIANGLE_STRIP) {
+          gl.drawArrays(drawMode, 0, this.data.position.bufferData.length / 3);
+        }
+        else {
+          gl.drawArrays(drawMode, 0, this.data.position.bufferData.length);
+        }
       }
       else {
         console.warn("Can't render meshData");
@@ -3165,7 +3199,7 @@ function Renderer() {
                 meshData.tangent = { bufferData: tangents.buffer, size: tangents.size, stride: tangents.stride };
               }
               else if (uvs) {
-                meshData.tangent = { bufferData: calculateTangents(vertices, uvs), size: 3 };
+                meshData.tangent = { bufferData: calculateTangents(indices, vertices, uvs), size: 3 };
               }
         
               if (currentPrimitive.attributes.JOINTS_0) {
@@ -3189,7 +3223,7 @@ function Renderer() {
 
               // console.log(meshData);
 
-              var loadMaterials = true;
+              var loadMaterials = loadSettings.loadMaterials ?? true;
 
               var meshMaterial = undefined;
         
@@ -3253,7 +3287,7 @@ function Renderer() {
                       }
     
                       if (material.normalTexture) {
-                        normalTexture = await getTexture(material.normalTexture.index/*, {internalFormat: sRGBInternalFormat, format: sRGBFormat}*/);
+                        normalTexture = await getTexture(material.normalTexture.index, loadSettings.sRGBNormalMap ? {internalFormat: sRGBInternalFormat, format: sRGBFormat} : {});
                       }
     
                       if (material.emissiveTexture != undefined) {
@@ -3418,7 +3452,7 @@ function Renderer() {
           }
         }
 
-        function calculateTangents(vertices, uvs) {
+        function calculateTangents(indices, vertices, uvs) {
           // bruh use vectors instead (maybe...)
           // bruh fix for stride
           function getVertex(i) {
@@ -3446,60 +3480,110 @@ function Renderer() {
 
           var tangents = new Float32Array(vertices.buffer.length);
 
-          for (var i = 0; i < vertices.buffer.length / 3; i += 3) {
-            var v0 = getVertex(i);
-            var v1 = getVertex(i + 1);
-            var v2 = getVertex(i + 2);
+          if (!indices) {
+            for (var i = 0; i < vertices.buffer.length / 3; i += 3) {
+              var v0 = getVertex(i);
+              var v1 = getVertex(i + 1);
+              var v2 = getVertex(i + 2);
 
-            var uv0 = getUV(i);
-            var uv1 = getUV(i + 1);
-            var uv2 = getUV(i + 2);
+              var uv0 = getUV(i);
+              var uv1 = getUV(i + 1);
+              var uv2 = getUV(i + 2);
 
-            var deltaPos1 = subtract(v1, v0);
-            var deltaPos2 = subtract(v2, v0);
+              var deltaPos1 = subtract(v1, v0);
+              var deltaPos2 = subtract(v2, v0);
 
-            var deltaUV1 = subtract(uv1, uv0);
-            var deltaUV2 = subtract(uv2, uv0);
+              var deltaUV1 = subtract(uv1, uv0);
+              var deltaUV2 = subtract(uv2, uv0);
 
-            var r = 1 / (deltaUV1[0] * deltaUV2[1] - deltaUV1[1] * deltaUV2[0]);
+              var r = 1 / (deltaUV1[0] * deltaUV2[1] - deltaUV1[1] * deltaUV2[0]);
 
-            var tangent;
-            var bitangent;
-            if (isNaN(r) || !isFinite(r)) {
+              var tangent;
+              // var bitangent;
+              if (isNaN(r) || !isFinite(r)) {
+                console.log({tangent, deltaPos1, deltaPos2, deltaUV1, deltaUV2, v0, v1, v2, uv0, uv1, uv2, r});
+                // bruh
+                tangent = [0, 0, -1];
+                // bitangent = [0, 1, 0];
+              }
+              else {
+                tangent = [
+                  (deltaPos1[0] * deltaUV2[1] - deltaPos2[0] * deltaUV1[1]) * r,
+                  (deltaPos1[1] * deltaUV2[1] - deltaPos2[1] * deltaUV1[1]) * r,
+                  (deltaPos1[2] * deltaUV2[1] - deltaPos2[2] * deltaUV1[1]) * r
+                ];
+
+                // bitangent = [
+                //   (deltaPos2[0] * deltaUV1[0] - deltaPos1[0] * deltaUV2[0]) * r,
+                //   (deltaPos2[1] * deltaUV1[0] - deltaPos1[1] * deltaUV2[0]) * r,
+                //   (deltaPos2[2] * deltaUV1[0] - deltaPos1[2] * deltaUV2[0]) * r
+                // ];
+              }
+
               // bruh
-              tangent = [1, 0, 0];
-              bitangent = [0, 1, 0];
+              if (isNaN(tangent[0])) {
+                console.log({tangent, deltaPos1, deltaPos2, deltaUV1, deltaUV2, v0, v1, v2, uv0, uv1, uv2, r});
+              }
+
+              tangents[i * 3] = tangent[0];
+              tangents[i * 3 + 1] = tangent[1];
+              tangents[i * 3 + 2] = tangent[2];
+
+              tangents[(i + 1) * 3] = tangent[0];
+              tangents[(i + 1) * 3 + 1] = tangent[1];
+              tangents[(i + 1) * 3 + 2] = tangent[2];
+
+              tangents[(i + 2) * 3] = tangent[0];
+              tangents[(i + 2) * 3 + 1] = tangent[1];
+              tangents[(i + 2) * 3 + 2] = tangent[2];
             }
-            else {
-              tangent = [
-                (deltaPos1[0] * deltaUV2[1] - deltaPos2[0] * deltaUV1[1]) * r,
-                (deltaPos1[1] * deltaUV2[1] - deltaPos2[1] * deltaUV1[1]) * r,
-                (deltaPos1[2] * deltaUV2[1] - deltaPos2[2] * deltaUV1[1]) * r
-              ];
+            console.error("bruh2");
+          }
+          else {
+            var ib = indices.buffer;
+            for (var i = 0; i < ib.length; i += 3) {
+              var v0 = getVertex(ib[i]);
+              var v1 = getVertex(ib[i + 1]);
+              var v2 = getVertex(ib[i + 2]);
 
-              bitangent = [
-                (deltaPos2[0] * deltaUV1[0] - deltaPos1[0] * deltaUV2[0]) * r,
-                (deltaPos2[1] * deltaUV1[0] - deltaPos1[1] * deltaUV2[0]) * r,
-                (deltaPos2[2] * deltaUV1[0] - deltaPos1[2] * deltaUV2[0]) * r
-              ];
+              var uv0 = getUV(ib[i]);
+              var uv1 = getUV(ib[i + 1]);
+              var uv2 = getUV(ib[i + 2]);
+
+              var deltaPos1 = subtract(v1, v0);
+              var deltaPos2 = subtract(v2, v0);
+
+              var deltaUV1 = subtract(uv1, uv0);
+              var deltaUV2 = subtract(uv2, uv0);
+
+              var r = 1 / (deltaUV1[0] * deltaUV2[1] - deltaUV1[1] * deltaUV2[0]);
+
+              var tangent;
+              if (isNaN(r) || !isFinite(r)) {
+                console.log({tangent, deltaPos1, deltaPos2, deltaUV1, deltaUV2, v0, v1, v2, uv0, uv1, uv2, r});
+                // bruh
+                tangent = [1, 0, 0];
+              }
+              else {
+                tangent = [
+                  (deltaPos1[0] * deltaUV2[1] - deltaPos2[0] * deltaUV1[1]) * r,
+                  (deltaPos1[1] * deltaUV2[1] - deltaPos2[1] * deltaUV1[1]) * r,
+                  (deltaPos1[2] * deltaUV2[1] - deltaPos2[2] * deltaUV1[1]) * r
+                ];
+              }
+
+              tangents[ib[i] * 3] = tangent[0];
+              tangents[ib[i] * 3 + 1] = tangent[1];
+              tangents[ib[i] * 3 + 2] = tangent[2];
+
+              tangents[ib[i + 1] * 3] = tangent[0];
+              tangents[ib[i + 1] * 3 + 1] = tangent[1];
+              tangents[ib[i + 1] * 3 + 2] = tangent[2];
+
+              tangents[ib[i + 2] * 3] = tangent[0];
+              tangents[ib[i + 2] * 3 + 1] = tangent[1];
+              tangents[ib[i + 2] * 3 + 2] = tangent[2];
             }
-
-            // bruh
-            if (isNaN(tangent[0])) {
-              console.log({tangent, deltaPos1, deltaPos2, deltaUV1, deltaUV2, v0, v1, v2, uv0, uv1, uv2, r});
-            }
-
-            tangents[i * 3] = tangent[0];
-            tangents[i * 3 + 1] = tangent[1];
-            tangents[i * 3 + 2] = tangent[2];
-
-            tangents[(i + 1) * 3] = tangent[0];
-            tangents[(i + 1) * 3 + 1] = tangent[1];
-            tangents[(i + 1) * 3 + 2] = tangent[2];
-
-            tangents[(i + 2) * 3] = tangent[0];
-            tangents[(i + 2) * 3 + 1] = tangent[1];
-            tangents[(i + 2) * 3 + 2] = tangent[2];
           }
 
           return tangents;
@@ -4570,6 +4654,8 @@ function Scene(name) {
   this.smoothSkybox = false;
   this.environmentIntensity = 1;
 
+  var lights = [];
+
   this.loadEnvironment = async function(settings = {}) {
     if (this.renderer) {
       var res = settings.res ?? 1024;
@@ -4628,6 +4714,10 @@ function Scene(name) {
   }
 
   this.getLights = function() {
+    return lights;
+  }
+
+  this.updateLights = function() {
     var allLights = [];
 
     this.root.traverse(g => {
@@ -4645,12 +4735,13 @@ function Scene(name) {
       }
     });
 
-    return allLights;
+    lights = allLights;
+    return true;
 
-    return [
-      { type: 0, position: new Vector(1, 1, 1.5), color: [100, 1000, 1000] },
-      { type: 0, position: new Vector(-1, 1, 1.5), color: [1000, 500, 100] }
-    ];
+    // return [
+    //   { type: 0, position: new Vector(1, 1, 1.5), color: [100, 1000, 1000] },
+    //   { type: 0, position: new Vector(-1, 1, 1.5), color: [1000, 500, 100] }
+    // ];
   }
 
   // this.render = function(camera, overrideMaterial, shadowPass) {
@@ -5559,7 +5650,7 @@ function PhysicsEngine(scene) {
           var mat = Matrix.removeTranslation(Matrix.copy(rigidbody.gameObject.transform.worldMatrix));
           var pos = Vector.add(rigidbody.position, Matrix.transformVector(mat, collider.offset));
 
-          var s = Vector.fill(collider.radius * 1.1);
+          var s = Vector.fill(collider.radius * 4);
           var q = octree.queryAABB(new AABB(
             Vector.subtract(pos, s),
             Vector.add(pos, s)
@@ -5569,13 +5660,57 @@ function PhysicsEngine(scene) {
             for (var k = 0; k < q.length; k++) {
               var col = sphereToTriangle(pos, collider.radius, q[k][0], q[k][1], q[k][2], true);
               if (col) {
+                // window.debugCube.transform.position = pos;
+
+                var normal = getTriangleNormal(q[k]); // col.normal;
+
+                // console.log({
+                //   normal,
+                //   pA: Vector.add(pos, Vector.multiply(normal, -collider.radius + col.depth * 0)),
+                //   pos,
+                //   r: collider.radius,
+                //   C: -col.depth
+                // });
+                
+                // if (Vector.lengthSqr(normal) > 0.1 * 0.1 && col.depth > 0.001) {
+                  constraintsToSolve.push({
+                    bodyA: rigidbody,
+                    normal: normal,
+                    pA: Vector.add(pos, Vector.multiply(normal, -collider.radius + col.depth * 0)),
+                    C: -col.depth
+                  });
+                  // break;
+                // }
+              }
+            }
+          }
+        }
+
+        var capsuleColliders = rigidbody.gameObject.findComponents("CapsuleCollider");
+        for (var collider of capsuleColliders) {
+          var mat = Matrix.removeTranslation(Matrix.copy(rigidbody.gameObject.transform.worldMatrix));
+          var a = Vector.add(rigidbody.position, Matrix.transformVector(mat, collider.a));
+          var b = Vector.add(rigidbody.position, Matrix.transformVector(mat, collider.b));
+
+          var s = Vector.fill(collider.radius * 10);
+          var center = Vector.average(a, b);
+          var q = octree.queryAABB(new AABB(
+            Vector.subtract(center, s),
+            Vector.add(center, s)
+          ));
+
+          if (q) {
+            for (var k = 0; k < q.length; k++) {
+              var col = capsuleToTriangle(a, b, collider.radius, q[k][0], q[k][1], q[k][2], true);
+              // var col = sphereToTriangle(pos, collider.radius, q[k][0], q[k][1], q[k][2], true);
+              if (col) {
                 var normal = col.normal;
                 
                 if (Vector.lengthSqr(normal) > 0.1 * 0.1 && col.depth > 0.001) {
                   constraintsToSolve.push({
                     bodyA: rigidbody,
                     normal: Vector.negate(normal),
-                    pA: Vector.add(pos, Vector.multiply(normal, -(collider.radius - col.depth))),
+                    pA: col.point,
                     C: col.depth
                   });
                 }
@@ -5801,7 +5936,7 @@ class SphereCollider extends Collider {
 }
 
 class CapsuleCollider extends Collider {
-  constructor(radius, a, b) {
+  constructor(radius, a = Vector.zero(), b = Vector.up()) {
     super();
     this.radius = radius;
     this.a = a;
@@ -5821,7 +5956,8 @@ class Rigidbody {
     this.force = Vector.zero();
 
     this.inertia = Vector.one(); // Bruh
-    this.angles = Vector.zero();
+    // this.angles = Vector.zero();
+    this.rotation = Quaternion.identity();
     this.angularVelocity = Vector.zero();
     this.torque = Vector.zero();
 
@@ -5873,18 +6009,33 @@ class Rigidbody {
 
     this.angularVelocity = Vector.add(this.angularVelocity, Vector.multiply(Vector.compDivide(this.torque, this.inertia), dt));
     this.torque = Vector.zero();
-    this.angles = Vector.add(this.angles, Vector.multiply(this.angularVelocity, dt));
+    // this.angles = Vector.add(this.angles, Vector.multiply(this.angularVelocity, dt));
+  
+    var w = new Quaternion(
+      this.angularVelocity.x,
+      this.angularVelocity.y,
+      this.angularVelocity.z,
+      0
+    );
+    this.rotation = Quaternion.add(this.rotation, Quaternion.multiply(Quaternion.QxQ(w, this.rotation), dt / 2));
   }
 
   update() {
     if (this.gameObject != null) {
       this.gameObject.transform.position = this.position;
+      this.gameObject.transform.rotation = this.rotation;
 
-      this.gameObject.transform.rotationMatrix = Matrix.transform([
-        ["rx", this.angles.x],
-        ["rz", this.angles.z],
-        ["ry", this.angles.y]
-      ]);
+      // this.gameObject.transform.rotationMatrix = Matrix.transform([
+      //   ["rz", this.angles.z],
+      //   ["ry", this.angles.y],
+      //   ["rx", this.angles.x],
+      // ]);
+
+      // this.gameObject.transform.rotationMatrix = Matrix.transform([
+      //   ["rx", this.angles.x],
+      //   ["rz", this.angles.z],
+      //   ["ry", this.angles.y]
+      // ]);
     }
   }
 }
@@ -5898,7 +6049,7 @@ class Rigidbody {
 function FindMaterials(name, obj = scene.root, output = []) {
   if (obj.meshRenderer) {
     for (var mat of obj.meshRenderer.materials) {
-      if (mat.name == name) {
+      if (mat.name.indexOf(name) !== -1) {
         output.push(mat);
       }
     }

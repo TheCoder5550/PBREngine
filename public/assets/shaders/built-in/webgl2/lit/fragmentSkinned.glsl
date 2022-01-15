@@ -1,8 +1,11 @@
 #version 300 es
 precision highp float;
 
+const float PI = 3.141592;
+
 layout (location = 0) out vec4 fragColor;
 
+// Attributes
 in vec3 vPosition;
 in vec3 vNormal;
 in vec3 vTangent;
@@ -11,6 +14,10 @@ in vec2 vUV;
 in mat3 vTBN;
 in mat4 vSkin;
 
+uniform mat4 inverseViewMatrix;
+uniform mat4 modelMatrix;
+
+// Material properties
 uniform sampler2D albedoTexture;
 uniform bool useTexture;
 uniform sampler2D normalTexture;
@@ -22,37 +29,141 @@ uniform bool useEmissiveTexture;
 uniform sampler2D occlusionTexture;
 uniform bool useOcclusionTexture;
 
-uniform mat4 inverseViewMatrix;
-uniform mat4 modelMatrix;
-
-uniform samplerCube u_diffuseIBL;
-uniform samplerCube u_specularIBL;
-uniform sampler2D u_splitSum;
-
-uniform vec3 sunDirection;
-uniform vec3 sunIntensity;
-
-float shadowDarkness = 0.;
-
 uniform vec4 albedo;
 uniform float metallic;
 uniform float roughness;
 uniform vec3 emissiveFactor;
 float ao = 1.;
-
 uniform bool opaque;
 uniform float alphaCutoff;
-
+uniform float normalStrength;
 uniform bool doNoTiling;
 
-const float PI = 3.141592;
+// bruh make shared uniform into uniform block
+// Light info
+struct LightInfo {
+  int type;
+  vec3 position;
+  vec3 direction;
+  float angle;
+  vec3 color;
+};
+const int maxLights = 16;
+uniform LightInfo lights[maxLights];
+uniform int nrLights;
+uniform vec3 sunDirection;
+uniform vec3 sunIntensity;
+
+// Environment
+uniform float environmentIntensity;
+uniform samplerCube u_diffuseIBL;
+uniform samplerCube u_specularIBL;
+uniform sampler2D u_splitSum;
+
+// Shadows
+float shadowDarkness = 0.;
+vec2 shadowStepSize = 1. / vec2(1024);
+const int shadowKernalSize = 3;
+mat3 shadowKernel = mat3(
+  1, 2, 1,
+  2, 4, 2,
+  1, 2, 1
+);
+
+const int levels = 2;
+in vec4 projectedTexcoords[levels];
+uniform float biases[levels];
+uniform sampler2D projectedTextures[levels];
+
+// Debug
+uniform sampler2D unsued2D;
+uniform samplerCube unsued3D;
 
 // No tiling
-vec4 hash4( vec2 p ) { return fract(sin(vec4( 1.0+dot(p,vec2(37.0,17.0)), 
-                                              2.0+dot(p,vec2(11.0,47.0)),
-                                              3.0+dot(p,vec2(41.0,29.0)),
-                                              4.0+dot(p,vec2(23.0,31.0))))*103.0); }
+vec4 hash4(vec2 p);
+vec3 textureNoTile(sampler2D samp, in vec2 uv, float v);
+vec2 hash(vec2 p);
+float noise(in vec2 p);
 
+// Texture sampling
+vec4 sampleTexture(sampler2D samp, vec2 uv);
+
+//Normal map
+vec3 setNormalStrength(vec3 normal, float strength);
+
+// Shadow functions
+bool inRange(vec3 projCoord);
+float getShadowAmount();
+
+// PBR
+vec3 fresnelSchlick(float cosTheta, vec3 F0);
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness);
+float DistributionGGX(vec3 N, vec3 H, float roughness);
+float GeometrySchlickGGX(float NdotV, float roughness);
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness);
+vec3 IBL (vec3 N, vec3 V, vec3 R, vec3 albedo, float metallic, float roughness, float scalarF0);
+vec3 DirectionalLight (vec3 worldPos, vec3 N, vec3 V, vec3 lightDir, vec3 lightColor, vec3 albedo, float metallic, float roughness, float scalarF0);
+vec3 PositionalLight (vec3 worldPos, vec3 N, vec3 V, vec3 lightPos, vec3 lightColor, vec3 albedo, float metallic, float roughness, float scalarF0);
+vec3 Spotlight (vec3 worldPos, vec3 N, vec3 V, vec3 lightPos, vec3 dir, float angle, vec3 lightColor, vec3 albedo, float metallic, float roughness, float scalarF0);
+vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, float _metallic, float _roughness, float _ao);
+
+void main() {
+  // fragColor = vec4(mod(abs(vUV), vec2(1.)), 0, 1);
+  // return;
+
+  // fragColor = vec4(abs(vTangent), 1);
+  // return;
+
+  vec4 currentAlbedo = useTexture ? sampleTexture(albedoTexture, vUV) : vec4(1);
+  currentAlbedo *= albedo;
+  currentAlbedo *= vec4(vec3(1) - vColor, 1);
+
+  currentAlbedo += texture(unsued2D, vec2(0, 0)) * 0.;
+  currentAlbedo += texture(unsued3D, vec3(0, 0, 0)) * 0.;
+
+  if (doNoTiling) {
+    currentAlbedo.rgb = mix(vec3(0.2), currentAlbedo.rgb, noise(vUV / 5.));
+  }
+
+  vec3 _emission = emissiveFactor;
+  if (useEmissiveTexture) {
+    _emission *= sampleTexture(emissiveTexture, vUV).rgb;
+  }
+
+  float _ao = ao;
+  if (useOcclusionTexture) {
+    _ao *= sampleTexture(occlusionTexture, vUV).r;
+  }
+
+  float _metallic = metallic;
+  float _roughness = roughness;
+  if (useMetallicRoughnessTexture) {
+    vec3 ts = sampleTexture(metallicRoughnessTexture, vUV).rgb;
+    _metallic *= ts.b;
+    _roughness *= ts.g;
+  }
+
+  _roughness = clamp(_roughness, 0.01, 0.99);
+
+  vec3 _tangentNormal = vec3(0, 0, 1);
+  // if (useNormalMap) {
+  //   _tangentNormal = sampleTexture(normalTexture, vUV).rgb * 2. - 1.;
+
+  //   if (normalStrength != 0.) {
+  //     _tangentNormal = setNormalStrength(_tangentNormal, normalStrength);
+  //   }
+  // }
+
+  fragColor = lit(currentAlbedo, alphaCutoff, _emission, _tangentNormal, _metallic, _roughness, _ao);
+}
+
+// No tiling
+vec4 hash4( vec2 p ) {
+  return fract(sin(vec4(1.0+dot(p,vec2(37.0,17.0)), 
+                        2.0+dot(p,vec2(11.0,47.0)),
+                        3.0+dot(p,vec2(41.0,29.0)),
+                        4.0+dot(p,vec2(23.0,31.0))))*103.0);
+}
 
 vec3 textureNoTile( sampler2D samp, in vec2 uv, float v ) {
     vec2 p = floor( uv );
@@ -88,14 +199,12 @@ vec3 textureNoTile( sampler2D samp, in vec2 uv, float v ) {
     return mix( va/w1, res, v );
 }
 
-vec2 hash( vec2 p ) // replace this by something better
-{
+vec2 hash( vec2 p ) { // replace this by something better
 	p = vec2( dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)) );
 	return -1.0 + 2.0*fract(sin(p)*43758.5453123);
 }
 
-float noise( in vec2 p )
-{
+float noise( in vec2 p ) {
   const float K1 = 0.366025404; // (sqrt(3)-1)/2;
   const float K2 = 0.211324865; // (3-sqrt(3))/6;
 
@@ -121,53 +230,11 @@ vec4 sampleTexture(sampler2D samp, vec2 uv) {
 }
 
 //Normal map
-vec3 normalStrength(vec3 normal, float strength) {
+vec3 setNormalStrength(vec3 normal, float strength) {
   return vec3(normal.xy * strength, mix(1., normal.z, clamp(strength, 0., 1.)));
 }
 
-mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv) {
-    // get edge vectors of the pixel triangle
-    vec3 dp1 = dFdx( p );
-    vec3 dp2 = dFdy( p );
-    vec2 duv1 = dFdx( uv );
-    vec2 duv2 = dFdy( uv );
- 
-    // solve the linear system
-    vec3 dp2perp = cross( dp2, N );
-    vec3 dp1perp = cross( N, dp1 );
-    vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-    vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
- 
-    // construct a scale-invariant frame 
-    float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
-    return mat3( T * invmax, B * invmax, N );
-}
-
-vec3 perturb_normal( vec3 N, vec3 V, vec2 texcoord, float strength ) {
-  // assume N, the interpolated vertex normal and 
-  // V, the view vector (vertex to eye)
-  vec3 map = sampleTexture(normalTexture, texcoord).xyz;
-  map = map * 255./127. - 128./127.;
-  map = normalStrength(map, strength);
-
-  mat3 TBN = cotangent_frame(N, V, texcoord);
-  return normalize(TBN * map);
-}
-
-//Shadows
-vec2 shadowStepSize = 1. / vec2(1024);
-const int shadowKernalSize = 3;
-mat3 shadowKernel = mat3(
-  1, 2, 1,
-  2, 4, 2,
-  1, 2, 1
-);
-
-const int levels = 2;
-uniform float biases[levels];
-uniform sampler2D projectedTextures[levels];
-in vec4 projectedTexcoords[levels];
-
+// Shadow functions
 bool inRange(vec3 projCoord) {
   return projCoord.x >= 0.0 &&
       projCoord.x <= 1.0 &&
@@ -332,42 +399,70 @@ vec3 DirectionalLight (vec3 worldPos, vec3 N, vec3 V, vec3 lightDir, vec3 lightC
   return (kD * albedo / PI + specular) * radiance * NdotL;  
 }
 
-void main() {
-  // fragColor = vec4(1, 1, 0, 1);
-  // return;
+vec3 PositionalLight (vec3 worldPos, vec3 N, vec3 V, vec3 lightPos, vec3 lightColor, vec3 albedo, float metallic, float roughness, float scalarF0) {
+  float distance    = length(lightPos - worldPos);
+  float attenuation = 1.0 / (distance * distance);
+  vec3 L = normalize(lightPos - worldPos);  
+  vec3 H = normalize(V + L);  
+  vec3 radiance     = lightColor * attenuation;     
+  vec3 F0 = vec3(scalarF0); 
+  F0      = mix(F0, albedo, metallic);
+  vec3 F  = fresnelSchlick(max(dot(H, V), 0.0), F0);    
+  float NDF = DistributionGGX(N, H, roughness);       
+  float G   = GeometrySmith(N, V, L, roughness);     
+  vec3 nominator    = NDF * G * F;
+  float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001; 
+  vec3 specular     = nominator / denominator;       
+  vec3 kS = F;
+  vec3 kD = vec3(1.0) - kS;
+    
+  kD *= 1.0 - metallic;     
+  float NdotL = max(dot(N, L), 0.0);        
+  return (kD * albedo / PI + specular) * radiance * NdotL;  
+}
 
-  vec4 currentAlbedo = useTexture ? sampleTexture(albedoTexture, vUV) : vec4(1);
-  currentAlbedo *= albedo;
-  currentAlbedo *= vec4(vec3(1) - vColor, 1);
+vec3 Spotlight (vec3 worldPos, vec3 N, vec3 V, vec3 lightPos, vec3 dir, float angle, vec3 lightColor, vec3 albedo, float metallic, float roughness, float scalarF0) {
+  vec3 currentDir = normalize(worldPos - lightPos);
+  float distance    = length(lightPos - worldPos);
+  float attenuation = 1.0 / (distance * distance);
 
-  if (currentAlbedo.a <= alphaCutoff) {
+  float sharpness = 5.;
+  attenuation *= clamp((dot(currentDir, dir) - cos(angle)) * sharpness, 0., 1.);
+
+  vec3 L = normalize(lightPos - worldPos);  
+  vec3 H = normalize(V + L);  
+  vec3 radiance     = lightColor * attenuation;     
+  vec3 F0 = vec3(scalarF0); 
+  F0      = mix(F0, albedo, metallic);
+  vec3 F  = fresnelSchlick(max(dot(H, V), 0.0), F0);    
+  float NDF = DistributionGGX(N, H, roughness);       
+  float G   = GeometrySmith(N, V, L, roughness);     
+  vec3 nominator    = NDF * G * F;
+  float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001; 
+  vec3 specular     = nominator / denominator;       
+  vec3 kS = F;
+  vec3 kD = vec3(1.0) - kS;
+    
+  kD *= 1.0 - metallic;     
+  float NdotL = max(dot(N, L), 0.0);        
+  return (kD * albedo / PI + specular) * radiance * NdotL;  
+}
+
+vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, float _metallic, float _roughness, float _ao) {
+  if (_albedo.a <= _alphaCutoff) {
     discard;
   }
 
   if (opaque) {
-    currentAlbedo.a = 1.;
+    _albedo.a = 1.;
   }
 
-  // if (doNoTiling) {
-  //   currentAlbedo = mix(vec3(0.2), currentAlbedo, noise(vUV / 5.));
-  // }
+  vec3 V = normalize(vec3(inverseViewMatrix * vec4(0, 0, 0, 1)) - vPosition);
 
-  float _metallic = metallic;
-  float _roughness = roughness;
-  if (useMetallicRoughnessTexture) {
-    vec3 ts = sampleTexture(metallicRoughnessTexture, vUV).rgb;
-    _metallic *= ts.b;
-    _roughness *= ts.g;
-  }
+  // vec3 N = normalize(mat3(modelMatrix) * vNormal);
+  vec3 N = normalize(vTBN * _tangentNormal);
 
-  _roughness = clamp(_roughness, 0.01, 0.99);
-
-  float _ao = ao;
-  if (useOcclusionTexture) {
-    _ao *= sampleTexture(occlusionTexture, vUV).r;
-  }
-
-  vec3 N = normalize(mat3(modelMatrix * vSkin * modelMatrix) * vNormal);//.xzy * vec3(1, -1, 1);
+  // vec3 N = normalize(mat3(modelMatrix * vSkin * modelMatrix) * vNormal);//.xzy * vec3(1, -1, 1);
 
   // fragColor = vec4(vec3(max(dot(N, sunDirection), 0.)), 1);
   // fragColor = vec4(max(vec3(0), N), 1);
@@ -379,81 +474,32 @@ void main() {
   //   vec3(0, -1, 0)
   // ) * mat3(vSkin * modelMatrix) * vNormal);//.xzy * vec3(1, -1, 1);
 
-  // vec3 N = normalize(mat3(modelMatrix) * vNormal);
-  vec3 V = normalize(vec3(inverseViewMatrix * vec4(0, 0, 0, 1)) - vPosition);
-
-  if (useNormalMap) {
-    if (vTangent != vec3(0)) {
-      vec3 tangentNormal = sampleTexture(normalTexture, vUV).rgb * 2. - 1.;
-      // tangentNormal = normalStrength(tangentNormal, 10.);
-      N = normalize(vTBN * tangentNormal);
-    }
-    else {
-      N = perturb_normal(N, V, vUV, 1.);
-    }
-  }
-
   if (!gl_FrontFacing) {
     N *= -1.;
   }
-
-  // fragColor = vec4(vec3(max(dot(N, sunDirection), 0.)), 1);
-  // fragColor = vec4(max(vec3(0), N), 1);
-  // return;
 
   vec3 R = reflect(-V, N);
 
   float f0 = 0.04;
 
   vec3 col = vec3(0);
-  col += IBL(N, V, R, currentAlbedo.rgb, _metallic, _roughness, f0) * _ao;
+  col += IBL(N, V, R, _albedo.rgb, _metallic, _roughness, f0) * _ao * environmentIntensity;
+  
   if (sunIntensity != vec3(0)) {
-    col += DirectionalLight(vPosition, N, V, sunDirection, sunIntensity, currentAlbedo.rgb, _metallic, _roughness, f0) * _ao * getShadowAmount();
+    col += DirectionalLight(vPosition, N, V, sunDirection, sunIntensity, _albedo.rgb, _metallic, _roughness, f0) * _ao * getShadowAmount();
   }
 
-  if (useEmissiveTexture) {
-    vec3 e = sampleTexture(emissiveTexture, vUV).rgb;
-    col += /*(1. - step(length(e), 0.05)) * */e * emissiveFactor;
+  for (int i = 0; i < nrLights; i++) {
+    LightInfo light = lights[i];
+    if (light.type == 0) {
+      col += PositionalLight(vPosition, N, V, light.position, light.color, _albedo.rgb, _metallic, _roughness, f0);
+    }
+    else if (light.type == 1) {
+      col += Spotlight(vPosition, N, V, light.position, light.direction, light.angle, light.color, _albedo.rgb, _metallic, _roughness, f0);
+    }
   }
-  else {
-    col += emissiveFactor;
-  }
 
-  fragColor = vec4(col, currentAlbedo.a);
-  return;
+  col += _emission;
 
-
-  // // vec4 baseColor = texture(albedoTexture, vUV);
-  // vec4 baseColor = useTexture ? texture(albedoTexture, vUV) : vec4(1);
-  // if (baseColor.a < 0.1) {
-  //   discard;
-  // }
-
-  // vec3 viewDirection = normalize(vec3(inverseViewMatrix * vec4(0, 0, 0, 1)) - vPosition); 
-  // vec3 H = normalize(sunDirection + viewDirection);
-
-  // vec3 worldNormal = normalize(mat3(modelMatrix) * vNormal);
-  // if (useNormalMap) {
-  //   // vec3 worldTangent = normalize(mat3(modelMatrix) * vTangent);
-
-  //   // float normalMapStrength = 0.3;
-  //   // vec3 normalMap = tangentToObject(worldNormal, worldTangent, normalStrength(vec3(texture(normalTexture, vUV)) * 2. - 1., normalMapStrength));
-  //   // worldNormal = normalMap;
-
-  //   worldNormal = perturb_normal(worldNormal, viewDirection, vUV);
-  // }
-
-  // float shadowAmount = getShadowAmount();
-
-  // float reflectionSharpness = 0.;//10.
-  // vec3 reflection = textureLod(u_specularIBL, reflect(-viewDirection, worldNormal), reflectionSharpness).xyz;
-  // vec3 specular = vec3(specularIntensity) * pow(clamp(dot(worldNormal, H), 0., 1.), specularSharpness) * 1.5;
-
-  // float shade = (dot(worldNormal, sunDirection) * 0.5 + 0.5) * 1.2;
-  // // float shade = clamp(dot(worldNormal, sunDirection), 0.3, 1.) * 1.7;
-  // vec3 shadowColor = vec3(39, 38, 43) / 255.;
-  // vec3 color = (float(shadowAmount == 1.) * specular + albedo * baseColor.rgb * shade * 1.5) * mix(shadowColor, vec3(1), shadowAmount);
-
-  // vec3 outputColor = color + reflection * 0.1;
-  // fragColor = vec4(outputColor, 1);
+  return vec4(col, _albedo.a);
 }

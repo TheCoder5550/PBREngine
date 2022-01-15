@@ -71,6 +71,15 @@ export default class Quaternion {
     };
   }
 
+  static QxQ(a, b) {
+    return new Quaternion(
+      a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,  // i
+      a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,  // j
+      a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,  // k
+      a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,  // 1
+    );
+  }
+
   static slerp(a, b, t) {
     var d = Quaternion.dot(a, b);
     if (Math.abs(1 - d) < 1e-5) {

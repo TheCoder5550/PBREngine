@@ -59,9 +59,10 @@ void main() {
   // mat4 world = skinMatrix * modelMatrix;
   // mat4 world = modelMatrix;
 
-  vec3 _T = normalize(vec3(world * vec4(tangent, 0.0)));
-  vec3 _B = normalize(vec3(world * vec4(cross(normal, tangent), 0.0)));
-  vec3 _N = normalize(vec3(world * vec4(normal, 0.0)));
+  mat4 TBNWorld = modelMatrix * skinMatrix * modelMatrix;
+  vec3 _T = normalize(vec3(TBNWorld * vec4(tangent, 0.0)));
+  vec3 _B = normalize(vec3(TBNWorld * vec4(cross(normal, tangent), 0.0)));
+  vec3 _N = normalize(vec3(TBNWorld * vec4(normal, 0.0)));
   vTBN = mat3(_T, _B, _N);
 
   vec4 worldPosition = world * vec4(position, 1.0);

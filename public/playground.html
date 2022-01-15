@@ -48,7 +48,7 @@
   
   <script type="module">
 
-    import Renderer, { Scene, Light, GameObject, FindMaterials } from "./engine/renderer.js";
+    import Renderer, { Scene, Light, GameObject, FindMaterials, PhysicsEngine, Rigidbody, SphereCollider, CapsuleCollider } from "./engine/renderer.js";
     import OrbitCamera from "./engine/orbitCamera.js";
     import Vector from "./engine/vector.js";
     import Quaternion from "./engine/quaternion.js";
@@ -76,17 +76,20 @@
         version: 2,
         disableLitInstanced: true,
         disableUnlitInstanced: true,
-        disableLitSkinned: true,
+        // disableLitSkinned: true,
         disableLitBillboard: true,
-        disableTrailLit: true
+        disableTrailLit: true,
+
+        shadowSizes: [4, 64],
+        shadowBiases: [-0.0006, -0.0015]
       });
 
       renderer.postprocessing.exposure = 0;
 
       scene = new Scene();
-      scene.environmentIntensity = 0.75;
-      scene.sunIntensity = Vector.fill(4 * 0);
-      // scene.smoothSkybox = true;
+      scene.environmentIntensity = 0.3;
+      scene.sunIntensity = Vector.fill(8);
+      scene.smoothSkybox = true;
       // scene.skyboxVisible = false;
       renderer.add(scene);
       await scene.loadEnvironment({
@@ -96,37 +99,61 @@
       var oldSkybox = scene.skyboxCubemap;
       // await scene.loadEnvironment("./assets/hdri/snowy_field_1k", 256);
 
+      var physicsEngine = new PhysicsEngine(scene);
+
       // camera = new FlyCamera(renderer, {position: new Vector(0, 0, 3), near: 0.1, far: 300, layer: 0, fov: 20});
       camera = new OrbitCamera(renderer, {position: new Vector(0, 0, 3), near: 0.1, far: 300, layer: 0, fov: 20});
 
       // await renderer.CreatePBRGrid(scene, 10, 10);
       // var model = scene.add(await renderer.loadGLTF("./assets/models/FlightHelmet.glb"));
       // var model = scene.add(await renderer.loadGLTF("./assets/models/PH_Metallic_Beryllium_Orange.glb"));
-      var model = scene.add(await renderer.loadGLTF("./assets/models/DamagedHelmet.glb"));
+      // var model = scene.add(await renderer.loadGLTF("./assets/models/DamagedHelmet.glb"));
       // var model = scene.add(await renderer.loadGLTF("./assets/models/test/AlphaBlendModeTest.glb"));
-      // var model = scene.add(await renderer.loadGLTF("./assets/models/test/Fox.glb"));
-      // model.transform.position.y -= 2.1;
-      // model.transform.scale = Vector.fill(0.01);
+      // var model = scene.add(await renderer.loadGLTF("./assets/models/woodenFloor.glb", {
+      //   sRGBNormalMap: true,
+      //   maxTextureSize: 1024
+      // }));
+
+      scene.add(await renderer.loadGLTF("./cargame/coordinateAxis.glb"));
+
+      var collider = scene.add(await renderer.loadGLTF("./assets/models/test/bowl.glb"));
+      physicsEngine.addMeshToOctree(collider);
+
+      var ball = scene.add(await renderer.loadGLTF("./assets/models/test/4Spheres.glb"));
+      window.rb = ball.addComponent(new Rigidbody());
+      ball.addComponent(new SphereCollider(1, new Vector(3, 0, 2)));
+      ball.addComponent(new SphereCollider(1, new Vector(-3, 0, 2)));
+      ball.addComponent(new SphereCollider(1, new Vector(3, 0, -2)));
+      ball.addComponent(new SphereCollider(1, new Vector(-3, 0, -2)));
+      rb.position.x = 10;
+      rb.position.y = 3;
+      // rb.gravityScale = 0;
+      // rb.rotation = Quaternion.euler(Math.PI * 0.5, 0, 0);
+
+      window.debugCube = scene.add(renderer.CreateShape("cube"));
 
       // var lightObject = scene.add(new GameObject("Light"));
-      // lightObject.transform.position = new Vector(2, 0, 2);
+      // lightObject.transform.position = new Vector(2, 1, 2);
       // var light = lightObject.addComponent(new Light());
-      // light.color = light.kelvinToRgb(3000, 100);
+      // light.color = light.kelvinToRgb(3000, 10);
 
       // var lightObject = scene.add(new GameObject("Light"));
-      // lightObject.transform.position = new Vector(-2, 0, 2);
+      // lightObject.transform.position = new Vector(-2, 1, 2);
       // var light = lightObject.addComponent(new Light());
-      // light.color = light.kelvinToRgb(8000, 100);
+      // light.color = light.kelvinToRgb(8000, 10);
 
-      var lightObject = scene.add(new GameObject("Light"));
-      lightObject.transform.position = new Vector(2, 0, -2);
-      var light = lightObject.addComponent(new Light());
-      light.color = [10, 1, 10];
+      // var lightObject = scene.add(new GameObject("Light"));
+      // lightObject.transform.position = new Vector(2, 1, -2);
+      // var light = lightObject.addComponent(new Light());
+      // light.color = [10, 1, 10];
 
-      var lightObject = scene.add(new GameObject("Light"));
-      lightObject.transform.position = new Vector(-2, 0, -2);
-      var light = lightObject.addComponent(new Light());
-      light.color = [1, 10, 1];
+      // var lightObject = scene.add(new GameObject("Light"));
+      // lightObject.transform.position = new Vector(-2, 1, -2);
+      // var light = lightObject.addComponent(new Light());
+      // // light.type = 1;
+      // light.color = [1, 10, 1];
+
+      scene.updateLights();
 
       // scene.add(await renderer.loadGLTF("./assets/models/waterPlane.glb"));
 
@@ -154,6 +181,19 @@
       window.FindMaterials = FindMaterials;
 
       renderer.on("renderloop", function(frameTime, time) {
+        if (renderer.getKey(38)) {
+          rb.position.x = 10;
+          rb.position.y = 3;
+          rb.position.z = 0;
+          rb.angles = Vector.zero();
+          rb.velocity = Vector.zero();
+          rb.angularVelocity = Vector.zero();
+          // rb.angles.x = Math.PI;
+        }
+
+        // if (renderer.getKey(32)) {
+          physicsEngine.update(frameTime);
+        // }
         scene.update(frameTime);
         renderer.render(camera.camera);
 

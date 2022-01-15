@@ -331,7 +331,7 @@ vec3 DirectionalLight (vec3 worldPos, vec3 N, vec3 V, vec3 lightDir, vec3 lightC
 }
 
 void main() {
-  // fragColor = vec4(vUV, 0, 1);
+  // fragColor = vec4(1, 0, 0, vAlpha);
   // return;
 
   vec4 currentAlbedo = useTexture ? sampleTexture(albedoTexture, vUV) : vec4(1);
