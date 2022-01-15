@@ -110,7 +110,7 @@ void main() {
   // fragColor = vec4(mod(abs(vUV), vec2(1.)), 0, 1);
   // return;
 
-  // fragColor = vec4(abs(vTangent), 1);
+  // fragColor = vec4(float(useNormalMap) * 100., 0, 0, 1);
   // return;
 
   vec4 currentAlbedo = useTexture ? sampleTexture(albedoTexture, vUV) : vec4(1);
@@ -145,11 +145,12 @@ void main() {
   _roughness = clamp(_roughness, 0.01, 0.99);
 
   vec3 _tangentNormal = vec3(0, 0, 1);
+  // bruh ? flickering
   if (useNormalMap) {
-    _tangentNormal = sampleTexture(normalTexture, vUV).rgb * 2. - 1.;
+    // _tangentNormal = sampleTexture(normalTexture, vUV).rgb * 2. - 1.;
 
     if (normalStrength != 0.) {
-    _tangentNormal = setNormalStrength(_tangentNormal, normalStrength);
+      _tangentNormal = setNormalStrength(_tangentNormal, normalStrength);
     }
   }
 

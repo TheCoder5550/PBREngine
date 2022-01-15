@@ -200,34 +200,30 @@ async function setup() {
 }
 
 function loop() {
-  // var frameTime = getFrameTime();
-  // debugLines.clear();
+  var frameTime = getFrameTime();
+  debugLines.clear();
 
-  // if (keybindings.getInputDown("resetGame")) {
-  //   car.rb.velocity = Vector.zero();
-  //   car.rb.angularVelocity = Vector.zero();
-  //   car.rb.angles = Vector.zero();
+  if (keybindings.getInputDown("resetGame")) {
+    car.rb.velocity = Vector.zero();
+    car.rb.angularVelocity = Vector.zero();
+    car.rb.rotation = Quaternion.identity();
 
-  //   car.rb.position = Vector.zero();
-  //   car.gameObject.transform.position = Vector.zero();
-  // }
+    car.rb.position = Vector.zero();
+    car.gameObject.transform.position = Vector.zero();
+  }
 
-  // physicsEngine.update();
-  // if (car) car.update(frameTime);
-  // scene.update(physicsEngine.dt);
+  physicsEngine.update();
+  if (car) car.update(frameTime);
+  scene.update(physicsEngine.dt);
 
-  // cameraControls(frameTime);
-
-  // renderer.render(mainCamera);
-  // // debugLines.render(mainCamera);
-  // renderUI(frameTime);
-
-  // stats.update();
-  // rafID = requestAnimationFrame(loop);
-
+  cameraControls(frameTime);
 
   renderer.render(mainCamera);
-  requestAnimationFrame(loop);
+  // debugLines.render(mainCamera);
+  renderUI(frameTime);
+
+  stats.update();
+  rafID = requestAnimationFrame(loop);
 }
 
 function renderUI(dt) {
@@ -525,7 +521,8 @@ function Car(settings = {}) {
   this.reset = function() {
     this.rb.position.y += 2;
     this.rb.velocity = Vector.zero();
-    this.rb.angles = new Vector(0, this.rb.angles.y, 0);
+    this.rb.rotation = Quaternion.identity();
+    // this.rb.angles = new Vector(0, this.rb.angles.y, 0);
     this.rb.angularVelocity = Vector.zero();
 
     this.currentGear = 1;

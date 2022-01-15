@@ -314,16 +314,16 @@ function sphereToTriangle(center, radius, p0, p1, p2, doubleSided = false) {
       d = Vector.subtract(center, point2);
       var distsq = Vector.dot(d, d);
       if (distsq < best_distsq) {
-        distsq = best_distsq;
+        best_distsq = distsq;
         best_point = point2;
         intersection_vec = d;
       }
   
       d = Vector.subtract(center, point3);
-      var distsq = Vector.dot(d, d);
+      distsq = Vector.dot(d, d);
       if (distsq < best_distsq) {
-        distsq = best_distsq;
-        best_point = point3; 
+        best_distsq = distsq;
+        best_point = point3;
         intersection_vec = d;
       }
     }
@@ -334,7 +334,7 @@ function sphereToTriangle(center, radius, p0, p1, p2, doubleSided = false) {
     return {
       normal: penetration_normal,
       depth: penetration_depth,
-      point: Vector.add(center, Vector.multiply(penetration_normal, -len))
+      point: best_point
     };
   }
 
