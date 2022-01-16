@@ -52,8 +52,6 @@ var ENUMS = {
 
 // bruh skin shadows
 
-// bruh setting matrix to lookat then scaling doesnt scale
-
 function Renderer() {
   var renderer = this;
   var gl;
@@ -2665,6 +2663,23 @@ function Renderer() {
       });
       return i;
     }
+
+    this.copy = function() {
+      var mats = [];
+      for (var mat of this.materials) {
+        mats.push(mat.copy());
+      }
+  
+      var mds = [];
+      for (var md of this.meshData) {
+        mds.push(md.copy());
+      }
+  
+      var newMeshRenderer = new MeshRenderer(mats, mds);
+      newMeshRenderer.drawMode = this.drawMode;
+  
+      return newMeshRenderer;
+    }
   }
 
   /*
@@ -4241,6 +4256,10 @@ function GameObject(name = "Unnamed", options = {}) {
       newThis.animationController = this.animationController.copy();
     }
 
+    for (var c of _components) {
+      newThis.addComponent(c.copy());
+    }
+
     for (var child of this.children) {
       newThis.addChild(child.copy());
     }
@@ -4597,6 +4616,10 @@ function Transform(matrix, position, rotation, scale) {
       setProxyVector(_positionProxy, Matrix.getPosition(_matrix));
       setProxyQuat(_rotationProxy, Quaternion.fromMatrix(_matrix));
       setProxyVector(_scaleProxy, Matrix.getScale(_matrix));
+
+      _lastPosition = Vector.copy(_positionProxy);
+      _lastRotation = Quaternion.copy(_rotationProxy);
+      _lastScale = Vector.copy(_scaleProxy);
 
       // _position = Matrix.getPosition(_matrix);
       // _rotation = Quaternion.fromMatrix(_matrix);

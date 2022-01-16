@@ -1,6 +1,7 @@
 "use strict";
 
-import Renderer, { GameObject, Scene, Camera, PhysicsEngine, Rigidbody, SphereCollider, AudioListener3D, FindMaterials } from "../engine/renderer.js";
+import Renderer, { GameObject, Scene, Camera, AudioListener3D, FindMaterials } from "../engine/renderer.js";
+import { PhysicsEngine, Rigidbody, SphereCollider } from "../engine/physics.js";
 import Vector from "../engine/vector.js";
 import Matrix from "../engine/matrix.js";
 import Quaternion from "../engine/quaternion.js";
@@ -933,8 +934,14 @@ function Car(settings = {}) {
       var rpm = clamp(this.getRPM(), 800, this.maxRPM);
       for (var sample of samples) {
         if (sample.onSource && sample.onGain) {
-          sample.onGain.gain.value = Math.exp(-(10 ** (-6.7)) * Math.pow(rpm - sample.rpm, 2)) * (Math.max(0, rpmChange) * 2 / 3 + 1 / 3) * 0.3;
-          sample.onSource.playbackRate.value = rpm / sample.rpm;
+          var g = Math.exp(-(10 ** (-6.7)) * Math.pow(rpm - sample.rpm, 2)) * (Math.max(0, rpmChange) * 2 / 3 + 1 / 3) * 0.3;
+          if (isFinite(g)) {
+            sample.onGain.gain.value = g;
+          }
+          var pbr = rpm / sample.rpm;
+          if (isFinite(pbr)) {
+            sample.onSource.playbackRate.value = pbr;
+          }
         }
       }
     }
@@ -1019,7 +1026,7 @@ function Car(settings = {}) {
     var velocities = [a.angularVelocity, b.angularVelocity, m.angularVelocity];
     var inertias = [a.inertia, b.inertia, m.inertia];
 
-    var impulses = physicsEngine.getConstraintImpulse(jacobian, velocities, inertias, C, dt, biasFactor, maxImpulse);
+    var { impulses } = physicsEngine.getConstraintImpulse(jacobian, velocities, inertias, C, dt, biasFactor);
 
     a.angularVelocity += impulses[0] / a.inertia;
     b.angularVelocity += impulses[1] / b.inertia;

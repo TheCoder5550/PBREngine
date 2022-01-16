@@ -1,3 +1,4 @@
+import { clamp } from "./helper.js";
 import Vector from "./vector.js";
 
 function AABBToAABB(a, b) {
@@ -341,19 +342,20 @@ function sphereToTriangle(center, radius, p0, p1, p2, doubleSided = false) {
   return false;
 }
 
-function capsuleToTriangle(base, tip, radius, p0, p1, p2, doubleSided = false) {
+function capsuleToTriangle(A, B, radius, p0, p1, p2, doubleSided = false) {
   // Compute capsule line endpoints A, B like before in capsule-capsule case:
-  var CapsuleNormal = Vector.normalize(Vector.subtract(tip, base));
+  var CapsuleNormal = Vector.normalize(Vector.subtract(B, A));
   var LineEndOffset = Vector.multiply(CapsuleNormal, radius);
-  var A = Vector.add(base, LineEndOffset);
-  var B = Vector.subtract(tip, LineEndOffset);
+  var base = Vector.subtract(A, LineEndOffset);
+  var tip = Vector.add(B, LineEndOffset);
   
   // Then for each triangle, ray-plane intersection:
   //  N is the triangle plane normal (it was computed in sphere – triangle intersection case)
   var N = getTriangleNormal([p0, p1, p2]);
 
   var line_plane_intersection;
-  var d = Math.abs(Vector.dot(N, CapsuleNormal));
+  var d = Vector.dot(N, CapsuleNormal);
+  // Parallel edge case
   if (Math.abs(d) < 0.00001) {
     line_plane_intersection = Vector.copy(A);
   }
@@ -364,10 +366,57 @@ function capsuleToTriangle(base, tip, radius, p0, p1, p2, doubleSided = false) {
 
   // console.log(d, N, t, line_plane_intersection, p0, p1, p2);
   
-  var reference_point = closestPointToTriangle(line_plane_intersection, p0, p1, p2);
+
+
+  // var reference_point = closestPointToTriangle(line_plane_intersection, p0, p1, p2);
   // var reference_point = {find closest point on triangle to line_plane_intersection};
 
-  // console.log(base, A, B, reference_point);
+  var c0 = Vector.cross(Vector.subtract(line_plane_intersection, p0), Vector.subtract(p1, p0));
+  var c1 = Vector.cross(Vector.subtract(line_plane_intersection, p1), Vector.subtract(p2, p1));
+  var c2 = Vector.cross(Vector.subtract(line_plane_intersection, p2), Vector.subtract(p0, p2));
+  var inside = Vector.dot(c0, N) <= 0 && Vector.dot(c1, N) <= 0 && Vector.dot(c2, N) <= 0;
+
+  var reference_point;
+  if (inside) {
+    reference_point = line_plane_intersection;
+  }
+  else {
+    // Edge 1:
+    var point1 = ClosestPointOnLineSegment(p0, p1, line_plane_intersection);
+    var v1 = Vector.subtract(line_plane_intersection, point1);
+    var distsq = Vector.dot(v1, v1);
+    var best_distsq = distsq;
+    reference_point = point1;
+    
+    // Edge 2:
+    var point2 = ClosestPointOnLineSegment(p1, p2, line_plane_intersection);
+    var v2 = Vector.subtract(line_plane_intersection, point2);
+    var distsq = Vector.dot(v2, v2);
+    if (distsq < best_distsq) {
+      reference_point = point2;
+      best_distsq = distsq;
+    }
+    
+    // Edge 3:
+    var point3 = ClosestPointOnLineSegment(p2, p0, line_plane_intersection);
+    var v3 = Vector.subtract(line_plane_intersection, point3);
+    var distsq = Vector.dot(v3, v3);
+    if (distsq < best_distsq) {
+      reference_point = point3;
+      best_distsq = distsq;
+    }
+  }
+
+
+
+
+
+
+
+
+
+
+
 
   // The center of the best sphere candidate:
   var center = ClosestPointOnLineSegment(A, B, reference_point);
@@ -382,7 +431,7 @@ function ClosestPointOnLineSegment(A, B, Point) {
 }
 
 function saturate(t) {
-  return Math.max(0, Math.min(1, t));
+  return clamp(t, 0, 1);
 }
 
 export {
