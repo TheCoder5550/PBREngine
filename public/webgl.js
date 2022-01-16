@@ -1104,10 +1104,11 @@ function Player(pos = Vector.zero()) {
           
           // this.velocity = Vector.multiply(desired_motion, velocity_length);
 
+          // console.log(col.depth);
           this.position = Vector.add(this.position, Vector.multiply(col.normal, col.depth));
           this.velocity = Vector.projectOnPlane(this.velocity, col.normal/*triangleNormal*/);
 
-          var isGround = Vector.dot(triangleNormal, Vector.up()) > 0.7 && Vector.distance(this.position, col.point) < 0.5;
+          var isGround = Vector.dot(triangleNormal, Vector.up()) > 0.7;// && Vector.distance(this.position, col.point) < 0.5;
           if (isGround) {
             this.grounded = true;
             // this.velocity = Vector.zero();
