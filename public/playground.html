@@ -89,22 +89,22 @@
       // renderer.settings.enableShadows = false;
 
       scene = new Scene();
-      scene.environmentIntensity = 0.2;
-      scene.sunIntensity = Vector.fill(8 * 0);
+      scene.environmentIntensity = 0.3;
+      scene.sunIntensity = Vector.fill(8);
       scene.smoothSkybox = true;
       // scene.skyboxVisible = false;
       renderer.add(scene);
-      await scene.loadEnvironment({
-        hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed", 
-        res: 512
-      });
+      // await scene.loadEnvironment({
+      //   hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed", 
+      //   res: 512
+      // });
       // var oldSkybox = scene.skyboxCubemap;
       // await scene.loadEnvironment("./assets/hdri/snowy_field_1k", 256);
 
       var physicsEngine = new PhysicsEngine(scene);
 
       // camera = new FlyCamera(renderer, {position: new Vector(0, 0, 3), near: 0.1, far: 300, layer: 0, fov: 20});
-      camera = new OrbitCamera(renderer, {position: new Vector(0, 0, 3), near: 0.1, far: 300, layer: 0, fov: 20});
+      camera = new OrbitCamera(renderer, {position: new Vector(0, 0, 3), near: 0.1, far: 300, layer: 0, fov: 35});
 
       // await renderer.CreatePBRGrid(scene, 10, 10);
       // var model = scene.add(await renderer.loadGLTF("./assets/models/FlightHelmet.glb"));
@@ -119,8 +119,15 @@
       var ca = scene.add(await renderer.loadGLTF("./cargame/coordinateAxis.glb"));
       ca.transform.position.y = 3;
 
-      var collider = scene.add(await renderer.loadGLTF("./assets/models/test/bowl.glb"));
+      var collider = scene.add(await renderer.loadGLTF("./assets/models/test/playerArea.glb"));
       physicsEngine.addMeshToOctree(collider);
+
+      window.player = new PlayerController();
+      await player.setup();
+
+      physicsEngine.fixedUpdate = (dt) => {
+        player.fixedUpdate(dt);
+      }
 
       var ball = await renderer.loadGLTF("./assets/models/primitives/texturedUVSphere.glb", { loadMaterials: true });
       // FindMaterials("", ball)[0].setUniform("opaque", 0);
@@ -134,8 +141,8 @@
             var rb = b.addComponent(new Rigidbody());
             b.addComponent(new SphereCollider(1));
             var m = (3 - 1) / 2;
-            rb.position.x = (i - m) * 2;
-            rb.position.y = 3 + (k - m) * 2;
+            rb.position.x = 10 + (i - m) * 2;
+            rb.position.y = 5 + (k - m) * 2;
             rb.position.z = (j - m) * 2;
           }
         }
@@ -183,6 +190,12 @@
       // light.type = 1;
       light.color = [1, 20, 1];
 
+      var sun2 = scene.add(new GameObject("Light"));
+      sun2.transform.matrix = Matrix.lookAt(Vector.zero(), new Vector(0, -1, 0));
+      var light = sun2.addComponent(new Light());
+      light.type = 2;
+      light.color = [2, 2, 3];
+
       scene.updateLights();
 
       // scene.add(await renderer.loadGLTF("./assets/models/waterPlane.glb"));
@@ -216,24 +229,109 @@
       renderer.on("renderloop", function(frameTime, time) {
         Debug?.clear?.();
 
-        if (renderer.getKey(38)) {
-          rb.position.x = 0;
-          rb.position.y = 10;
-          rb.position.z = 0;
-          rb.angles = Vector.zero();
-          rb.velocity = Vector.zero();
-          rb.angularVelocity = Vector.zero();
-          // rb.angles.x = Math.PI;
-        }
+        // if (renderer.getKey(38)) {
+        //   rb.position.x = 0;
+        //   rb.position.y = 10;
+        //   rb.position.z = 0;
+        //   rb.angles = Vector.zero();
+        //   rb.velocity = Vector.zero();
+        //   rb.angularVelocity = Vector.zero();
+        //   // rb.angles.x = Math.PI;
+        // }
 
         // if (renderer.getKey(32)) {
-          physicsEngine.update(frameTime);
+          // physicsEngine.update(frameTime);
         // }
         scene.update(frameTime);
+        physicsEngine.update(frameTime);
         renderer.render(camera.camera);
 
         stats.update();
       });
+
+      function PlayerController() {
+        this.colliderRadius = 0.5;
+        this.colliderHeight = 2;
+        this.eyeLevel = 1.9;
+        
+        this.setup = async function() {
+          this.gameObject = scene.add(new GameObject("PlayerController"));
+
+          this.rb = this.gameObject.addComponent(new Rigidbody());
+          this.rb.lockRotation = true;
+          this.rb.gravity = new Vector(0, -30, 0);
+          this.rb.position.y = 3;
+
+          this.gameObject.addComponent(new CapsuleCollider(this.colliderRadius, new Vector(0, -this.colliderHeight / 2 + this.colliderRadius, 0), new Vector(0, this.colliderHeight / 2 - this.colliderRadius, 0)));
+          this.gameObject.addComponent(new SphereCollider(this.colliderRadius));
+
+          var capsule = this.gameObject.addChild(await renderer.loadGLTF("./assets/models/primitives/capsule.glb"));
+          capsule.children[0].castShadows = false;
+          capsule.transform.scale.x = capsule.transform.scale.z = this.colliderRadius / 1;
+          capsule.transform.scale.y = this.colliderHeight / 3.5 * 0.76;
+          FindMaterials("", capsule)[0].setUniform("opaque", 0);
+          FindMaterials("", capsule)[0].setUniform("albedo", [1, 1, 1, 0.2]);
+        }
+        
+        this.fixedUpdate = function(dt) {
+          var a = -camera.rotation.y;
+          var v = new Vector(Math.cos(a), 0, Math.sin(a));
+
+          var groundHit = physicsEngine.Raycast(this.rb.position, Vector.down());
+          var isGrounded = this.rb.grounded;//groundHit && groundHit.firstHit.distance < this.colliderHeight / 2 + 0.1;
+          var groundNormal = this.rb.groundNormal;//groundHit && groundHit.firstHit.normal;
+
+          var currentMoveForce = Vector.zero();
+
+          if (renderer.getKey(65)) {
+            Vector.addTo(currentMoveForce, Vector.negate(v));
+          }
+          if (renderer.getKey(68)) {
+            Vector.addTo(currentMoveForce, v);
+          }
+          if (renderer.getKey(87)) {
+            Vector.addTo(currentMoveForce, new Vector(v.z, 0, -v.x));
+          }
+          if (renderer.getKey(83)) {
+            Vector.addTo(currentMoveForce, new Vector(-v.z, 0, v.x));
+          }
+
+          if (isGrounded) {
+            currentMoveForce = Vector.projectOnPlane(currentMoveForce, groundHit.firstHit.normal);
+            // this.rb.AddForce(new Vector(0, -200, 0));
+          }
+          currentMoveForce = Vector.normalize(currentMoveForce);
+
+          var force = 70;
+          if (!isGrounded) force *= 0.2;
+          Vector.multiplyTo(currentMoveForce, force);
+
+          this.rb.AddForce(currentMoveForce);
+          Debug.Vector(this.rb.position, Vector.normalize(currentMoveForce), 1);
+
+          // Jumping
+          if (renderer.getKey(32) && isGrounded) {
+            // this.rb.position.y += 0.01;
+            this.rb.velocity.y = 10;
+          }
+
+          // Drag
+          // this.rb.velocity.x *= 0.95;
+          // this.rb.velocity.z *= 0.95;
+
+          // Friction
+          if (isGrounded) {
+            var tangent = Vector.projectOnPlane(this.rb.velocity, groundNormal);
+            this.rb.AddForce(Vector.multiply(tangent, -10));
+          }
+          else {
+            var tangent = Vector.projectOnPlane(this.rb.velocity, Vector.up());
+            this.rb.AddForce(Vector.multiply(tangent, -0.1));
+          }
+
+          camera.center = Vector.add(this.rb.position, new Vector(0, this.eyeLevel / 2, 0));
+        }
+      }
 
       if (!mobileCheck()) {
         window.Debug = new GLDebugger();

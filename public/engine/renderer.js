@@ -4912,7 +4912,7 @@ function Camera(settings = {}) {
 function AnimationController() {
   this.animations = [];
   this.speed = 1;
-  this.loop = true;
+  this.loop = false;
 
   this.animationTimes = new WeakMap();
 

@@ -1,4 +1,37 @@
-"use strict";
+import Renderer, { Scene, GameObject, Transform, AudioListener3D, Camera } from "./engine/renderer.js";
+import { 
+  AABB,
+  PhysicsEngine,
+  Rigidbody
+} from "./engine/physics.js";
+import Vector from "./engine/vector.js";
+import Quaternion from "./engine/quaternion.js";
+import Matrix from "./engine/matrix.js";
+import {
+  clamp,
+  lerp,
+  inverseLerp,
+  watchGlobal,
+  fadeOutElement,
+  hideElement,
+  showElement
+} from "./engine/helper.js";
+import {
+  AABBToAABB,
+  closestPointToTriangle,
+  closestPointOnPlane,
+  closestPointOnTriangle,
+  rayToTriangle,
+  rayToPlane,
+  AABBToTriangle,
+  rayToAABB,
+  getTriangleNormal,
+  sphereToTriangle,
+  capsuleToTriangle,
+  ClosestPointOnLineSegment
+} from "./engine/algebra.js";
+import { WEAPONENUMS, updateBulletTrails, Weapon } from "./weapon.js";
+import OrbitCamera from "./engine/orbitCamera.js";
 
 /*
 
@@ -179,6 +212,7 @@ var audioListener = new AudioListener3D();
 
 var scene = new Scene("Main scene");
 
+var orbitCamera;
 var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 23});
 var weaponCamera = new Camera({near: 0.005, far: 20, layer: 1, fov: 32});
 var cameras = [mainCamera, weaponCamera];
@@ -191,7 +225,7 @@ var litSkinned;
 
 var crosshair = new Crosshair();
 var hitmarker = new Hitmarker();
-var player;
+window.player = null;
 
 var physicsEngine = new PhysicsEngine(scene);
 var colliders = [];
@@ -220,9 +254,11 @@ async function setup() {
   renderer.logGLError();
   console.timeEnd("renderer.setup");
   console.time("loadEnvironment")
-  await scene.loadEnvironment("./assets/hdri/wide_street_01_1k_precomputed");
+  await scene.loadEnvironment({ hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed" });
   console.timeEnd("loadEnvironment");
   renderer.logGLError();
+
+  orbitCamera = new OrbitCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 23});
 
   mainCamera.setAspect(renderer.aspect);
   weaponCamera.setAspect(renderer.aspect);
@@ -425,7 +461,7 @@ async function setup() {
   //   }
   // }
 
-  var ak47 = scene.add(await renderer.loadGLTF("./assets/models/ak47Hands.glb", {/*maxTextureSize: 128, */gameObjectOptions: {castShadows: false}}));
+  var ak47 = scene.add(await renderer.loadGLTF("./assets/models/ak47Hands.glb", { loadMaterials: false,/*maxTextureSize: 128, */gameObjectOptions: {castShadows: false}}));
   ak47.children[0].transform.rotation = Quaternion.euler(0, Math.PI, 0);
   ak47.transform.scale = Vector.fill(2 / 20);
   ak47.setLayer(1, true);
@@ -512,6 +548,15 @@ async function setup() {
   }
 
   renderer.disableCulling();
+
+  window.renderer = renderer;
+  window.scene = scene;
+  window.physicsEngine = physicsEngine;
+  window.mainCamera = mainCamera;
+  window.bulletHoles = bulletHoles;
+  window.sparks = sparks;
+  window.targetFov = targetFov;
+  window.defaultFov = defaultFov;
 
   console.timeEnd("setup");
 }
@@ -866,7 +911,7 @@ function Player(pos = Vector.zero()) {
       // var localADSOffset = Matrix.transformVector(Matrix.inverse(weaponMatrix), adsPos);
 
       // m = Matrix.transform([["translate", new Vector(0, 0, -0.15)]], m);
-      var localADSOffset = Matrix.inverse(adsObject.getWorldMatrix(this.getCurrentWeapon().weaponObject));
+      var localADSOffset = Matrix.inverse(adsObject.transform.getWorldMatrix(this.getCurrentWeapon().weaponObject));
       localADSOffset[12] *= 0.1;
       localADSOffset[13] *= 0.1;
       localADSOffset[14] *= 0.1;
@@ -940,13 +985,12 @@ function Player(pos = Vector.zero()) {
 
     mainCamera.setFOV(currentFov);
 
-    mainCamera.rotation = Vector.negate(this.getHeadRotation());
-    mainCamera.position = Vector.add(Vector.compMultiply(this.position, {x: 1, y: 1, z: -1}), {x: 0, y: 1.6, z: 0});
-    mainCamera.updateMatrices();
+    mainCamera.transform.rotation = Quaternion.eulerVector(Vector.negate(this.getHeadRotation()));
+    mainCamera.transform.position = Vector.add(this.position, {x: 0, y: 1.6, z: 0});
+    // mainCamera.transform.position = Vector.add(Vector.compMultiply(this.position, {x: 1, y: 1, z: -1}), {x: 0, y: 1.6, z: 0});
 
-    weaponCamera.position = mainCamera.position;
-    weaponCamera.rotation = mainCamera.rotation;
-    weaponCamera.updateMatrices();
+    weaponCamera.transform.position = mainCamera.transform.position;
+    weaponCamera.transform.rotation = mainCamera.transform.rotation;
 
     audioListener.setPosition(this.position);
     var playerMatrix = this.getHandMatrix();
@@ -1694,7 +1738,7 @@ function SetupEvents() {
   //   gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
   // }
 
-  renderer.onmousedown = function(e) {
+  renderer.on("mousedown", function(e) {
     if (running) {
       renderer.lockPointer();
 
@@ -1714,11 +1758,11 @@ function SetupEvents() {
       // Breaks in iframe
       //e.preventDefault();
     }
-  }
+  });
 
   renderer.gl.canvas.addEventListener('contextmenu', event => event.preventDefault());
 
-  renderer.onmouseup = function(e) {
+  renderer.on("mouseup", function(e) {
     if (running) {
       switch (e.button) {
         case 2:
@@ -1728,18 +1772,18 @@ function SetupEvents() {
           break;
       }
     }
-  }
+  });
 
-  renderer.onmousemove = function(e) {
+  renderer.on("mousemove", function(e) {
     if (running && player && renderer.isPointerLocked()) {
       var currentWeapon = player.getCurrentWeapon();
       var weaponSens = currentWeapon ? currentWeapon.getCurrentSensitivity() : 1;
       player.rotation.x += e.movementY * 0.002 * weaponSens;
       player.rotation.y += e.movementX * 0.002 * weaponSens;
     }
-  }
+  });
 
-  renderer.onkeydown = function(e) {
+  renderer.on("keydown", function(e) {
     if (running) {
       if (player) {
         if (player.getCurrentWeapon() && e.keyCode == 82) {
@@ -1751,7 +1795,7 @@ function SetupEvents() {
         }
       }
     }
-  }
+  });
 
   var canScroll = true;
 

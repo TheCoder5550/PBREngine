@@ -1,4 +1,5 @@
-'use strict'
+import Vector from "./engine/vector.js";
+import Matrix from "./engine/matrix.js";
 
 var WEAPONENUMS = {
   FIREMODES: {SINGLE: 0, BURST: 1, AUTO: 2},
@@ -7,7 +8,7 @@ var WEAPONENUMS = {
 
 var bulletTrails = [];
 
-function updateBulletTrails() {
+function updateBulletTrails(dt = 1 / 60) {
   for (var i = 0; i < bulletTrails.length; i++) {
     var trail = bulletTrails[i];
     trail.update(dt);
@@ -159,16 +160,23 @@ function Weapon(settings = {}) {
         var origin = player.getHeadPos();
 
         for (var i = 0; i < this.bulletsPerShot; i++) {
-          var direction = Matrix.matrixToVector(Matrix.multiplyMat4Vec(Matrix.transform([
+          var direction = Matrix.transformVector(Matrix.transform([
             ["rx", (Math.random() - 0.5) * 2 * currentSpread],
             ["ry", (Math.random() - 0.5) * 2 * currentSpread],
             ["rx", rot.x],
             ["ry", rot.y],
             ["rz", rot.z],
-          ]), Matrix.vectorToMatrix({x: 0, y: 0, z: -1})));
+          ]), {x: 0, y: 0, z: -1});
+          // var direction = Matrix.matrixToVector(Matrix.multiplyMat4Vec(Matrix.transform([
+          //   ["rx", (Math.random() - 0.5) * 2 * currentSpread],
+          //   ["ry", (Math.random() - 0.5) * 2 * currentSpread],
+          //   ["rx", rot.x],
+          //   ["ry", rot.y],
+          //   ["rz", rot.z],
+          // ]), Matrix.vectorToMatrix({x: 0, y: 0, z: -1})));
 
           // Create trail
-          var trailPos = this.muzzleObject ? Matrix.getPosition(this.muzzleObject.getWorldMatrix()) : Vector.zero();
+          var trailPos = this.muzzleObject ? Matrix.getPosition(this.muzzleObject.transform.getWorldMatrix()) : Vector.zero();
           var trail = new BulletTrail(trailPos, direction);
           trail.position = Vector.add(trail.position, Vector.multiply(trail.direction, 0.3));
           trail.updateInstance();
@@ -357,7 +365,7 @@ function Weapon(settings = {}) {
 
       if (this.adsObject && adsT < 0.5) {
         Matrix.transform([["translate", new Vector(0, 0, -0.15)]], baseMatrix);
-        var localADSOffset = Matrix.inverse(this.adsObject.getWorldMatrix(this.weaponObject));
+        var localADSOffset = Matrix.inverse(this.adsObject.transform.getWorldMatrix(this.weaponObject));
         localADSOffset[12] *= this.weaponObject.transform.scale.x;
         localADSOffset[13] *= this.weaponObject.transform.scale.y;
         localADSOffset[14] *= this.weaponObject.transform.scale.z;
@@ -515,3 +523,13 @@ function Shellcasing(parent, shellCasingModel) {
 function def(current, d) {
   return typeof current == "undefined" ? d : current;
 }
+
+export {
+  WEAPONENUMS,
+  bulletTrails,
+  updateBulletTrails,
+  Weapon,
+  BulletTrail,
+  Bullet,
+  Shellcasing
+};

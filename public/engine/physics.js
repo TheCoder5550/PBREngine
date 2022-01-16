@@ -410,7 +410,8 @@ function PhysicsEngine(scene) {
 
   // bruh make dynamicly resize when adding mesh
   // var octree = new Octree(new AABB({x: -50, y: -20.5, z: -50}, {x: 50, y: 20, z: 50}));
-  var octree = new Octree(new AABB(Vector.fill(-200), Vector.fill(200))); // Bruh offset by epsilon for plane at y=0
+  // var octree = new Octree(new AABB(Vector.fill(-200), Vector.fill(200))); // Bruh offset by epsilon for plane at y=0
+  var octree = new Octree(new AABB(Vector.fill(-200.15), Vector.fill(200.33)));
   this.octree = octree;
 
   this.Raycast = function(origin, direction) {
@@ -523,11 +524,17 @@ function PhysicsEngine(scene) {
     var allRigidbodies = [];
     var rigidbodiesWithColliders = [];
 
+    // External fixed update
+    this.fixedUpdate(this.dt);
+
+    // Find constraints
     this.scene.root.traverse(function(gameObject) {
       var rigidbodies = gameObject.findComponents("Rigidbody");
       var rigidbody = rigidbodies[0];
       if (rigidbody) {
         allRigidbodies.push(rigidbody);
+
+        rigidbody.grounded = false;
 
         var sphereColliders = rigidbody.gameObject.findComponents("SphereCollider");
         for (var collider of sphereColliders) {
@@ -542,9 +549,8 @@ function PhysicsEngine(scene) {
 
           if (q) {
             for (var k = 0; k < q.length; k++) {
-              var col = sphereToTriangle(pos, collider.radius, q[k][0], q[k][1], q[k][2], false);
+              var col = sphereToTriangle(pos, collider.radius, q[k][0], q[k][1], q[k][2], true);
               if (col) {
-                // bruh getTriangleNormal(q[k]) is good for character controller maybe
                 var normal = col.normal; //getTriangleNormal(q[k]); // col.normal;
 
                 // console.log({
@@ -605,23 +611,37 @@ function PhysicsEngine(scene) {
 
           if (q) {
             for (var k = 0; k < q.length; k++) {
-              var col = capsuleToTriangle(a, b, collider.radius, q[k][0], q[k][1], q[k][2], false);
+              var col = capsuleToTriangle(a, b, collider.radius, q[k][0], q[k][1], q[k][2], true);
               if (col) {
-                var normal = col.normal;
-                var pA = Vector.add(col.point, Vector.multiply(normal, -col.depth));
+                // bruh getTriangleNormal(q[k]) is good for character controller maybe
+                var dp = Vector.dot(Vector.up(), col.normal);
+                var normal = Vector.length(Vector.projectOnPlane(rigidbody.velocity, col.normal)) < 2 && dp > 0.8 ? new Vector(0, 1, 0) : col.normal;
+                
+                // var normal = col.normal;
+
+                var depth = col.depth / Vector.dot(normal, col.normal);
+                var pA = Vector.add(col.point, Vector.multiply(col.normal, -col.depth));
+
                 constraintsToSolve.push({
                   colliderA: collider,
                   bodyA: rigidbody,
-                  normal: col.normal,
+                  normal: normal,
                   pA: pA,
-                  C: -col.depth
+                  C: -depth
                 });
+
+                if (Vector.dot(Vector.up(), normal) > 0.8) {
+                  rigidbody.grounded = true;
+                  rigidbody.groundNormal = normal;
+                }
+
+                Debug.Vector(pA, normal, depth);
               }
             }
           }
         }
 
-        if (sphereColliders.length > 0) {
+        if (sphereColliders.length > 0 || capsuleColliders.length > 0) {
           rigidbodiesWithColliders.push(rigidbody);
         }
 
@@ -666,6 +686,7 @@ function PhysicsEngine(scene) {
       }
     });
 
+    // Sphere - sphere collision
     for (var r1 of rigidbodiesWithColliders) {
       for (var r2 of rigidbodiesWithColliders) {
         if (r1 != r2) {
@@ -697,11 +718,16 @@ function PhysicsEngine(scene) {
       }
     }
 
-    // console.log(constraintsToSolve);
+    // Apply rigidbody forces
+    for (var rigidbody of allRigidbodies) {
+      rigidbody.applyForces(this.dt);
+    }
 
+    // Solve constraints
     var lambdaAccumulated = new Array(constraintsToSolve.length).fill(0);
     for (var i = 0; i < this.constraintIterations; i++) {
-      for (var constraint of constraintsToSolve) {
+      for (var constraintIndex = 0; constraintIndex < constraintsToSolve.length; constraintIndex++) {
+        var constraint = constraintsToSolve[constraintIndex];
         var C = constraint.C ?? 0;
 
         if (C < -0.007 * 0) {
@@ -722,7 +748,7 @@ function PhysicsEngine(scene) {
               cp1.z
             );
 
-            var tangent = Vector.length(constraint.bodyA.velocity) < 0.01 ? new Vector(1, 0, 0) : Vector.normalize(Vector.projectOnPlane(constraint.bodyA.velocity, constraint.normal));
+            var tangent = Vector.negate(Vector.normalize(Vector.projectOnPlane(constraint.bodyA.velocity, constraint.normal)));
             var cp1 = Vector.cross(Vector.subtract(constraint.pA, constraint.bodyA.position), tangent);
 
             frictionJacobian.push(
@@ -797,7 +823,7 @@ function PhysicsEngine(scene) {
           }
 
           // Collision
-          var { impulses, lambda } = getConstraintImpulse(jacobian, velocities, masses, C, this.dt, this.constraintBias, lambdaAccumulated, i);
+          var { impulses, lambda } = getConstraintImpulse(jacobian, velocities, masses, C, this.dt, this.constraintBias, lambdaAccumulated, constraintIndex);
 
           if (!impulses.some(item => isNaN(item))) {
             var ind = 0;
@@ -805,9 +831,12 @@ function PhysicsEngine(scene) {
               constraint.bodyA.velocity.x += impulses[ind + 0] / masses[ind + 0];
               constraint.bodyA.velocity.y += impulses[ind + 1] / masses[ind + 1];
               constraint.bodyA.velocity.z += impulses[ind + 2] / masses[ind + 2];
-              constraint.bodyA.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
-              constraint.bodyA.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
-              constraint.bodyA.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
+
+              if (!constraint.bodyA.lockRotation) {
+                constraint.bodyA.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
+                constraint.bodyA.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
+                constraint.bodyA.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
+              }
               ind += 6;
             }
 
@@ -815,9 +844,12 @@ function PhysicsEngine(scene) {
               constraint.bodyB.velocity.x += impulses[ind + 0] / masses[ind + 0];
               constraint.bodyB.velocity.y += impulses[ind + 1] / masses[ind + 1];
               constraint.bodyB.velocity.z += impulses[ind + 2] / masses[ind + 2];
-              constraint.bodyB.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
-              constraint.bodyB.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
-              constraint.bodyB.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
+
+              if (!constraint.bodyB.lockRotation) {
+                constraint.bodyB.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
+                constraint.bodyB.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
+                constraint.bodyB.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
+              }
             }
           }
           else {
@@ -827,50 +859,55 @@ function PhysicsEngine(scene) {
           }
 
           // // Friction
-          // if (!(frictionJacobian[3] == 0 && frictionJacobian[4] == 0 && frictionJacobian[5] == 0)) {
-          //   var bias = 0;
-          //   var effectiveMass = getEffectiveMass(frictionJacobian, masses);
-          //   var frictionLambda = getLambda(effectiveMass, frictionJacobian, velocities, bias);
+          // var bias = 0;
+          // var effectiveMass = getEffectiveMass(frictionJacobian, masses);
+          // var frictionLambda = getLambda(effectiveMass, frictionJacobian, velocities, bias);
 
-          //   var friction = constraint.colliderA.friction;
-          //   frictionLambda = clamp(frictionLambda, -friction * lambda, friction * lambda);
-          
-          //   var impulses = [];
-          //   for (var _i = 0; _i < frictionJacobian.length; _i++) {
-          //     impulses[_i] = frictionJacobian[_i] * frictionLambda;
-          //   }
+          // var friction = constraint.colliderA.friction;
+          // frictionLambda = clamp(frictionLambda, -friction * lambda, friction * lambda);
+        
+          // var impulses = [];
+          // for (var _i = 0; _i < frictionJacobian.length; _i++) {
+          //   impulses[_i] = frictionJacobian[_i] * frictionLambda;
+          // }
 
-          //   if (!impulses.some(item => isNaN(item))) {
-          //     var ind = 0;
-          //     if (constraint.bodyA) {
-          //       constraint.bodyA.velocity.x += impulses[ind + 0] / masses[ind + 0];
-          //       constraint.bodyA.velocity.y += impulses[ind + 1] / masses[ind + 1];
-          //       constraint.bodyA.velocity.z += impulses[ind + 2] / masses[ind + 2];
+          // if (!impulses.some(item => isNaN(item))) {
+          //   var ind = 0;
+          //   if (constraint.bodyA) {
+          //     constraint.bodyA.velocity.x += impulses[ind + 0] / masses[ind + 0];
+          //     constraint.bodyA.velocity.y += impulses[ind + 1] / masses[ind + 1];
+          //     constraint.bodyA.velocity.z += impulses[ind + 2] / masses[ind + 2];
+
+          //     if (!constraint.bodyA.lockRotation) {
           //       constraint.bodyA.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
           //       constraint.bodyA.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
           //       constraint.bodyA.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
-          //       ind += 6;
           //     }
+          //     ind += 6;
+          //   }
 
-          //     if (constraint.bodyB) {
-          //       constraint.bodyB.velocity.x += impulses[ind + 0] / masses[ind + 0];
-          //       constraint.bodyB.velocity.y += impulses[ind + 1] / masses[ind + 1];
-          //       constraint.bodyB.velocity.z += impulses[ind + 2] / masses[ind + 2];
+          //   if (constraint.bodyB) {
+          //     constraint.bodyB.velocity.x += impulses[ind + 0] / masses[ind + 0];
+          //     constraint.bodyB.velocity.y += impulses[ind + 1] / masses[ind + 1];
+          //     constraint.bodyB.velocity.z += impulses[ind + 2] / masses[ind + 2];
+
+          //     if (!constraint.bodyB.lockRotation) {
           //       constraint.bodyB.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
           //       constraint.bodyB.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
           //       constraint.bodyB.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
           //     }
           //   }
-          //   else {
-          //     console.warn("NaN in impulses", {
-          //       constraint, impulses, jacobian, velocities, masses, C, dt: this.dt
-          //     });
-          //   }
+          // }
+          // else {
+          //   console.warn("NaN in impulses", {
+          //     constraint, impulses, jacobian, velocities, masses, C, dt: this.dt
+          //   });
           // }
         }
       }
     }
 
+    // Integrate position and rotation
     for (var rigidbody of allRigidbodies) {
       rigidbody.integrate(this.dt);
     }
@@ -892,15 +929,13 @@ function PhysicsEngine(scene) {
     //   this.time += this.dt;
     // }
 
-
-    this.fixedUpdate(this.dt);
     updatePhysics();
     this.time += this.dt;
   }
 
   this.getConstraintImpulse = getConstraintImpulse;
   function getConstraintImpulse(jacobian, velocities, masses, C, dt, biasFactor = 0.5, lambdaAccumulated, index) {
-    var slop = 0.01;
+    var slop = -0.01;
     var bias;
     if (C < slop) {
       bias = biasFactor / dt * (C - slop);
@@ -913,14 +948,14 @@ function PhysicsEngine(scene) {
     var lambda = getLambda(effectiveMass, jacobian, velocities, bias);
 
     // bruh not recommended
-    lambda = Math.max(lambda, 0);
+    // lambda = Math.max(lambda, 0);
 
-    // if (Array.isArray(lambdaAccumulated)) {
-    //   if (lambdaAccumulated[index] + lambda < 0) {
-    //     lambda = -lambdaAccumulated[index];
-    //   }
-    //   lambdaAccumulated[index] += lambda;
-    // }
+    if (Array.isArray(lambdaAccumulated)) {
+      if (lambdaAccumulated[index] + lambda < 0) {
+        lambda = -lambdaAccumulated[index];
+      }
+      lambdaAccumulated[index] += lambda;
+    }
   
     var output = [];
     for (var i = 0; i < jacobian.length; i++) {
@@ -990,6 +1025,9 @@ class Rigidbody {
     this.angularVelocity = Vector.zero();
     this.torque = Vector.zero();
 
+    this.lockRotation = false;
+
+    this.gravity = new Vector(0, -9.82, 0);
     this.gravityScale = 1;
   }
 
@@ -1028,24 +1066,36 @@ class Rigidbody {
     this.torque = Vector.add(this.torque, torque);
   }
 
-  integrate(dt) {
+  applyForces(dt) {
+    // Apply force
     this.velocity = Vector.add(this.velocity, Vector.multiply(this.force, dt / this.mass));
     this.force = Vector.zero();
 
-    this.velocity = Vector.add(this.velocity, Vector.multiply(new Vector(0, -9.82 * this.gravityScale, 0), dt));
+    // Apply gravity
+    this.velocity = Vector.add(this.velocity, Vector.multiply(this.gravity, this.gravityScale * dt));
 
+    // Apply torque
+    if (!this.lockRotation) {
+      this.angularVelocity = Vector.add(this.angularVelocity, Vector.multiply(Vector.compDivide(this.torque, this.inertia), dt));
+    }
+    this.torque = Vector.zero();
+  }
+
+  integrate(dt) {
     this.position = Vector.add(this.position, Vector.multiply(this.velocity, dt));
 
-    this.angularVelocity = Vector.add(this.angularVelocity, Vector.multiply(Vector.compDivide(this.torque, this.inertia), dt));
-    this.torque = Vector.zero();
-  
-    var w = new Quaternion(
-      this.angularVelocity.x,
-      this.angularVelocity.y,
-      this.angularVelocity.z,
-      0
-    );
-    this.rotation = Quaternion.add(this.rotation, Quaternion.multiply(Quaternion.QxQ(w, this.rotation), dt / 2));
+    if (this.lockRotation) {
+      this.rotation = Quaternion.identity();
+    }
+    else {
+      var w = new Quaternion(
+        this.angularVelocity.x,
+        this.angularVelocity.y,
+        this.angularVelocity.z,
+        0
+      );
+      this.rotation = Quaternion.add(this.rotation, Quaternion.multiply(Quaternion.QxQ(w, this.rotation), dt / 2));
+    }
   }
 
   update() {
