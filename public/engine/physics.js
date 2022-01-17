@@ -574,11 +574,15 @@ function PhysicsEngine(scene) {
 
                 if (!tooClose) {
                   constraintsToSolve.push({
-                    colliderA: collider,
-                    bodyA: rigidbody,
-                    normal: normal,
-                    pA: pA,
-                    C: -col.depth
+                    C: -col.depth,
+                    bodies: [
+                      {
+                        collider: collider,
+                        body: rigidbody,
+                        normal: normal,
+                        p: pA
+                      }
+                    ]
                   });
 
                   // console.log(col.depth);
@@ -617,20 +621,32 @@ function PhysicsEngine(scene) {
                 var dp = Vector.dot(Vector.up(), col.normal);
                 var normal = Vector.length(Vector.projectOnPlane(rigidbody.velocity, col.normal)) < 2 && dp > 0.8 ? new Vector(0, 1, 0) : col.normal;
                 
-                // var normal = col.normal;
+                var normal = col.normal;
 
                 var depth = col.depth / Vector.dot(normal, col.normal);
                 var pA = Vector.add(col.point, Vector.multiply(col.normal, -col.depth));
 
                 constraintsToSolve.push({
-                  colliderA: collider,
-                  bodyA: rigidbody,
-                  normal: normal,
-                  pA: pA,
-                  C: -depth
+                  C: -depth,
+                  bodies: [
+                    {
+                      collider: collider,
+                      body: rigidbody,
+                      normal: normal,
+                      p: pA
+                    }
+                  ]
                 });
 
-                if (Vector.dot(Vector.up(), normal) > 0.8) {
+                // constraintsToSolve.push({
+                //   colliderA: collider,
+                //   bodyA: rigidbody,
+                //   normal: normal,
+                //   pA: pA,
+                //   C: -depth
+                // });
+
+                if (Vector.dot(Vector.up(), normal) > 0.5) {
                   rigidbody.grounded = true;
                   rigidbody.groundNormal = normal;
                 }
@@ -700,17 +716,35 @@ function PhysicsEngine(scene) {
                 var pB = Vector.add(r2.position, Vector.multiply(normal, -c2.radius));
 
                 constraintsToSolve.push({
-                  colliderA: c1,
-                  bodyA: r1,
-                  pA: pA,
-
-                  colliderB: c2,
-                  bodyB: r2,
-                  pB: pB,
-
-                  normal: normal,
-                  C: C
+                  C: C,
+                  bodies: [
+                    {
+                      collider: c1,
+                      body: r1,
+                      normal: normal,
+                      p: pA
+                    },
+                    {
+                      collider: c2,
+                      body: r2,
+                      normal: Vector.negate(normal),
+                      p: pB
+                    }
+                  ]
                 });
+
+                // constraintsToSolve.push({
+                //   colliderA: c1,
+                //   bodyA: r1,
+                //   pA: pA,
+
+                //   colliderB: c2,
+                //   bodyB: r2,
+                //   pB: pB,
+
+                //   normal: normal,
+                //   C: C
+                // });
               }
             }
           }
@@ -732,131 +766,250 @@ function PhysicsEngine(scene) {
 
         if (C < -0.007 * 0) {
           var jacobian = [];
-          var frictionJacobian = [];
+          var tangentJacobian = [];
+          var bitangentJacobian = [];
           var velocities = [];
           var masses = [];
 
-          if (constraint.bodyA) {
-            var cp1 = Vector.cross(Vector.subtract(constraint.pA, constraint.bodyA.position), constraint.normal);
+          if (constraint.bodies.length > 0) {
+            for (var body of constraint.bodies) {
+              var pc = Vector.cross(Vector.subtract(body.p, body.body.position), body.normal);
+              jacobian.push(
+                body.normal.x,
+                body.normal.y,
+                body.normal.z,
+                pc.x,
+                pc.y,
+                pc.z
+              );
 
-            jacobian.push(
-              constraint.normal.x,
-              constraint.normal.y,
-              constraint.normal.z,
-              cp1.x,
-              cp1.y,
-              cp1.z
-            );
+              var [ tangent, bitangent ] = formOrthogonalBasis(body.normal);
 
-            var tangent = Vector.negate(Vector.normalize(Vector.projectOnPlane(constraint.bodyA.velocity, constraint.normal)));
-            var cp1 = Vector.cross(Vector.subtract(constraint.pA, constraint.bodyA.position), tangent);
+              var pc = Vector.cross(Vector.subtract(body.p, body.body.position), tangent);
+              tangentJacobian.push(
+                tangent.x,
+                tangent.y,
+                tangent.z,
+                pc.x,
+                pc.y,
+                pc.z
+              );
 
-            frictionJacobian.push(
-              tangent.x,
-              tangent.y,
-              tangent.z,
-              cp1.x,
-              cp1.y,
-              cp1.z
-            );
+              var pc = Vector.cross(Vector.subtract(body.p, body.body.position), bitangent);
+              bitangentJacobian.push(
+                bitangent.x,
+                bitangent.y,
+                bitangent.z,
+                pc.x,
+                pc.y,
+                pc.z
+              );
 
-            velocities.push(
-              constraint.bodyA.velocity.x,
-              constraint.bodyA.velocity.y,
-              constraint.bodyA.velocity.z,
-              constraint.bodyA.angularVelocity.x,
-              constraint.bodyA.angularVelocity.y,
-              constraint.bodyA.angularVelocity.z
-            );
+              velocities.push(
+                body.body.velocity.x,
+                body.body.velocity.y,
+                body.body.velocity.z,
+                body.body.angularVelocity.x,
+                body.body.angularVelocity.y,
+                body.body.angularVelocity.z
+              );
 
-            masses.push(
-              constraint.bodyA.mass,
-              constraint.bodyA.mass,
-              constraint.bodyA.mass,
-              constraint.bodyA.inertia.x,
-              constraint.bodyA.inertia.y,
-              constraint.bodyA.inertia.z
-            );
-          }
-
-          if (constraint.bodyB) {
-            var cp2 = Vector.cross(Vector.subtract(constraint.pB, constraint.bodyB.position), constraint.normal);
-
-            jacobian.push(
-              -constraint.normal.x,
-              -constraint.normal.y,
-              -constraint.normal.z,
-              -cp2.x,
-              -cp2.y,
-              -cp2.z
-            );
-
-            var tangent = Vector.length(constraint.bodyB.velocity) < 0.01 ? new Vector(1, 0, 0) : Vector.normalize(Vector.projectOnPlane(constraint.bodyB.velocity, constraint.normal));
-            var cp1 = Vector.cross(Vector.subtract(constraint.pB, constraint.bodyB.position), tangent);
-
-            frictionJacobian.push(
-              tangent.x,
-              tangent.y,
-              tangent.z,
-              cp1.x,
-              cp1.y,
-              cp1.z
-            );
-
-            velocities.push(
-              constraint.bodyB.velocity.x,
-              constraint.bodyB.velocity.y,
-              constraint.bodyB.velocity.z,
-              constraint.bodyB.angularVelocity.x,
-              constraint.bodyB.angularVelocity.y,
-              constraint.bodyB.angularVelocity.z
-            );
-
-            masses.push(
-              constraint.bodyB.mass,
-              constraint.bodyB.mass,
-              constraint.bodyB.mass,
-              constraint.bodyB.inertia.x,
-              constraint.bodyB.inertia.y,
-              constraint.bodyB.inertia.z
-            );
-          }
-
-          // Collision
-          var { impulses, lambda } = getConstraintImpulse(jacobian, velocities, masses, C, this.dt, this.constraintBias, lambdaAccumulated, constraintIndex);
-
-          if (!impulses.some(item => isNaN(item))) {
-            var ind = 0;
-            if (constraint.bodyA) {
-              constraint.bodyA.velocity.x += impulses[ind + 0] / masses[ind + 0];
-              constraint.bodyA.velocity.y += impulses[ind + 1] / masses[ind + 1];
-              constraint.bodyA.velocity.z += impulses[ind + 2] / masses[ind + 2];
-
-              if (!constraint.bodyA.lockRotation) {
-                constraint.bodyA.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
-                constraint.bodyA.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
-                constraint.bodyA.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
-              }
-              ind += 6;
+              masses.push(
+                body.body.mass,
+                body.body.mass,
+                body.body.mass,
+                body.body.inertia.x,
+                body.body.inertia.y,
+                body.body.inertia.z
+              );
             }
 
-            if (constraint.bodyB) {
-              constraint.bodyB.velocity.x += impulses[ind + 0] / masses[ind + 0];
-              constraint.bodyB.velocity.y += impulses[ind + 1] / masses[ind + 1];
-              constraint.bodyB.velocity.z += impulses[ind + 2] / masses[ind + 2];
+            var { impulses, lambda } = getConstraintImpulse(jacobian, velocities, masses, C, this.dt, this.constraintBias, lambdaAccumulated, constraintIndex);
 
-              if (!constraint.bodyB.lockRotation) {
-                constraint.bodyB.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
-                constraint.bodyB.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
-                constraint.bodyB.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
+            if (!impulses.some(item => isNaN(item))) {
+              var ind = 0;
+              for (var body of constraint.bodies) {
+                body.body.velocity.x += impulses[ind + 0] / masses[ind + 0];
+                body.body.velocity.y += impulses[ind + 1] / masses[ind + 1];
+                body.body.velocity.z += impulses[ind + 2] / masses[ind + 2];
+
+                if (!body.body.lockRotation) {
+                  body.body.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
+                  body.body.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
+                  body.body.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
+                }
+
+                ind += 6;
+              }
+            }
+
+            // Friction
+            var bias = 0;
+            var friction = getCombinedFriction(constraint.bodies);
+
+            var jacobians = [ tangentJacobian, bitangentJacobian ];
+            for (var jacobian of jacobians) {
+              var effectiveMass = getEffectiveMass(jacobian, masses);
+              var frictionLambda = getLambda(effectiveMass, jacobian, velocities, bias);
+              frictionLambda = clamp(frictionLambda, -friction * lambda, friction * lambda);
+            
+              var impulses = [];
+              for (var _i = 0; _i < jacobian.length; _i++) {
+                impulses[_i] = jacobian[_i] * frictionLambda;
+              }
+
+              if (!impulses.some(item => isNaN(item))) {
+                var ind = 0;
+                for (var body of constraint.bodies) {
+                  body.body.velocity.x += impulses[ind + 0] / masses[ind + 0];
+                  body.body.velocity.y += impulses[ind + 1] / masses[ind + 1];
+                  body.body.velocity.z += impulses[ind + 2] / masses[ind + 2];
+
+                  if (!body.body.lockRotation) {
+                    body.body.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
+                    body.body.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
+                    body.body.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
+                  }
+
+                  ind += 6;
+                }
+              }
+              else {
+                console.warn("NaN in impulses", {
+                  constraint, impulses, jacobian, velocities, masses, C, dt: this.dt
+                });
               }
             }
           }
-          else {
-            console.warn("NaN in impulses", {
-              constraint, impulses, jacobian, velocities, masses, C, dt: this.dt
-            });
-          }
+
+
+
+
+
+
+
+
+          // if (constraint.bodyA) {
+          //   var cp1 = Vector.cross(Vector.subtract(constraint.pA, constraint.bodyA.position), constraint.normal);
+
+          //   jacobian.push(
+          //     constraint.normal.x,
+          //     constraint.normal.y,
+          //     constraint.normal.z,
+          //     cp1.x,
+          //     cp1.y,
+          //     cp1.z
+          //   );
+
+          //   var tangent = Vector.negate(Vector.normalize(Vector.projectOnPlane(constraint.bodyA.velocity, constraint.normal)));
+          //   var cp1 = Vector.cross(Vector.subtract(constraint.pA, constraint.bodyA.position), tangent);
+
+          //   frictionJacobian.push(
+          //     tangent.x,
+          //     tangent.y,
+          //     tangent.z,
+          //     cp1.x,
+          //     cp1.y,
+          //     cp1.z
+          //   );
+
+          //   velocities.push(
+          //     constraint.bodyA.velocity.x,
+          //     constraint.bodyA.velocity.y,
+          //     constraint.bodyA.velocity.z,
+          //     constraint.bodyA.angularVelocity.x,
+          //     constraint.bodyA.angularVelocity.y,
+          //     constraint.bodyA.angularVelocity.z
+          //   );
+
+          //   masses.push(
+          //     constraint.bodyA.mass,
+          //     constraint.bodyA.mass,
+          //     constraint.bodyA.mass,
+          //     constraint.bodyA.inertia.x,
+          //     constraint.bodyA.inertia.y,
+          //     constraint.bodyA.inertia.z
+          //   );
+          // }
+
+          // if (constraint.bodyB) {
+          //   var cp2 = Vector.cross(Vector.subtract(constraint.pB, constraint.bodyB.position), constraint.normal);
+
+          //   jacobian.push(
+          //     -constraint.normal.x,
+          //     -constraint.normal.y,
+          //     -constraint.normal.z,
+          //     -cp2.x,
+          //     -cp2.y,
+          //     -cp2.z
+          //   );
+
+          //   var tangent = Vector.length(constraint.bodyB.velocity) < 0.01 ? new Vector(1, 0, 0) : Vector.normalize(Vector.projectOnPlane(constraint.bodyB.velocity, constraint.normal));
+          //   var cp1 = Vector.cross(Vector.subtract(constraint.pB, constraint.bodyB.position), tangent);
+
+          //   frictionJacobian.push(
+          //     tangent.x,
+          //     tangent.y,
+          //     tangent.z,
+          //     cp1.x,
+          //     cp1.y,
+          //     cp1.z
+          //   );
+
+          //   velocities.push(
+          //     constraint.bodyB.velocity.x,
+          //     constraint.bodyB.velocity.y,
+          //     constraint.bodyB.velocity.z,
+          //     constraint.bodyB.angularVelocity.x,
+          //     constraint.bodyB.angularVelocity.y,
+          //     constraint.bodyB.angularVelocity.z
+          //   );
+
+          //   masses.push(
+          //     constraint.bodyB.mass,
+          //     constraint.bodyB.mass,
+          //     constraint.bodyB.mass,
+          //     constraint.bodyB.inertia.x,
+          //     constraint.bodyB.inertia.y,
+          //     constraint.bodyB.inertia.z
+          //   );
+          // }
+
+          // // Collision
+          // var { impulses, lambda } = getConstraintImpulse(jacobian, velocities, masses, C, this.dt, this.constraintBias, lambdaAccumulated, constraintIndex);
+
+          // if (!impulses.some(item => isNaN(item))) {
+          //   var ind = 0;
+          //   if (constraint.bodyA) {
+          //     constraint.bodyA.velocity.x += impulses[ind + 0] / masses[ind + 0];
+          //     constraint.bodyA.velocity.y += impulses[ind + 1] / masses[ind + 1];
+          //     constraint.bodyA.velocity.z += impulses[ind + 2] / masses[ind + 2];
+
+          //     if (!constraint.bodyA.lockRotation) {
+          //       constraint.bodyA.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
+          //       constraint.bodyA.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
+          //       constraint.bodyA.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
+          //     }
+          //     ind += 6;
+          //   }
+
+          //   if (constraint.bodyB) {
+          //     constraint.bodyB.velocity.x += impulses[ind + 0] / masses[ind + 0];
+          //     constraint.bodyB.velocity.y += impulses[ind + 1] / masses[ind + 1];
+          //     constraint.bodyB.velocity.z += impulses[ind + 2] / masses[ind + 2];
+
+          //     if (!constraint.bodyB.lockRotation) {
+          //       constraint.bodyB.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
+          //       constraint.bodyB.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
+          //       constraint.bodyB.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
+          //     }
+          //   }
+          // }
+          // else {
+          //   console.warn("NaN in impulses", {
+          //     constraint, impulses, jacobian, velocities, masses, C, dt: this.dt
+          //   });
+          // }
 
           // // Friction
           // var bias = 0;
@@ -923,7 +1076,6 @@ function PhysicsEngine(scene) {
     // accumulator += frameTime;
 
     // while (accumulator >= this.dt) {
-    //   this.fixedUpdate(this.dt);
     //   updatePhysics();
     //   accumulator -= this.dt;
     //   this.time += this.dt;
@@ -982,6 +1134,29 @@ function PhysicsEngine(scene) {
     }
 
     return 1 / sum;
+  }
+
+  function findOrthogonal(v) {
+    if (Math.abs(v.x) >= 1 / Math.sqrt(3))
+      return Vector.normalize(new Vector(v.y, -v.x, 0));
+    else
+      return Vector.normalize(new Vector(0, v.z, -v.y));
+  }
+
+  function formOrthogonalBasis(v) {
+    var a = findOrthogonal(v);
+    return [
+      a,
+      Vector.cross(a, v)
+    ];
+  }
+
+  function getCombinedFriction(bodies) {
+    var f = 1;
+    for (var body of bodies) {
+      f *= body.collider.friction;
+    }
+    return f;
   }
 }
 

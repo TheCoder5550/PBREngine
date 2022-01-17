@@ -161,11 +161,11 @@ function Weapon(settings = {}) {
 
         for (var i = 0; i < this.bulletsPerShot; i++) {
           var direction = Matrix.transformVector(Matrix.transform([
+            ["rz", -rot.z],
+            ["ry", -rot.y],
+            ["rx", -rot.x],
             ["rx", (Math.random() - 0.5) * 2 * currentSpread],
             ["ry", (Math.random() - 0.5) * 2 * currentSpread],
-            ["rx", rot.x],
-            ["ry", rot.y],
-            ["rz", rot.z],
           ]), {x: 0, y: 0, z: -1});
           // var direction = Matrix.matrixToVector(Matrix.multiplyMat4Vec(Matrix.transform([
           //   ["rx", (Math.random() - 0.5) * 2 * currentSpread],
@@ -202,7 +202,7 @@ function Weapon(settings = {}) {
             }
 
 
-            sparks.spawnLocation = hit.point;
+            sparks.emitPosition = () => hit.point;
             sparks.emit(10);
           }
         }

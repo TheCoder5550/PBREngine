@@ -60,7 +60,9 @@ uniform samplerCube u_specularIBL;
 uniform sampler2D u_splitSum;
 
 // Shadows
+int shadowQuality = 0;
 float shadowDarkness = 0.;
+// bruh
 vec2 shadowStepSize = 1. / vec2(1024);
 const int shadowKernalSize = 3;
 mat3 shadowKernel = mat3(
@@ -147,7 +149,7 @@ void main() {
   vec3 _tangentNormal = vec3(0, 0, 1);
   // bruh ? flickering
   if (useNormalMap) {
-    _tangentNormal = sampleTexture(normalTexture, vUV).rgb * 2. - 1.;
+    // _tangentNormal = sampleTexture(normalTexture, vUV).rgb * 2. - 1.;
 
     if (normalStrength != 0.) {
       _tangentNormal = setNormalStrength(_tangentNormal, normalStrength);
@@ -243,67 +245,77 @@ bool inRange(vec3 projCoord) {
 }
 
 float getShadowAmount() {
-  // vec3 proj = projectedTexcoords[0].xyz / projectedTexcoords[0].w;
-  // float currentDepth = proj.z + biases[0];
-  // float projectedDepth = texture(projectedTextures[0], proj.xy).r;
-  // bool inside = inRange(proj);
-  
-  // if (inside) {
-  //   return (projectedDepth <= currentDepth ? shadowDarkness : 1.);
-  // }
-  
-  // proj = projectedTexcoords[1].xyz / projectedTexcoords[1].w;
-  // currentDepth = proj.z + biases[1];
-  // projectedDepth = texture(projectedTextures[1], proj.xy).r;
-  // inside = inRange(proj);
-
-  // if (inside) {
-  //   return (projectedDepth <= currentDepth ? shadowDarkness : 1.);
-  // }
-
-  // return 1.;
-
-
-
-
-  vec3 proj = projectedTexcoords[0].xyz / projectedTexcoords[0].w;
-  float currentDepth = proj.z + biases[0];
-  bool inside = inRange(proj);
-
-  if (inside) {
-    float sum = 0.0;
-    for (int j = -shadowKernalSize / 2; j <= shadowKernalSize / 2; j++) {
-      for (int k = -shadowKernalSize / 2; k <= shadowKernalSize / 2; k++) {
-        float projectedDepth = texture(projectedTextures[0], proj.xy + shadowStepSize * vec2(j, k)).r;
-        sum += (projectedDepth <= currentDepth ? shadowDarkness : 1.) * shadowKernel[j + 1][k + 1];
-      }
-    }
-
-    return sum / 16.;
+  if (shadowQuality == 0) {
+    return 1.;
   }
 
-  proj = projectedTexcoords[1].xyz / projectedTexcoords[1].w;
-  inside = inRange(proj);
-
-  if (inside) {
-    currentDepth = proj.z + biases[1];
+  if (shadowQuality == 1) {
+    vec3 proj = projectedTexcoords[0].xyz / projectedTexcoords[0].w;
+    float currentDepth = proj.z + biases[0];
+    float projectedDepth = texture(projectedTextures[0], proj.xy).r;
+    bool inside = inRange(proj);
     
-    // float projectedDepth = texture(projectedTextures[1], proj.xy).r;
-    // return (projectedDepth <= currentDepth ? shadowDarkness : 1.);
+    if (inside) {
+      return (projectedDepth <= currentDepth ? shadowDarkness : 1.);
+    }
+    
+    proj = projectedTexcoords[1].xyz / projectedTexcoords[1].w;
+    currentDepth = proj.z + biases[1];
+    projectedDepth = texture(projectedTextures[1], proj.xy).r;
+    inside = inRange(proj);
 
-    float sum = 0.0;
-    for (int j = -shadowKernalSize / 2; j <= shadowKernalSize / 2; j++) {
-      for (int k = -shadowKernalSize / 2; k <= shadowKernalSize / 2; k++) {
-        float projectedDepth = texture(projectedTextures[1], proj.xy + shadowStepSize * vec2(j, k)).r;
-        sum += (projectedDepth <= currentDepth ? shadowDarkness : 1.) * shadowKernel[j + 1][k + 1];
+    if (inside) {
+      return (projectedDepth <= currentDepth ? shadowDarkness : 1.);
+    }
+
+    return 1.;
+  }
+
+  if (shadowQuality >= 2) {
+    vec3 proj = projectedTexcoords[0].xyz / projectedTexcoords[0].w;
+    float currentDepth = proj.z + biases[0];
+    bool inside = inRange(proj);
+
+    if (inside) {
+      float sum = 0.0;
+      for (int j = -shadowKernalSize / 2; j <= shadowKernalSize / 2; j++) {
+        for (int k = -shadowKernalSize / 2; k <= shadowKernalSize / 2; k++) {
+          float projectedDepth = texture(projectedTextures[0], proj.xy + shadowStepSize * vec2(j, k)).r;
+          sum += (projectedDepth <= currentDepth ? shadowDarkness : 1.) * shadowKernel[j + 1][k + 1];
+        }
+      }
+
+      return sum / 16.;
+    }
+
+    proj = projectedTexcoords[1].xyz / projectedTexcoords[1].w;
+    inside = inRange(proj);
+
+    if (inside) {
+      currentDepth = proj.z + biases[1];
+      
+      if (shadowQuality == 2) {
+        float projectedDepth = texture(projectedTextures[1], proj.xy).r;
+        return (projectedDepth <= currentDepth ? shadowDarkness : 1.);
+      }
+
+      if (shadowQuality == 3) {
+        float sum = 0.0;
+        for (int j = -shadowKernalSize / 2; j <= shadowKernalSize / 2; j++) {
+          for (int k = -shadowKernalSize / 2; k <= shadowKernalSize / 2; k++) {
+            float projectedDepth = texture(projectedTextures[1], proj.xy + shadowStepSize * vec2(j, k)).r;
+            sum += (projectedDepth <= currentDepth ? shadowDarkness : 1.) * shadowKernel[j + 1][k + 1];
+          }
+        }
+
+        return sum / 16.;
       }
     }
 
-    return sum / 16.;
+    return 1.;
   }
 
   return 1.;
-
 
 
 

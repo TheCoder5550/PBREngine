@@ -89,15 +89,15 @@
       // renderer.settings.enableShadows = false;
 
       scene = new Scene();
-      scene.environmentIntensity = 0.3;
-      scene.sunIntensity = Vector.fill(8);
+      scene.environmentIntensity = 0.5;
+      scene.sunIntensity = Vector.fill(3);
       scene.smoothSkybox = true;
       // scene.skyboxVisible = false;
       renderer.add(scene);
-      // await scene.loadEnvironment({
-      //   hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed", 
-      //   res: 512
-      // });
+      await scene.loadEnvironment({
+        hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed", 
+        res: 512
+      });
       // var oldSkybox = scene.skyboxCubemap;
       // await scene.loadEnvironment("./assets/hdri/snowy_field_1k", 256);
 
@@ -196,7 +196,7 @@
       light.type = 2;
       light.color = [2, 2, 3];
 
-      scene.updateLights();
+      // scene.updateLights();
 
       // scene.add(await renderer.loadGLTF("./assets/models/waterPlane.glb"));
 
@@ -253,6 +253,12 @@
         this.colliderRadius = 0.5;
         this.colliderHeight = 2;
         this.eyeLevel = 1.9;
+
+        this.coyoteTime = 0.11;
+        this.jumpBuffering = 0.08;
+
+        this.jumpCounter = 0;
+        this.groundCounter = 0;
         
         this.setup = async function() {
           this.gameObject = scene.add(new GameObject("PlayerController"));
@@ -260,9 +266,10 @@
           this.rb = this.gameObject.addComponent(new Rigidbody());
           this.rb.lockRotation = true;
           this.rb.gravity = new Vector(0, -30, 0);
-          this.rb.position.y = 3;
+          this.reset();
 
-          this.gameObject.addComponent(new CapsuleCollider(this.colliderRadius, new Vector(0, -this.colliderHeight / 2 + this.colliderRadius, 0), new Vector(0, this.colliderHeight / 2 - this.colliderRadius, 0)));
+          var capsuleCollider = this.gameObject.addComponent(new CapsuleCollider(this.colliderRadius, new Vector(0, -this.colliderHeight / 2 + this.colliderRadius, 0), new Vector(0, this.colliderHeight / 2 - this.colliderRadius, 0)));
+          capsuleCollider.friction = 0;
           this.gameObject.addComponent(new SphereCollider(this.colliderRadius));
 
           var capsule = this.gameObject.addChild(await renderer.loadGLTF("./assets/models/primitives/capsule.glb"));
@@ -271,6 +278,11 @@
           capsule.transform.scale.y = this.colliderHeight / 3.5 * 0.76;
           FindMaterials("", capsule)[0].setUniform("opaque", 0);
           FindMaterials("", capsule)[0].setUniform("albedo", [1, 1, 1, 0.2]);
+        }
+
+        this.reset = function() {
+          this.rb.position = new Vector(0, 3, 0);
+          this.rb.velocity = Vector.zero();
         }
         
         this.fixedUpdate = function(dt) {
@@ -297,23 +309,35 @@
           }
 
           if (isGrounded) {
-            currentMoveForce = Vector.projectOnPlane(currentMoveForce, groundHit.firstHit.normal);
+            currentMoveForce = Vector.projectOnPlane(currentMoveForce, groundNormal);
             // this.rb.AddForce(new Vector(0, -200, 0));
           }
           currentMoveForce = Vector.normalize(currentMoveForce);
 
           var force = 70;
-          if (!isGrounded) force *= 0.2;
+          if (!isGrounded) force *= 0.1;
           Vector.multiplyTo(currentMoveForce, force);
 
           this.rb.AddForce(currentMoveForce);
           Debug.Vector(this.rb.position, Vector.normalize(currentMoveForce), 1);
 
           // Jumping
-          if (renderer.getKey(32) && isGrounded) {
-            // this.rb.position.y += 0.01;
-            this.rb.velocity.y = 10;
+          if (isGrounded) {
+            this.groundCounter = this.coyoteTime;
           }
+
+          if (renderer.getKeyDown(32)) {
+            this.jumpCounter = this.jumpBuffering;
+          }
+
+          if (renderer.getKey(32) && this.jumpCounter > 0 && this.groundCounter > 0) {
+            this.rb.velocity.y = 10;
+            this.jumpCounter = 0;
+            this.groundCounter = 0;
+          }
+
+          this.groundCounter -= dt;
+          this.jumpCounter -= dt;
 
           // Drag
           // this.rb.velocity.x *= 0.95;
@@ -321,8 +345,11 @@
 
           // Friction
           if (isGrounded) {
-            var tangent = Vector.projectOnPlane(this.rb.velocity, groundNormal);
-            this.rb.AddForce(Vector.multiply(tangent, -10));
+            this.rb.velocity.x *= 0.85;
+            this.rb.velocity.z *= 0.85;
+
+            // var tangent = Vector.projectOnPlane(this.rb.velocity, groundNormal);
+            // this.rb.AddForce(Vector.multiply(tangent, -10));
           }
           else {
             var tangent = Vector.projectOnPlane(this.rb.velocity, Vector.up());
@@ -330,6 +357,10 @@
           }
 
           camera.center = Vector.add(this.rb.position, new Vector(0, this.eyeLevel / 2, 0));
+
+          if (this.rb.position.y < -25) {
+            this.reset();
+          }
         }
       }
 
