@@ -260,8 +260,10 @@ async function setup() {
 
   orbitCamera = new OrbitCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 23});
 
-  mainCamera.setAspect(renderer.aspect);
-  weaponCamera.setAspect(renderer.aspect);
+  renderer.on("resize", function() {
+    mainCamera.setAspect(renderer.aspect);
+    weaponCamera.setAspect(renderer.aspect);
+  });
 
   physicsEngine.fixedUpdate = function(dt) {
     player.fixedUpdate(dt);
@@ -346,7 +348,7 @@ async function setup() {
   // Load map
   // var map = scene.add(await renderer.loadGLTF("./assets/models/city/model.glb"));
   // var mapCollider = await renderer.loadGLTF("./assets/models/city/collider.glb");
-  var map = scene.add(await renderer.loadGLTF("./assets/models/warehouse/model.glb"));
+  // var map = scene.add(await renderer.loadGLTF("./assets/models/warehouse/model.glb"));
   var mapCollider = await renderer.loadGLTF("./assets/models/warehouse/collider.glb");
 
   // map.getChild("Plane").meshRenderer.materials[0].setUniform("doNoTiling", 1);
@@ -461,7 +463,7 @@ async function setup() {
   //   }
   // }
 
-  var ak47 = scene.add(await renderer.loadGLTF("./assets/models/ak47Hands.glb", { loadMaterials: false,/*maxTextureSize: 128, */gameObjectOptions: {castShadows: false}}));
+  var ak47 = scene.add(await renderer.loadGLTF("./assets/models/shotgun.glb", {gameObjectOptions: {castShadows: false}}));//scene.add(await renderer.loadGLTF("./assets/models/ak47Hands.glb", { loadMaterials: false,/*maxTextureSize: 128, */gameObjectOptions: {castShadows: false}}));
   ak47.children[0].transform.rotation = Quaternion.euler(0, Math.PI, 0);
   ak47.transform.scale = Vector.fill(2 / 20);
   ak47.setLayer(1, true);
@@ -703,7 +705,7 @@ function loop() {
   renderer.render(mainCamera, [weaponCamera]);
   renderUI(dt);
 
-  updateBulletTrails();
+  updateBulletTrails(1 / 60);
 
   stats.update();
   requestAnimationFrame(loop);

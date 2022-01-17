@@ -1496,19 +1496,21 @@ function Renderer() {
 
     var cameraPos;
 
+    this.emitHealth = 0.5;
     this.emitPosition = () => Vector.zero();
     this.emitVelocity = () => Vector.zero();
 
     this.emit = function(amount = 1) {
+      var lastP;
       for (var i = 0; i < amount; i++) {
         if (pool.length > 0) {
           var p = pool.shift();
-          p.health = 3;
+          p.health = this.emitHealth;
           p.active = true;
           p.position = system.emitPosition();
-          p.velocity = system.emitVelocity();
+          // p.velocity = system.emitVelocity();
 
-          // p.velocity = new Vector((Math.random() - 0.5) * 2, (Math.random() - 0.5) * 4, 1.2);
+          p.velocity = new Vector((Math.random() - 0.5) * 2, (Math.random() - 0.5) * 4, 1.2);
         }
         else {
           break;
@@ -1553,8 +1555,8 @@ function Renderer() {
       this.position = position;
       this.matrix = Matrix.translate(this.position);
       this.velocity = Vector.zero();
-      this.size = Vector.multiply(new Vector(0.5, 2, 0.5), Math.random() * 0.7 + 0.3);
-      // this.size = new Vector(0.3, 0.15 * (Math.random() * 0.4 + 0.6), 0.2);
+      // this.size = Vector.multiply(new Vector(0.5, 2, 0.5), Math.random() * 0.7 + 0.3);
+      this.size = new Vector(0.3, 0.15 * (Math.random() * 0.4 + 0.6), 0.2);
       this.health = 0.5;
 
       this.active = true;
@@ -1566,8 +1568,6 @@ function Renderer() {
 
           Matrix.lookAt(this.position, Vector.add(this.position, lookDir), dir, this.matrix);
           Matrix.transform([["scale", this.size]], this.matrix);
-
-          return this.matrix;
         }
 
         return this.matrix;
