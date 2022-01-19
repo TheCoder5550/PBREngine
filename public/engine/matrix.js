@@ -137,6 +137,18 @@ export default class Matrix {
     return dst2;
   }
 
+  static basis(right, up, back, dst) {
+    dst = dst || new Float32Array(16);
+    _fillFloat32Array(dst,
+      right.x, right.y, right.z, 0,
+      up.x, up.y, up.z, 0,
+      back.x, back.y, back.z, 0,
+      0, 0, 0, 1
+    );
+
+    return dst;
+  }
+
   // Directions
 
   static getForward(m) {

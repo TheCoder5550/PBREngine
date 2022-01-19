@@ -200,6 +200,21 @@ export default class Vector {
     return Vector.subtract(v, Vector.multiply(normal, distToPlane));
   }
 
+  static findOrthogonal(v) {
+    if (Math.abs(v.x) >= 1 / Math.sqrt(3))
+      return Vector.normalize(new Vector(v.y, -v.x, 0));
+    else
+      return Vector.normalize(new Vector(0, v.z, -v.y));
+  }
+
+  static formOrthogonalBasis(v) {
+    var a = Vector.findOrthogonal(v);
+    return [
+      a,
+      Vector.cross(a, v)
+    ];
+  }
+
   static length(v) {
     var sum = v.x * v.x + v.y * v.y;
     if (v.z) sum += v.z * v.z;

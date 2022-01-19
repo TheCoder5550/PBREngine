@@ -331,6 +331,9 @@ function sphereToTriangle(center, radius, p0, p1, p2, doubleSided = false) {
   
     var len = Vector.length(intersection_vec);  // vector3 length calculation: sqrt(dot(v, v))
     var penetration_normal = Vector.normalize(intersection_vec);  // normalize
+    if (Vector.lengthSqr(penetration_normal) < 0.01 * 0.01) {
+      penetration_normal = N;
+    }
     var penetration_depth = radius - len; // radius = sphere radius
     return {
       normal: penetration_normal,

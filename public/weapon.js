@@ -167,18 +167,11 @@ function Weapon(settings = {}) {
             ["rx", (Math.random() - 0.5) * 2 * currentSpread],
             ["ry", (Math.random() - 0.5) * 2 * currentSpread],
           ]), {x: 0, y: 0, z: -1});
-          // var direction = Matrix.matrixToVector(Matrix.multiplyMat4Vec(Matrix.transform([
-          //   ["rx", (Math.random() - 0.5) * 2 * currentSpread],
-          //   ["ry", (Math.random() - 0.5) * 2 * currentSpread],
-          //   ["rx", rot.x],
-          //   ["ry", rot.y],
-          //   ["rz", rot.z],
-          // ]), Matrix.vectorToMatrix({x: 0, y: 0, z: -1})));
 
           // Create trail
-          var trailPos = this.muzzleObject ? Matrix.getPosition(this.muzzleObject.transform.getWorldMatrix()) : Vector.zero();
-          var trail = new BulletTrail(trailPos, direction);
-          trail.position = Vector.add(trail.position, Vector.multiply(trail.direction, 0.3));
+          var trailPos = this.muzzleObject ? Matrix.getPosition(this.muzzleObject.transform.getWorldMatrix()) : player.position;
+          var trail = new BulletTrail(trailPos, Vector.normalize(Vector.add(Vector.multiply(direction, 50), player.velocity)));
+          trail.position = Vector.add(trail.position, Vector.multiply(trail.direction, 1));
           trail.updateInstance();
           bulletTrails.push(trail);
 
@@ -201,7 +194,13 @@ function Weapon(settings = {}) {
               })(currentInstance), 15000);
             }
 
+            var [ tangent, bitangent ] = Vector.formOrthogonalBasis(hit.normal);
+            var basis = Matrix.basis(tangent, bitangent, hit.normal);
 
+            sparks.emitVelocity = () => {
+              var v = new Vector((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 1.2);
+              return Matrix.transformVector(basis, v);
+            };
             sparks.emitPosition = () => hit.point;
             sparks.emit(10);
           }
@@ -340,16 +339,16 @@ function Weapon(settings = {}) {
       //   ["scale", this.weaponObject.scale]
       // ], player.getHandMatrix(adsT));
 
-      var rot = player.getHeadRotation();
+      var rot = player.handRotation;//player.getHeadRotation();
       var ops = [
-        ["translate", Vector.add(player.position, new Vector(0, player.height, 0))],
+        ["translate", player.getHeadPos()],
         ["rz", -rot.z],
         ["ry", -rot.y],
         ["rx", -rot.x],
         ["translate", Vector.multiply(player.handOffset, adsT)],
-        ["rz", player.handRot.z * adsT],
-        ["ry", player.handRot.y * adsT],
-        ["rx", player.handRot.x * adsT],
+        ["rz", player.handRotOffset.z * adsT],
+        ["ry", player.handRotOffset.y * adsT],
+        ["rx", player.handRotOffset.x * adsT],
 
         ["translate", Vector.lerp(this.weaponModelADSOffset, this.weaponModelOffset, adsT)],
         ["translate", this.modelRecoilTranslation],
@@ -417,6 +416,7 @@ function BulletTrail(pos, direction) {
   this.speed = 50;
   this.health = 1;
 
+  var matrix = Matrix.identity();
   this.instance = null;
   this.bulletTrailObject = scene.root.getChild("BulletTrail");
   if (this.bulletTrailObject) {
@@ -426,7 +426,7 @@ function BulletTrail(pos, direction) {
   }
 
   this.update = function(dt) {
-    this.position = Vector.add(this.position, Vector.multiply(this.direction, dt * this.speed));
+    Vector.addTo(this.position, Vector.multiply(this.direction, dt * this.speed));
     this.health -= dt;
 
     this.updateInstance();
@@ -435,7 +435,11 @@ function BulletTrail(pos, direction) {
   this.updateInstance = function() {
     var cameraPos = Matrix.getPosition(mainCamera.cameraMatrix);
     var lookDir = Vector.projectOnPlane(Vector.subtract(cameraPos, this.position), this.direction);
-    this.bulletTrailObject.meshRenderer.updateInstance(this.instance, Matrix.transform([["scale", new Vector(0.4, 1.5, 1)]], Matrix.lookAt(this.position, Vector.add(this.position, lookDir), this.direction)));
+
+    Matrix.lookAt(this.position, Vector.add(this.position, lookDir), this.direction, matrix);
+    Matrix.transform([["scale", new Vector(0.2, 1.5, 1)]], matrix);
+
+    this.bulletTrailObject.meshRenderer.updateInstance(this.instance, matrix);
   }
 }
 

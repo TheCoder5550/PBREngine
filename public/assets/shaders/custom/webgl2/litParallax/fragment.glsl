@@ -321,7 +321,7 @@ void main() {
 
 vec2 ParallaxMapping(vec2 texCoords, vec3 viewDir)
 {
-  float heightScale = 0.05;
+  float heightScale = 0.1;
   
   // number of depth layers
     const float minLayers = 8.;

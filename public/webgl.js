@@ -1,4 +1,4 @@
-import Renderer, { Scene, GameObject, Transform, AudioListener3D, Camera } from "./engine/renderer.js";
+import Renderer, { Scene, GameObject, Transform, AudioListener3D, Camera, Light, FindMaterials } from "./engine/renderer.js";
 import { 
   AABB,
   PhysicsEngine,
@@ -73,7 +73,6 @@ kills = 0;
 
 var loadingDiv = document.getElementsByClassName("loading")[0];
 var loadingStatus = document.getElementById("loadingStatus");
-var loadingInterval;
 
 var gamepadManager = new GamepadManager();
 
@@ -86,16 +85,15 @@ var ui = new GameCanvas({publicMethods: false});
 ui.canvas.classList.add("ingameUI");
 
 var renderer = new Renderer();
-renderer.onError = function() {
-  clearInterval(loadingInterval);
+renderer.on("error", function() {
   loadingStatus.innerText = "WebGL 2 not supported";
-};
-renderer.onContextLost = function() {
+});
+renderer.on("contextlost", function() {
   running = false;
   loadingStatus.innerText = "WebGL context lost";
   showElement(loadingStatus);
   ws.close();
-};
+});
 
 /* Debug */
 
@@ -180,6 +178,7 @@ var multiplayerCharacters = {};
 var latencies = [];
 var swat;
 
+loadingStatus.innerText = "Connecting";
 var ws = new WebSocket("ws://localhost:8080");
 
 ws.onopen = function() {
@@ -200,9 +199,7 @@ ws.onclose = function() {
 
 ws.onmessage = websocketOnMessage;
 
-loadingStatus.innerText = "Connecting";
-
-var hasLoaded = false;
+// var hasLoaded = false;
 
 var audioListener = new AudioListener3D();
 
@@ -215,48 +212,46 @@ var scene = new Scene("Main scene");
 var orbitCamera;
 var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 23});
 var weaponCamera = new Camera({near: 0.005, far: 20, layer: 1, fov: 32});
-var cameras = [mainCamera, weaponCamera];
 
 var defaultFov = 40;//45;//37;
 var targetFov = defaultFov;
 var currentFov = defaultFov;
 
-var litSkinned;
-
 var crosshair = new Crosshair();
 var hitmarker = new Hitmarker();
 window.player = null;
 
-var physicsEngine = new PhysicsEngine(scene);
-var colliders = [];
+var physicsEngine = new PhysicsEngine(scene, new AABB({x: -20, y: -1.33, z: -30}, {x: 20, y: 15, z: 30}));
+// var colliders = [];
 
 var time = 0;
-var dt;
-var lastUpdate = performance.now();
 var fpsHistory = [];
 
-var car;
 var bulletHoles;
 var sparks;
+var captureZoneManager = new CaptureZoneManager();
 
 setup();
-
 async function setup() {
   console.log("Setup start");
   console.time("setup");
 
-  loadingInterval = animateLoading(loadingStatus, "Loading");
-
+  loadingStatus.innerText = "Setting up renderer";
   console.time("renderer.setup");
-  await renderer.setup({version: 2});
+  await renderer.setup({
+    version: 2,
+    shadowSizes: [4, 45]
+  });
   renderer.postprocessing.exposure = -1.5;
   renderer.add(scene);
-  renderer.logGLError();
   console.timeEnd("renderer.setup");
-  console.time("loadEnvironment")
+
+  loadingStatus.innerText = "Loading environment";
+  console.time("loadEnvironment");
   await scene.loadEnvironment({ hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed" });
+  scene.environmentIntensity = 0.3;
+  scene.sunIntensity = Vector.zero();
   console.timeEnd("loadEnvironment");
-  renderer.logGLError();
 
   orbitCamera = new OrbitCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 23});
 
@@ -270,9 +265,9 @@ async function setup() {
   }
 
   // Create programs / shaders
-  // var litParallax = await renderer.createProgramFromFile("./assets/shaders/litParallax");
+  loadingStatus.innerText = "Loading assets";
+  var litParallax = await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/litParallax");
   var solidColorInstanceProgram = await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/solidColor");
-  // var unlitInstanced = await createProgram("./assets/shaders/unlit/vertexInstanced.glsl", "./assets/shaders/unlit/fragment.glsl");
   // var foliage = await createProgram("./assets/shaders/foliage");
   // var waterShader = await createProgram("./assets/shaders/water");
 
@@ -296,16 +291,61 @@ async function setup() {
   //   {type: "3f", name: "sunDirection", arguments: [sunDirection.x, sunDirection.y, sunDirection.z]},
   // ], [waterNormal]);
 
-  // var helmet = scene.add(await renderer.loadGLTF("./assets/models/DamagedHelmet.glb"))[0];
+  // AABB visualizer
+  scene.add(new GameObject("AABB", {
+    meshRenderer: new renderer.MeshInstanceRenderer([new renderer.Material(solidColorInstanceProgram)], [new renderer.MeshData(renderer.getLineCubeData())], {drawMode: renderer.gl.LINES}),
+    castShadows: false
+  }));
 
-  // car = new Car();
-  // await car.setup();
+  // Bullet holes
+  bulletHoles = scene.add(new GameObject("HitObject", {
+    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({opaque: 0, albedoTexture: bulletHole}, renderer.litInstanced)], [new renderer.MeshData(await renderer.loadObj("./assets/models/plane.obj"))]),
+    castShadows: false
+  }));
+
+  // Bullet trails
+  scene.add(new GameObject("BulletTrail", {
+    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({opaque: 0, emissiveFactor: [40, 5, 5], emissiveTexture: bulletTrail, albedo: [0, 0, 0, 1], albedoTexture: bulletTrail}, renderer.litInstanced)], [new renderer.MeshData(await renderer.loadObj("./assets/models/bulletTrail.obj"))]),
+    castShadows: false
+  }));
+
+  // Bullet metal hit sparks
+  var sparksObject = new GameObject("Particles");
+  sparks = new renderer.ParticleSystem(new renderer.MeshData(await renderer.loadObj("./assets/models/bulletTrail.obj")));
+  sparksObject.addComponent(sparks);
+  scene.add(sparksObject);
+
+  // Load map
+  loadingStatus.innerText = "Loading map";
+  // var map = scene.add(await renderer.loadGLTF("./assets/models/city/model.glb"));
+  // var mapCollider = await renderer.loadGLTF("./assets/models/city/collider.glb");
+  // var map = scene.add(await renderer.loadGLTF("./assets/models/test/playerArea.glb"));
+  // var mapCollider = await renderer.loadGLTF("./assets/models/test/playerArea.glb");
+  var map = scene.add(await renderer.loadGLTF("./assets/models/warehouse/model.glb", { loadMaterials: false, maxTextureSize: 128 }));
+  // map.getChild("Plane").meshRenderer.materials[0].setUniform("doNoTiling", 1);
+
+  loadingStatus.innerText = "Generating collider";
+  var mapCollider = await renderer.loadGLTF("./assets/models/warehouse/collider.glb");
+
+  console.time("addMeshToOctree");
+  physicsEngine.addMeshToOctree(mapCollider);
+  console.timeEnd("addMeshToOctree");
+  // physicsEngine.octree.render(scene);
+
+  var z1 = new CaptureZone();
+  await z1.setup();
+  var z2 = new CaptureZone(new Vector(0, 0, -15), z1.gameObject);
+  await z2.setup();
+
+  captureZoneManager.add(z1);
+  captureZoneManager.add(z2);
 
   // var rock = (await CreateGameObjectFromGLTF("./assets/models/rock.glb"))[0];
   // rock.position = new Vector(4, 0, 0);
   // rock.scale = new Vector(2, 2, 4);
   // scene.add(rock);
 
+  // Parallax mapping
   // var s = await renderer.loadGLTF("./assets/models/ironPlane.glb");
 
   // var mat = s.children[0].meshRenderer.materials[0];
@@ -313,10 +353,11 @@ async function setup() {
   // mat.createUniform("heightmapTexture", "1i", [mat.textures.length - 1]);
   // mat.setProgram(litParallax);
 
-  // s.rotation = new Vector(0, Math.PI, 0);
-  // s.position = new Vector(4, 1, 0);
+  // s.transform.rotation = Quaternion.eulerVector(new Vector(0, Math.PI, 0));
+  // s.transform.position = new Vector(4, 1, 0);
   // scene.add(s);
 
+  // Rigidbody sphere
   // var ball = (await CreateGameObjectFromGLTF("./assets/models/primitives/uvSphere.glb"))[0];
   // ball.children[0].meshRenderer.materials[0].uniforms.find((u) => u.name == "albedo").arguments = [1, 1, 1];
   // ball.children[0].meshRenderer.materials[0].uniforms.find((u) => u.name == "roughness").arguments[0] = 0.01;
@@ -339,48 +380,7 @@ async function setup() {
   // tree.children[0].children[0].meshRenderer.materials[0] = tree.children[0].children[1].meshRenderer.materials[0] = foliageMat;
   // scene.add(tree);
 
-  // AABB visualizer
-  scene.add(new GameObject("AABB", {
-    meshRenderer: new renderer.MeshInstanceRenderer([new renderer.Material(solidColorInstanceProgram)], [new renderer.MeshData(renderer.getLineCubeData())], {drawMode: renderer.gl.LINES}),
-    castShadows: false
-  }));
-
-  // Load map
-  // var map = scene.add(await renderer.loadGLTF("./assets/models/city/model.glb"));
-  // var mapCollider = await renderer.loadGLTF("./assets/models/city/collider.glb");
-  // var map = scene.add(await renderer.loadGLTF("./assets/models/warehouse/model.glb"));
-  var mapCollider = await renderer.loadGLTF("./assets/models/warehouse/collider.glb");
-
-  // map.getChild("Plane").meshRenderer.materials[0].setUniform("doNoTiling", 1);
-
-  console.time("addMeshToOctree");
-  physicsEngine.addMeshToOctree(mapCollider);
-  console.timeEnd("addMeshToOctree");
-
-  // physicsEngine.octree.render();
-
-  // var w = map.getChild("Water");
-  // if (w) w.meshRenderer.materials[0] = waterMaterial;
-
-  bulletHoles = scene.add(new GameObject("HitObject", {
-    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({albedoTexture: bulletHole}, renderer.litInstanced)], [new renderer.MeshData(await renderer.loadObj("./assets/models/plane.obj"))]),
-    castShadows: false
-  }));
-
-  scene.add(new GameObject("BulletTrail", {
-    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({albedoColor: [40, 5, 5, 1], albedoTexture: bulletTrail}, renderer.litInstanced)], [new renderer.MeshData(await renderer.loadObj("./assets/models/bulletTrail.obj"))]),
-    castShadows: false
-  }));
-
-  var sparksObject = new GameObject("Particles");
-  sparks = new renderer.ParticleSystem(new renderer.MeshData(await renderer.loadObj("./assets/models/bulletTrail.obj")));
-  sparksObject.addComponent(sparks);
-  scene.add(sparksObject);
-
-  // await createPBRGrid(7, 7);
-
-  // scene.add(await renderer.loadGLTF("./assets/models/test/normalmapTest.glb"));
-
+  // Metal plane
   // var albedo = renderer.loadTexture("./assets/textures/MetalPanelRectangular001/METALNESS/1K/MetalPanelRectangular001_COL_1K_METALNESS.jpg", {internalFormat: renderer.gl.SRGB8_ALPHA8});
   // var normal = renderer.loadTexture("./assets/textures/MetalPanelRectangular001/METALNESS/1K/MetalPanelRectangular001_NRM_1K_METALNESS.jpg");
   // var metalRoughness = renderer.loadMetalRoughness("./assets/textures/MetalPanelRectangular001/METALNESS/1K/MetalPanelRectangular001_METALNESS_1K_METALNESS.jpg", "./assets/textures/MetalPanelRectangular001/METALNESS/1K/MetalPanelRectangular001_ROUGHNESS_1K_METALNESS.jpg");
@@ -394,7 +394,7 @@ async function setup() {
   // var meshRenderer = new renderer.MeshRenderer(material, meshData);
   
   // var gameObject = new GameObject();
-  // gameObject.rotation = new Vector(-Math.PI / 2, 0, 0);
+  // gameObject.transform.rotation = Quaternion.eulerVector(new Vector(-Math.PI / 2, 0, 0));
   // gameObject.meshRenderer = meshRenderer;
   // scene.add(gameObject);
   // physicsEngine.addMeshToOctree(gameObject);
@@ -414,11 +414,10 @@ async function setup() {
   // cube.position = new Vector(0, 4, 0);
   // scene.add(cube);
   
-
+  // Skinning
   // swat = scene.add(await renderer.loadGLTF("./assets/models/swatOptimizedRunning.glb"));
-  // swat.rotation = new Vector(0, Math.PI / 2, 0);
+  // swat.transform.rotation = Quaternion.eulerVector(new Vector(0, Math.PI / 2, 0));
   // swat.animationController.loop = true;
-  // scene.add(swat.copy());
 
   // var dancingMonster = scene.add(await renderer.loadGLTF("./assets/models/dancingMonster.glb"));
   // dancingMonster.animationController.loop = true;
@@ -428,11 +427,10 @@ async function setup() {
 
   //colliders.push(new AABBCollider({x: -50, y: 0, z: -50}, {x: 50, y: 50, z: 50}, Matrix.identity(), true))
 
-  // scene.add(await CreateGameObjectFromGLTF("./assets/models/test/transformHirTest.glb"))[0];
-
   /*
     Weapons models
   */
+  loadingStatus.innerText = "Loading weapons";
   var pistolGameObject = scene.add(await renderer.loadGLTF("./assets/models/pistolSuppressor.glb", {gameObjectOptions: {castShadows: false}}));
   pistolGameObject.setLayer(1, true);
   for (var animation of pistolGameObject.animationController.animations) {
@@ -444,8 +442,8 @@ async function setup() {
     }
   }
 
-  // var sks = scene.add(await CreateGameObjectFromGLTF("./assets/models/sks.glb", {gameObjectOptions: {castShadows: false}}))[0];
-  // sks.visible = false;
+  var sks = scene.add(await renderer.loadGLTF("./assets/models/sks.glb", { loadMaterials: false, gameObjectOptions: {castShadows: false}}));
+  sks.visible = false;
 
   var shotgun = scene.add(await renderer.loadGLTF("./assets/models/shotgun.glb", {gameObjectOptions: {castShadows: false}}));
   shotgun.setLayer(1, true);
@@ -463,7 +461,7 @@ async function setup() {
   //   }
   // }
 
-  var ak47 = scene.add(await renderer.loadGLTF("./assets/models/shotgun.glb", {gameObjectOptions: {castShadows: false}}));//scene.add(await renderer.loadGLTF("./assets/models/ak47Hands.glb", { loadMaterials: false,/*maxTextureSize: 128, */gameObjectOptions: {castShadows: false}}));
+  var ak47 = scene.add(await renderer.loadGLTF("./assets/models/ak47Hands.glb", { loadMaterials: false, maxTextureSize: 128, gameObjectOptions: {castShadows: false}}));
   ak47.children[0].transform.rotation = Quaternion.euler(0, Math.PI, 0);
   ak47.transform.scale = Vector.fill(2 / 20);
   ak47.setLayer(1, true);
@@ -482,9 +480,9 @@ async function setup() {
     //   return {x: -0.9, y: (Math.random() - 0.5) * 0.3, z: 0};
     // }}),
     pistol: () => new Weapon({weaponObject: pistolGameObject, reloadTime: 1200, weaponModelOffset: new Vector(-0.15, 0.1, 0.25)}),
-    // sks: () => new Weapon({weaponObject: sks, sniperScope: true, ADSFOV: 10, ADSMouseSensitivity: 0.3, roundsPerSecond: 1, magSize: 5, fireMode: WEAPONENUMS.FIREMODES.SINGLE, fireSoundBufferSize: 40, recoil: function() {
-    //   return {x: -3, y: (Math.random() - 0.5) * 0.1, z: 0};
-    // }}),
+    sks: () => new Weapon({weaponObject: sks, sniperScope: true, ADSFOV: 8.5, ADSMouseSensitivity: 0.2, roundsPerSecond: 1, magSize: 5, reloadTIme: 150, sequentialReloading: true, fireMode: WEAPONENUMS.FIREMODES.SINGLE, fireSoundBufferSize: 40, recoil: function() {
+      return {x: -3, y: (Math.random() - 0.5) * 0.1, z: 0};
+    }}),
     // overpowered: () => new Weapon({weaponObject: pistolGameObject, roundsPerSecond: 1000, magSize: 5000, fireMode: WEAPONENUMS.FIREMODES.AUTO, recoil: function() {
     //   return Vector.zero();
     // }}),
@@ -502,7 +500,7 @@ async function setup() {
     // weapons.ar15(),
     // weapons.ak47(),
     weapons.pistol(),
-    // weapons.sks(),
+    weapons.sks(),
     // weapons.overpowered(),
     weapons.shotgun(),
     weapons.ak47()
@@ -537,30 +535,80 @@ async function setup() {
     }
   }, 1000 / SERVER_SEND_FPS);
 
-  hasLoaded = true;
-  clearInterval(loadingInterval);
+  // hasLoaded = true;
 
   if (!disconnected) {
     hideElement(loadingDiv);
     running = true;
-    requestAnimationFrame(loop);
+
+    window.renderer = renderer;
+    window.scene = scene;
+    window.physicsEngine = physicsEngine;
+    window.mainCamera = mainCamera;
+    window.bulletHoles = bulletHoles;
+    window.sparks = sparks;
+    window.targetFov = targetFov;
+    window.defaultFov = defaultFov;
+
+    // window.Debug = new GLDebugger();
+
+    scene.updateLights();
+
+    renderer.on("renderloop", renderloop);
   }
   else {
     loadingStatus.innerText = "Connection lost";
   }
 
-  renderer.disableCulling();
-
-  window.renderer = renderer;
-  window.scene = scene;
-  window.physicsEngine = physicsEngine;
-  window.mainCamera = mainCamera;
-  window.bulletHoles = bulletHoles;
-  window.sparks = sparks;
-  window.targetFov = targetFov;
-  window.defaultFov = defaultFov;
-
   console.timeEnd("setup");
+
+  function renderloop(frameTime, timeSinceStart) {
+    time = timeSinceStart;
+    counters = {};
+
+    // Lag
+    if (renderer.getKey(81)) {
+      var x = 0;
+      for (var i = 0; i < 3e7; i++) {
+        x += i * i;
+      }
+    }
+  
+    for (var key in multiplayerCharacters) {
+      multiplayerCharacters[key].update(physicsEngine.dt);
+    }
+  
+    // player.update(dt);
+    // player.fixedUpdate(dt);
+  
+    // var x = gamepadManager.getAxis("RSHorizontal");
+    // var y = gamepadManager.getAxis("RSVertical");
+    // x = (Math.abs(x) > 0.08 ? x : 0);
+    // y = (Math.abs(y) > 0.08 ? y : 0);
+  
+    // var currentWeapon = player.getCurrentWeapon();
+    // var weaponSens = currentWeapon ? currentWeapon.getCurrentSensitivity() : 1;
+    // player.rotation.x += Math.abs(y) * y * 0.07 * weaponSens;
+    // player.rotation.y += Math.abs(x) * x * 0.07 * weaponSens;
+  
+    // Fly camera
+    // flyCamera(renderer, mainCamera, dt);
+    // player.position = Vector.add(Vector.compMultiply(mainCamera.position, {x: 1, y: 1, z: -1}), {x: 0, y: -1.6, z: 0});
+  
+    physicsEngine.update();
+    player.update(frameTime);
+    scene.update(frameTime);
+    captureZoneManager.update(frameTime);
+    updateBulletTrails(physicsEngine.dt);
+  
+    crosshair.spacing = clamp(Vector.length(player.velocity) * 10, 25, 80);
+  
+    renderer.render(mainCamera, [weaponCamera]);
+    // renderer.render(orbitCamera.camera);
+    renderUI(frameTime);
+  
+    stats.update();
+  }
 }
 
 // function loop() {
@@ -655,64 +703,12 @@ async function setup() {
 //   }
 // }
 
-function loop() {
-  counters = {};
-
-  // Lag
-  if (renderer.getKey(81)) {
-    var x = 0;
-    for (var i = 0; i < 3e7; i++) {
-      x += i * i;
-    }
-  }
-
-  var now = performance.now();
-  var frameTime = (now - lastUpdate) / 1000;
-  lastUpdate = now;
-  
-  dt = physicsEngine.dt;
-  time += dt;
-
-  for (var key in multiplayerCharacters) {
-    multiplayerCharacters[key].update(dt);
-  }
-
-  // player.update(dt);
-  // player.fixedUpdate(dt);
-
-  var x = gamepadManager.getAxis("RSHorizontal");
-  var y = gamepadManager.getAxis("RSVertical");
-  x = (Math.abs(x) > 0.08 ? x : 0);
-  y = (Math.abs(y) > 0.08 ? y : 0);
-
-  var currentWeapon = player.getCurrentWeapon();
-  var weaponSens = currentWeapon ? currentWeapon.getCurrentSensitivity() : 1;
-  player.rotation.x += Math.abs(y) * y * 0.07 * weaponSens;
-  player.rotation.y += Math.abs(x) * x * 0.07 * weaponSens;
-
-  // Fly camera
-  // flyCamera(renderer, mainCamera, dt);
-  // player.position = Vector.add(Vector.compMultiply(mainCamera.position, {x: 1, y: 1, z: -1}), {x: 0, y: -1.6, z: 0});
-
-  // car.update(dt);
-
-  physicsEngine.update();
-  player.update(dt);
-  scene.update(dt);
-
-  crosshair.spacing = clamp(Vector.length(player.velocity) * 10, 25, 80);
-
-  renderer.render(mainCamera, [weaponCamera]);
-  renderUI(dt);
-
-  updateBulletTrails(1 / 60);
-
-  stats.update();
-  requestAnimationFrame(loop);
-}
-
 function renderUI(dt) {
   ui.clearScreen();
+
+  if (player.closestZone) {
+    captureZoneManager.renderZoneUI(player.closestZone);
+  }
 
   var currentWeapon = player.getCurrentWeapon();
   if (currentWeapon) {
@@ -746,8 +742,6 @@ function renderUI(dt) {
 
   hitmarker.render();
 
-  // DrawGuage(Math.abs(car.engine.rpm), car.engine.minRPM, car.engine.maxRPM, ui.width / 2, ui.height - 125, 100);
-
   // // Stats
   // ui.setFont("monospace");
 
@@ -763,25 +757,6 @@ function renderUI(dt) {
   // ui.text(averageLatency + "ms", 5, 40, 15, color);
 
   // ui.setFont("Arial");
-}
-
-async function createPBRGrid(w = 10, h = 10) {
-  var meshData = (await renderer.loadGLTF("./assets/models/primitives/uvSphere.glb")).children[0].meshRenderer.meshData[0];
-
-  for (var y = 0; y < h; y++) {
-    for (var x = 0; x < w; x++) {
-      var material = renderer.CreateLitMaterial({
-        roughness: x / (w - 1),
-        metallic: y / (h - 1)
-      });
-      var meshRenderer = new renderer.MeshRenderer(material, meshData);
-      
-      var gameObject = new GameObject();
-      gameObject.position = new Vector(x * 2.1, y * 2.1, 0);
-      gameObject.meshRenderer = meshRenderer;
-      scene.add(gameObject);
-    }
-  }
 }
 
 function Crosshair() {
@@ -860,17 +835,21 @@ function Player(pos = Vector.zero()) {
   this.startPosition = pos;
   this.velocity = Vector.zero();
 
-  this.height = 1.6;
+  this.standHeight = 2;
+  this.crouchHeight = 1.1;
+  this.height = this.standHeight;
+  this.colliderRadius = 0.5;
 
-  this.walkSpeed = 5;
+  // this.walkSpeed = 5;
 
   this.walkAcceleration = 150 * 0.3;
   this.runningAcceleration = 225 * 0.3;
-  this.currentAcceleration = this.walkAcceleration;
   this.friction = 10;
 
+  this.collisionIterations = 3;
   this.grounded = false;
-  var realGroundNormal;
+  this.fakeGroundNormal = Vector.zero();
+  this.realGroundNormal = Vector.zero();
 
   this.weapons = [];
   this.currentWeapon = 0;
@@ -878,61 +857,61 @@ function Player(pos = Vector.zero()) {
   this.handRotation = this.rotation;
 
   this.handOffset = {x: 0.3, y: -0.25, z: -0.5};
-  this.handRot = {x: 0, y: 0.1 * 0, z: 0};
+  this.handRotOffset = {x: 0, y: 0.1 * 0, z: 0};
 
-  this.getHandMatrix = function(t = 0) {
-    var rot = this.getHeadRotation();
-    var ops = [
-      ["translate", Vector.add(this.position, new Vector(0, this.height, 0))],
-      ["rz", -rot.z],
-      ["ry", -rot.y],
-      ["rx", -rot.x],
-      // ["translate", Vector.multiply(this.getCurrentWeapon().weaponObject.children[0].getChild("ADSOffset").position, -1 / 10)],
-      // ["translate", {x: 0, y: 0, z: -0.1}]
-      ["translate", Vector.multiply(this.handOffset, t)],
-      ["rz", this.handRot.z * t],
-      ["ry", this.handRot.y * t],
-      ["rx", this.handRot.x * t],
-      // ["translate", adsTranslate]
-    ];
+  // this.getHandMatrix = function(t = 0) {
+  //   var rot = this.getHeadRotation();
+  //   var ops = [
+  //     ["translate", Vector.add(this.position, new Vector(0, this.height - 0.1, 0))],
+  //     ["rz", -rot.z],
+  //     ["ry", -rot.y],
+  //     ["rx", -rot.x],
+  //     // ["translate", Vector.multiply(this.getCurrentWeapon().weaponObject.children[0].getChild("ADSOffset").position, -1 / 10)],
+  //     // ["translate", {x: 0, y: 0, z: -0.1}]
+  //     ["translate", Vector.multiply(this.handOffset, t)],
+  //     ["rz", this.handRotOffset.z * t],
+  //     ["ry", this.handRotOffset.y * t],
+  //     ["rx", this.handRotOffset.x * t],
+  //     // ["translate", adsTranslate]
+  //   ];
 
-    // ops.push(["translate", Vector.multiply({x: 0.11, y: -0.1, z: -0.2}, t)]);
+  //   // ops.push(["translate", Vector.multiply({x: 0.11, y: -0.1, z: -0.2}, t)]);
 
-    // ops = ops.concat([
-    //   ["rz", -(this.handRotation.z - rot.z) * t],
-    //   ["ry", -(this.handRotation.y - rot.y) * t],
-    //   ["rx", -(this.handRotation.x - rot.x) * t]
-    // ]);
+  //   // ops = ops.concat([
+  //   //   ["rz", -(this.handRotation.z - rot.z) * t],
+  //   //   ["ry", -(this.handRotation.y - rot.y) * t],
+  //   //   ["rx", -(this.handRotation.x - rot.x) * t]
+  //   // ]);
 
-    var m = Matrix.transform(ops);
+  //   var m = Matrix.transform(ops);
 
-    var adsObject = this.getCurrentWeapon().weaponObject.getChild("ADSOffset", true);
-    if (adsObject && t < 0.5) {
-      // var weaponMatrix = this.getCurrentWeapon().weaponObject.getWorldMatrix();
-      // var adsPos = Matrix.getPosition(adsObject.getWorldMatrix());
-      // var localADSOffset = Matrix.transformVector(Matrix.inverse(weaponMatrix), adsPos);
+  //   var adsObject = this.getCurrentWeapon().weaponObject.getChild("ADSOffset", true);
+  //   if (adsObject && t < 0.5) {
+  //     // var weaponMatrix = this.getCurrentWeapon().weaponObject.getWorldMatrix();
+  //     // var adsPos = Matrix.getPosition(adsObject.getWorldMatrix());
+  //     // var localADSOffset = Matrix.transformVector(Matrix.inverse(weaponMatrix), adsPos);
 
-      // m = Matrix.transform([["translate", new Vector(0, 0, -0.15)]], m);
-      var localADSOffset = Matrix.inverse(adsObject.transform.getWorldMatrix(this.getCurrentWeapon().weaponObject));
-      localADSOffset[12] *= 0.1;
-      localADSOffset[13] *= 0.1;
-      localADSOffset[14] *= 0.1;
-      Matrix.setRotation(localADSOffset, Matrix.identity());
-      m = Matrix.multiply(m, localADSOffset);
+  //     // m = Matrix.transform([["translate", new Vector(0, 0, -0.15)]], m);
+  //     var localADSOffset = Matrix.inverse(adsObject.transform.getWorldMatrix(this.getCurrentWeapon().weaponObject));
+  //     localADSOffset[12] *= 0.1;
+  //     localADSOffset[13] *= 0.1;
+  //     localADSOffset[14] *= 0.1;
+  //     Matrix.setRotation(localADSOffset, Matrix.identity());
+  //     m = Matrix.multiply(m, localADSOffset);
 
-      // adsTranslate = Vector.add(Vector.multiply(localADSOffset, -0.1), new Vector(0, 0, -0.15));
-      // adsTranslate = Vector.multiply(adsTranslate, 1 - t);
-    }
+  //     // adsTranslate = Vector.add(Vector.multiply(localADSOffset, -0.1), new Vector(0, 0, -0.15));
+  //     // adsTranslate = Vector.multiply(adsTranslate, 1 - t);
+  //   }
 
-    return m;
-  }
+  //   return m;
+  // }
 
   this.getCurrentWeapon = function() {
     return this.weapons[this.currentWeapon];
   }
 
   this.getHeadPos = function() {
-    return Vector.add(this.position, {x: 0, y: this.height, z: 0});
+    return Vector.add(this.position, {x: 0, y: this.height - 0.1, z: 0});
   }
 
   this.getHeadRotation = function() {
@@ -981,6 +960,8 @@ function Player(pos = Vector.zero()) {
   }
 
   this.update = function(dt) {
+    this.height = renderer.getKey(67) ? this.crouchHeight : this.standHeight;
+
     if (this.getCurrentWeapon()) {
       this.getCurrentWeapon().update(dt);
     }
@@ -988,136 +969,117 @@ function Player(pos = Vector.zero()) {
     mainCamera.setFOV(currentFov);
 
     mainCamera.transform.rotation = Quaternion.eulerVector(Vector.negate(this.getHeadRotation()));
-    mainCamera.transform.position = Vector.add(this.position, {x: 0, y: 1.6, z: 0});
+    mainCamera.transform.position = this.getHeadPos();//Vector.add(this.position, {x: 0, y: this.height - 0.1, z: 0});
     // mainCamera.transform.position = Vector.add(Vector.compMultiply(this.position, {x: 1, y: 1, z: -1}), {x: 0, y: 1.6, z: 0});
 
     weaponCamera.transform.position = mainCamera.transform.position;
     weaponCamera.transform.rotation = mainCamera.transform.rotation;
 
-    audioListener.setPosition(this.position);
-    var playerMatrix = this.getHandMatrix();
-    audioListener.setDirection(Matrix.getForward(playerMatrix), Matrix.getUp(playerMatrix));
+    // var rot = this.getHeadRotation();
+    // var m = Matrix.transform([
+    //   ["translate", this.getHeadPos()],
+    //   ["rz", -rot.z],
+    //   ["ry", -rot.y],
+    //   ["rx", -rot.x]
+    // ]);
+    // audioListener.setDirection(Matrix.getForward(m), Vector.up());
+    // audioListener.setPosition(this.position);
   }
 
+  // bruh 200kb memory
   this.fixedUpdate = function(dt) {
-    this.handRotation = Vector.add(this.handRotation, Vector.multiply(Vector.subtract(this.getHeadRotation(), this.handRotation), 0.8));
-    // this.handRotation = this.getHeadRotation();
+    // this.handRotation = Vector.add(this.handRotation, Vector.multiply(Vector.subtract(this.getHeadRotation(), this.handRotation), 0.8));
+    this.handRotation = this.getHeadRotation();
 
+    // Gravity
     this.velocity.y -= 18 * dt;
 
     var vertical = (renderer.getKey(87) || 0) - (renderer.getKey(83) || 0);
     var horizontal = (renderer.getKey(65) || 0) - (renderer.getKey(68) || 0);
 
     if (vertical || horizontal) {
-      var direction = Vector.rotateAround(Vector.normalize({
+      var direction = Vector.rotateAround({
         x: vertical,
         y: 0,
         z: -horizontal
-      }), {x: 0, y: 1, z: 0}, -this.rotation.y + Math.PI / 2);
+      }, {x: 0, y: 1, z: 0}, -this.rotation.y + Math.PI / 2);
 
-      /*if (realGroundNormal) {
-        direction = Vector.projectOnPlane(direction, realGroundNormal);
-      }*/
+      if (this.grounded) {
+        direction = Vector.normalize(Vector.projectOnPlane(direction, this.realGroundNormal));
+      }
 
-      this.currentAcceleration = renderer.getKey(16) ? this.runningAcceleration : this.walkAcceleration;
-      this.currentAcceleration *= (this.grounded ? 1 : 0.1);
+      var currentAcceleration = renderer.getKey(16) ? this.runningAcceleration : this.walkAcceleration;
+      currentAcceleration *= (this.grounded ? 1 : 0.1);
 
       actionQueue.push({type: "movement", time: new Date(), direction: direction, speed: this.walkSpeed, dt: dt});
-
       // this.position = Vector.add(this.position, Vector.multiply(direction, this.walkSpeed * dt));
-      this.velocity = Vector.add(this.velocity, Vector.multiply(direction, this.currentAcceleration * dt));
+
+      this.velocity = Vector.add(this.velocity, Vector.multiply(direction, currentAcceleration * dt));
     }
 
+    // Jumping
     if (renderer.getKey(32) && this.grounded) {
       this.velocity.y = 6;
       this.position.y += 0.2;
       actionQueue.push({type: "jump", time: new Date()});
     }
 
+    // Ground friction/drag
     if (this.grounded) {
-      var projectedVelocity = {x: this.velocity.x, y: 0, z: this.velocity.z};
+      var projectedVelocity = Vector.projectOnPlane(this.velocity, this.fakeGroundNormal);//{x: this.velocity.x, y: 0, z: this.velocity.z};
       var speed = Vector.length(projectedVelocity);
       this.velocity = Vector.add(this.velocity, Vector.multiply(Vector.normalize(projectedVelocity), -speed * dt * this.friction));
     }
 
     this.position = Vector.add(this.position, Vector.multiply(this.velocity, dt));
 
+    // Collision solving
     this.grounded = false;
 
-    // AABB
-    for (var j = 0; j < 3; j++) {
-      for (var i = 0; i < colliders.length; i++) {
-        var aabb = colliders[i];
-  
-        if (aabb.pointInside(this.position)) {
-          var data = aabb.getNormal(this.position);
+    var radiusOffset = new Vector(0, this.colliderRadius, 0);
+    var playerAABB = new AABB(
+      {x: this.position.x - this.colliderRadius * 2, y: this.position.y - this.colliderRadius * 2,               z: this.position.z - this.colliderRadius * 2},
+      {x: this.position.x + this.colliderRadius * 2, y: this.position.y + this.colliderRadius * 2 + this.height, z: this.position.z + this.colliderRadius * 2}
+    );
+    var q = physicsEngine.octree.queryAABB(playerAABB);
 
-          if (Vector.dot(data.normal, {x: 0, y: 1, z: 0}) > 0.6) {
-            realGroundNormal = {...data.normal};
-            data.normal = {x: 0, y: 1, z: 0};
-            this.grounded = true;
+    for (var iter = 0; iter < this.collisionIterations; iter++) {
+      if (q) {
+        for (var k = 0; k < q.length; k++) {
+          var col = capsuleToTriangle(Vector.add(this.position, radiusOffset), Vector.subtract(Vector.add(this.position, new Vector(0, this.height, 0)), radiusOffset), this.colliderRadius, q[k][0], q[k][1], q[k][2], true);
+          
+          if (col && !Vector.equal(col.normal, Vector.zero(), 0.001)) {
+            var dp = Vector.dot(Vector.up(), col.normal);
+            var normal = dp > 0.8 ? Vector.up() : col.normal;
+            var depth = col.depth / Vector.dot(normal, col.normal);
+
+            this.position = Vector.add(this.position, Vector.multiply(normal, depth));
+            this.velocity = Vector.projectOnPlane(this.velocity, normal);
+
+            var isGround = Vector.dot(normal, Vector.up()) > 0.7;
+            if (isGround) {
+              this.fakeGroundNormal = normal;
+              this.realGroundNormal = col.normal;
+              this.grounded = true;
+            }
           }
-
-          this.position = Vector.add(this.position, Vector.multiply(data.normal, data.distance / 2));
-          this.velocity = Vector.projectOnPlane(this.velocity, data.normal);
         }
       }
     }
 
-    // Ray - Mesh
-    // var hit = Raycast(Vector.add(this.position, {x: 0, y: 1, z: 0}), {x: 0, y: -1, z: 0}).firstHit;
-    // if (hit && hit.point && hit.distance < 1.1) {
-    //   this.position.y = hit.point.y;
-    //   this.velocity.y = 0;
-    //   this.grounded = true;
-    // }
+    // // Extend grounded collision
+    // if (!this.grounded) {
+    //   var hit = physicsEngine.Raycast(this.position, Vector.down());
+    //   if (hit && hit.firstHit && hit.firstHit.distance < this.height / 2 + 0.01) {
+    //     this.grounded = true;
+    //     this.realGroundNormal = hit.firstHit.normal;
 
-    // var hit = Raycast(Vector.add(this.position, {x: 0, y: 1.5, z: 0}), {x: 0, y: -1, z: 0}).firstHit;
-    // if (hit && hit.point && hit.distance < 0.3) {
-    //   this.position.y = hit.point.y - 1.8;
-    //   this.velocity.y = 0;
-    // }
-
-    // var hw = 0.2;
-    // var directions = [{x: -1, y: 0, z: 0}, {x: 1, y: 0, z: 0}, {x: 0, y: 0, z: -1}, {x: 0, y: 0, z: 1}]
-    // for (var i = 0; i < 4; i++) {
-    //   var hit = Raycast(Vector.add(this.position, {x: 0, y: 1.1, z: 0}), directions[i]).firstHit;
-    //   if (hit && hit.point && hit.distance < hw) {
-    //     var p = Vector.add(this.position, Vector.add(Vector.multiply(directions[i], hw), {x: 0, y: 1.1, z: 0}));
-    //     this.position = Vector.add(this.position, Vector.multiply(hit.normal, Math.abs(Vector.dot(hit.normal, Vector.subtract(hit.point, p)))));
-    //     this.velocity = Vector.projectOnPlane(this.velocity, hit.normal);
+    //     // bruh copy code
+    //     var dp = Vector.dot(Vector.up(), this.realGroundNormal);
+    //     var normal = dp > 0.8 ? Vector.up() : this.realGroundNormal;
+    //     this.fakeGroundNormal = normal;
     //   }
     // }
-
-    // Capsule - mesh
-    var radius = 0.5;
-    var playerAABB = new AABB({x: this.position.x - radius, y: this.position.y, z: this.position.z - radius}, {x: this.position.x + radius, y: this.position.y + this.height, z: this.position.z + radius});
-    var q = physicsEngine.octree.queryAABB(playerAABB);
-    if (q) {
-      for (var k = 0; k < q.length; k++) {
-        // console.log(this.position, this.getHeadPos(), radius, q[k][0], q[k][1], q[k][2]);
-        var triangleNormal = getTriangleNormal(q[k]);
-        var col = capsuleToTriangle(this.position, this.getHeadPos(), radius, q[k][0], q[k][1], q[k][2], true);
-        if (col) {
-          var velocity_length = Vector.length(this.velocity);
-          var velocity_normalized = Vector.normalize(this.velocity);
-          var undesired_motion = Vector.multiply(col.normal, Vector.dot(velocity_normalized, col.normal));
-          var desired_motion = Vector.subtract(velocity_normalized, undesired_motion);
-          
-          // this.velocity = Vector.multiply(desired_motion, velocity_length);
-
-          // console.log(col.depth);
-          this.position = Vector.add(this.position, Vector.multiply(col.normal, col.depth));
-          this.velocity = Vector.projectOnPlane(this.velocity, col.normal/*triangleNormal*/);
-
-          var isGround = Vector.dot(triangleNormal, Vector.up()) > 0.7;// && Vector.distance(this.position, col.point) < 0.5;
-          if (isGround) {
-            this.grounded = true;
-            // this.velocity = Vector.zero();
-          }
-        }
-      }
-    }
 
     // Reset when out-of-bounds
     if (this.position.y < -30) {
@@ -1129,7 +1091,7 @@ function Player(pos = Vector.zero()) {
       this.getCurrentWeapon().fixedUpdate(dt);
     }
 
-    currentFov += (targetFov - currentFov) / 3;
+    currentFov += (window.targetFov - currentFov) / 3;
   }
 }
 
@@ -1201,362 +1163,141 @@ function MultiplayerCharacter(gameObject) {
   }
 }
 
-function Car() {
-  var _this = this;
+function CaptureZoneManager() {
+  this.zones = [];
 
-  var radPerSecToRPM = 30 / Math.PI;
-
-  this.engine = new Engine();
-  this.wheels = [];
-
-  this.currentGear = 1;
-  this.gearRatios = [2.66, 1.78, 1.3, 1, 0.74];
-  this.reverseGearRatio = 2.9;
-  this.allGearRatios = [this.reverseGearRatio, ...this.gearRatios];
-
-  this.differentialRatio = 3.42;
-
-  var activateAutoCountersteer = true;
-  var autoCountersteerMinVel = 2;
-  var autoCountersteer = 0.7;
-  var autoCountersteerVelocityMultiplier = 0.3;
-  
-  this.setup = async function() {
-    this.gameObject = scene.add(await renderer.loadGLTF("./assets/models/mustang.glb"));
-    this.rb = new Rigidbody();
-    this.rb.position = new Vector(4, 4, 0);
-    this.rb.mass = 1500;
-    this.rb.inertia = Vector.fill(1500);
-    this.gameObject.addComponent(this.rb);
-
-    this.wheels[0] = new Wheel(new Vector(1.1, -0.25, 1.7), scene.add(await renderer.loadGLTF("./assets/models/wheel.glb")));
-    this.wheels[1] = new Wheel(new Vector(-1.1, -0.25, 1.7), scene.add(await renderer.loadGLTF("./assets/models/wheel.glb")));
-    this.wheels[2] = new Wheel(new Vector(1.1, -0.25, -1.85), scene.add(await renderer.loadGLTF("./assets/models/wheel.glb")));
-    this.wheels[3] = new Wheel(new Vector(-1.1, -0.25, -1.85), scene.add(await renderer.loadGLTF("./assets/models/wheel.glb")));
-  
-    this.wheels[0].turn = false;
-    this.wheels[1].turn = false;
-    this.wheels[2].drive = false;
-    this.wheels[3].drive = false;
-    this.wheels[2].ebrake = false;
-    this.wheels[3].ebrake = false;
-
-    this.wheels[0].modelAngleOffset = Math.PI;
-    this.wheels[2].modelAngleOffset = Math.PI;
-  }
-
-  this.reset = function() {
-    this.rb.position = new Vector(0, 4, 0);
-    this.rb.velocity = Vector.zero();
-    this.rb.angles = Vector.zero();
-    this.rb.angularVelocity = Vector.zero();
+  this.add = function(zone) {
+    this.zones.push(zone);
   }
 
   this.update = function(dt) {
-    var worldMatrix = this.gameObject.getWorldMatrix();
-    var inverseWorldMatrix = Matrix.inverse(worldMatrix);
-    var localVelocity = Matrix.transformVector(inverseWorldMatrix, this.rb.velocity);
-    var localAngularVelocity = Matrix.transformVector(inverseWorldMatrix, this.rb.angularVelocity);
+    player.closestZone = null;
 
-    var forward = Matrix.getForward(worldMatrix);
-    var sideways = Matrix.getRight(worldMatrix);
-
-    var forwardVelocity = Vector.dot(this.rb.velocity, forward);
-    var sidewaysVelocity = Vector.dot(this.rb.velocity, sideways);
-
-    var slipAngle = -Math.atan2(sidewaysVelocity, forwardVelocity);
-    if (isNaN(slipAngle) || !isFinite(slipAngle)) slipAngle = 0;
-
-    if (gamepadManager.getButtonDown("X")) {
-      this.currentGear--;
-    }
-    if (gamepadManager.getButtonDown("Y")) {
-      this.currentGear++;
-    }
-    this.currentGear = clamp(this.currentGear, 0, this.allGearRatios.length - 1);
-
-    var driveInput = Math.abs(this.engine.rpm) < 8000 ? gamepadManager.getButton("RT") : 0;
-    var brakeInput = gamepadManager.getButton("LT");
-    var ebrakeInput = gamepadManager.getButton("A");
-
-    var maxSteerAngle = 45;
-    var steerInput = -gamepadManager.getAxis("LSHorizontal");
-    var acs = activateAutoCountersteer /*&& Vector.length(Vector.projectOnPlane(localVelocity, Vector.up)) >= autoCountersteerMinVel*/ && forwardVelocity > 0.1 ? (-slipAngle) / (maxSteerAngle / 180 * Math.PI) * autoCountersteer : 0;
-
-    steerInput = clamp(steerInput - acs, -1, 1);
-
-    var driveTorque = driveInput * (this.currentGear == 0 ? 1 : -1) * this.engine.torqueLookup(this.engine.rpm) * this.engine.torque / 2 * this.allGearRatios[this.currentGear] * this.differentialRatio;
-
-    for (var wheel of this.wheels) {
-      var steerAngle = wheel.turn ? steerInput * maxSteerAngle * Math.PI / 180 : 0;
-
-      var worldMatrix = this.gameObject.getWorldMatrix();
-      var up = Matrix.getUp(worldMatrix);
-      var forward = Matrix.getForward(worldMatrix);
-      var sideways = Matrix.getRight(worldMatrix);
-
-      var worldPos = Matrix.transformVector(worldMatrix, wheel.position);
-      var wheelVelocity = this.rb.GetPointVelocity(worldPos);
-
-      var ray = {origin: worldPos, direction: Vector.negate(up)};
-      var hit = physicsEngine.Raycast(ray.origin, ray.direction).firstHit;
-      var wheelIsGrounded = hit && hit.distance < wheel.suspensionTravel + wheel.radius;
-
-      wheel.model.matrix = Matrix.transform([
-        ["translate", Vector.add(ray.origin, Vector.multiply(ray.direction, wheelIsGrounded ? hit.distance - wheel.radius : wheel.suspensionTravel))],
-        ["rx", this.gameObject.rotation.x],
-        ["rz", this.gameObject.rotation.z],
-        ["ry", this.gameObject.rotation.y],
-        ["ry", steerAngle + wheel.modelAngleOffset],
-        ["rx", wheel.angle * (wheel.modelAngleOffset == Math.PI ? -1 : 1)]
-      ]);
-
-      if (wheelIsGrounded) {
-        var rayDist = hit.distance;
-        var contactPoint = hit.point;
-
-        var normalForce = 0;
-        var compressionAmount = 0;
-
-        // Suspension
-        var springError = wheel.suspensionTravel - (rayDist - wheel.radius);
-        var currentSpringForce = Vector.multiply(ray.direction, springError * -wheel.suspensionForce);
-        var currentDampingForce = Vector.multiply(Vector.project(Vector.subtract(wheelVelocity, Vector.projectOnPlane(this.rb.velocity, hit.normal)), up), -wheel.suspensionDamping);
-        var totalForce = Vector.add(currentSpringForce, currentDampingForce);
-        this.rb.AddForceAtPosition(totalForce, worldPos);
-
-        wheel.normalForce = normalForce = Vector.length(totalForce);
-        compressionAmount = clamp(springError / wheel.suspensionTravel, 0, 1);
-
-        // Bottom out
-        var furthestPoint = Vector.add(ray.origin, Vector.multiply(ray.direction, wheel.radius + wheel.stopLength));
-        var C = -Vector.dot(Vector.subtract(contactPoint, furthestPoint), hit.normal);
-
-        if (C < 0) {
-          var r = Vector.cross(Vector.subtract(furthestPoint, this.rb.position), hit.normal);
-
-          var jacobian = [
-            hit.normal.x,
-            hit.normal.y,
-            hit.normal.z,
-            r.x,
-            r.y,
-            r.z
-          ];
-
-          var JM = [
-            jacobian[0] / this.rb.mass,
-            jacobian[1] / this.rb.mass,
-            jacobian[2] / this.rb.mass,
-            jacobian[3] / this.rb.inertia.x,
-            jacobian[4] / this.rb.inertia.y,
-            jacobian[5] / this.rb.inertia.z
-          ];
-
-          var beta = 0.15;
-          var bias = beta / dt * (C + 0.01);
-          var JMJ = multiply1DMatrices(JM, jacobian);
-
-          var lambdaAccumulated = 0;
-
-          for (var i = 0; i < 5; i++) {
-            var velocityMatrix = [
-              this.rb.velocity.x,
-              this.rb.velocity.y,
-              this.rb.velocity.z,
-              this.rb.angularVelocity.x,
-              this.rb.angularVelocity.y,
-              this.rb.angularVelocity.z
-            ];
-
-            var JV = multiply1DMatrices(jacobian, velocityMatrix);
-            var lambda = -(JV + bias) / JMJ;
-
-            if (lambdaAccumulated + lambda < 0) {
-              lambda = -lambdaAccumulated;
-            }
-            lambdaAccumulated += lambda;
-
-            this.rb.velocity = Vector.add(this.rb.velocity, Vector.multiply(new Vector(jacobian[0], jacobian[1], jacobian[2]), lambda / this.rb.mass));
-            this.rb.angularVelocity = Vector.add(this.rb.angularVelocity, divideVectorAndVector(Vector.multiply(new Vector(jacobian[3], jacobian[4], jacobian[5]), lambda), this.rb.inertia));
-          }
-        }
-
-        // Friction
-
-        var torqueInput = wheel.drive ? driveTorque : 0;
-
-        var iters = 5;
-        var _dt = dt / iters;
-        for (var count = 0; count < iters; count++) {
-          wheelVelocity = this.rb.GetPointVelocity(worldPos);
-
-          var forwardVelocity = Vector.dot(wheelVelocity, forward);
-          var sidewaysVelocity = Vector.dot(wheelVelocity, sideways);
-
-          var roadFriction = 1;
-
-          wheel.angularVelocity += torqueInput / wheel.inertia * _dt;
-
-          var slipAngle = -Math.atan(sidewaysVelocity / Math.abs(forwardVelocity)) - steerAngle * Math.sign(forwardVelocity);
-          if (isNaN(slipAngle) || !isFinite(slipAngle)) slipAngle = 0;
-          var a = slipAngle / wheel.slipAnglePeak;
-
-          if (brakeInput != 0) {
-            wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - brakeInput);
-          }
-
-          if (ebrakeInput != 0 && wheel.ebrake) {
-            wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - ebrakeInput);
-          }
-
-          var driveForwardVector = forward;//Quaternion.AngleAxis(-90, sideways) * groundHit.normal;
-
-          var slipRatio = -(wheel.angularVelocity * wheel.radius + forwardVelocity) / Math.abs(forwardVelocity) * Math.min(Math.abs(forwardVelocity) / 3, 1);
-          if (isNaN(slipRatio)) slipRatio = 0;
-          if (!isFinite(slipRatio)) slipRatio = Math.sign(slipRatio);
-          var s = slipRatio / wheel.slipRatioPeak;
-
-          var rho = Math.sqrt(s * s + a * a);
-
-          var Fx = (_slipRatio) => {
-            return magicFormula(_slipRatio, wheel.slipRatioCoeffs) * roadFriction * wheel.friction;
-          }
-          var Fy = ( _slipAngle) => {
-            return magicFormula(_slipAngle * 180 / Math.PI - wheel.camberAngle * wheel.camberAngleCoeff, wheel.slipAngleCoeffs) * roadFriction * wheel.friction;
-          }
-
-          var finalForceX = s / rho * Fx(rho * wheel.slipRatioPeak) * normalForce;
-          var finalForceY = a / rho * Fy(rho * wheel.slipAnglePeak) * normalForce;
-
-          // if (!count) console.log(slipRatio);
-
-          if (!isNaN(finalForceX)) {
-            var contactVelocity = (wheel.angularVelocity * wheel.radius + forwardVelocity);
-            var maxForceToResolveFriction = Math.abs(contactVelocity / (wheel.radius * wheel.radius) * wheel.inertia / _dt);
-            var maxFriction = Math.abs(finalForceX);
-            var frictionForce = Math.min(maxFriction, maxForceToResolveFriction) * -Math.sign(finalForceX);
-            wheel.angularVelocity -= (frictionForce * wheel.radius) / wheel.inertia * _dt;
-          }
-          
-          if (!isNaN(finalForceX)) this.rb.AddImpulseAtPosition(Vector.multiply(driveForwardVector, finalForceX * _dt), contactPoint);
-          if (!isNaN(finalForceY)) this.rb.AddImpulseAtPosition(Vector.multiply(sideways, finalForceY * _dt), contactPoint);
-        }
-      }
-
-      wheel.angle += wheel.angularVelocity * dt;
-    }
-
-    updateEngineRPM();
-  }
-
-  function updateEngineRPM() {
-    var angularVelocities = 0;
-    for (var wheel of _this.wheels) {
-      if (wheel.drive) {
-        angularVelocities += Math.abs(wheel.angularVelocity);
-      }
-    }
-
-    var driveWheels = 2;
-    _this.engine.rpm = angularVelocities / driveWheels * _this.allGearRatios[_this.currentGear] * _this.differentialRatio * radPerSecToRPM;
-    // _this.engine.rpm = clamp(_this.engine.rpm, _this.engine.minRPM, _this.engine.maxRPM);
-  }
-
-  function Engine() {
-    this.torque = 700;
-    this.rpm = 0;
-    this.minRPM = 0;
-    this.maxRPM = 8000;
-
-    this.torqueLookup = function(rpm) {
-      return (-Math.pow(Math.abs((rpm - 4600) / 145), 1.4) + 309) / 309;
+    for (var zone of this.zones) {
+      zone.update(dt);
     }
   }
 
-  function Wheel(position = Vector.zero(), model) {
-    this.position = position;
-    this.model = model;
-    this.modelAngleOffset = 0;
-
-    this.friction = 1;
-    this.radius = 0.47;
-    this.camberAngle = 0;
-    this.camberAngleCoeff = 1;
-
-    this.stopLength = 0.05;
-    this.suspensionTravel = 0.35;
-    this.suspensionDamping = 3500;
-    this.suspensionForce = 50000;
-
-    this.angle = 0;
-    this.angularVelocity = 0;
-    this.mass = 20;
-    this.inertia = this.mass * this.radius * this.radius / 2;
-
-    this.slipRatioCoeffs = [16, 1.5, 1.1, -1.4];
-    this.slipAngleCoeffs = [0.1, 1.5, 1.1, -1.4];
-
-    this.slipRatioPeak = findPeak(x => {
-      return magicFormula(x, this.slipRatioCoeffs);
-    });
-
-    this.slipAnglePeak = findPeak(x => {
-      return magicFormula(x * 180 / Math.PI - this.camberAngle * this.camberAngleCoeff, this.slipAngleCoeffs);
-    });
-
-    this.drive = true;
-    this.turn = true;
-    this.ebrake = true;
-
-    this.wheelIsGrounded = false;
-    this.normalForce = 0;
+  this.renderZoneUI = function(zone) {
+    ui.rectangle(ui.width / 2 - 100, ui.height - 50, 200, 20, "white");
+    ui.rectangle(ui.width / 2 - 100, ui.height - 50, zone.timer * 200, 20, glColorToRGB(zone.getColor()));
   }
 
-  function divideVectorAndVector(a, b) {
-    return new Vector(a.x / b.x, a.y / b.y, a.z / b.z);
-  }
-
-  function multiply1DMatrices(m1, m2) {
-    if (m1.length != m2.length) {
-      throw new Error("Matrices have to be the same length!");
-    }
-
-    var sum = 0;
-    for (var i = 0; i < m1.length; i++) {
-      sum += m1[i] * m2[i];
-    }
-
-    return sum;
-  }
-
-  function magicFormula(x, coeffs) {
-    var b = coeffs[0];
-    var c = coeffs[1];
-    var d = coeffs[2];
-    var e = coeffs[3];
-    return d * Math.sin(c * Math.atan(b * x - e * (b * x - Math.atan(b * x))));
-  }
-
-  function findPeak(f, maxX = 10, stepsize = 0.001) {
-    for (var x = 0; x < maxX; x += stepsize) {
-      var fx = f(x);
-      if (fx > f(x - stepsize) && fx > f(x + stepsize)) {
-        return x;
-      }
-    }
-
-    throw new Error("No peak found!");
+  function glColorToRGB(color) {
+    var v = Vector.normalize(Vector.fromArray(color))
+    return `rgb(${v.x * 255}, ${v.y * 255}, ${v.z * 255})`;
   }
 }
 
-function animateLoading(element, text) {
-  var dots = 0;
-  return setInterval(() => {
-    dots++;
-    dots = dots % 4;
-    element.innerText = text + ".".repeat(dots);
-  }, 500);
+function CaptureZone(position = Vector.zero(), zoneInstance) {
+  var teamHolding = 0;
+  var teamHoldingTimer = 0;
+  var teamColors = [
+    [50, 50, 50],
+    [10, 10, 50],
+    [50, 20, 2]
+  ];
+  
+  this.captureSpeed = 1 / 4;
+  this.timer = 0;
+  this.radius = 5;
+
+  this.setup = async function() {
+    if (zoneInstance) {
+      this.gameObject = scene.add(zoneInstance.copy());
+    }
+    else {
+      this.gameObject = scene.add(await renderer.loadGLTF("./assets/models/captureZone.glb"));
+      this.gameObject.children[0].castShadows = false;
+
+      var zoneProgram = await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/captureZone");
+      var mat = this.gameObject.children[0].meshRenderer.materials[0] = new renderer.Material(zoneProgram);
+      mat.setUniform("color", [5, 5, 5]);
+      mat.doubleSided = true;
+      mat.opaque = false;
+
+      var lightObject = this.gameObject.addChild(new GameObject("Light"));
+      lightObject.transform.position = new Vector(0, 2, 0);
+      var light = lightObject.addComponent(new Light());
+      light.color = [50, 50, 50];
+    }
+
+    this.gameObject.transform.position = position;
+    this.setTeam(0);
+  }
+
+  this.update = function(dt) {
+    var playerTeam = player.team ?? 1;
+
+    if (Vector.distanceSqr(player.position, this.gameObject.transform.position) < this.radius * this.radius) {
+      if (this.noTeamHolding()) {
+        if (teamHoldingTimer == playerTeam) {
+          this.timer += this.captureSpeed * dt;
+          if (this.timer >= 1) {
+            this.setTeam(playerTeam);
+          }
+        }
+        else {
+          this.timer -= this.captureSpeed * dt;
+          if (this.timer <= 0) {
+            teamHoldingTimer = playerTeam;
+            this.setTeam(0);
+          }
+        }
+      }
+      else {
+        if (teamHolding != playerTeam) {
+          this.timer -= this.captureSpeed * dt;
+          if (this.timer <= 0) {
+            teamHoldingTimer = playerTeam;
+            this.setTeam(0);
+          }
+        }
+      }
+
+      player.closestZone = this;
+    }
+
+    this.timer = clamp(this.timer, 0, 1);
+  }
+
+  this.noTeamHolding = function() {
+    return teamHolding === 0;
+  }
+
+  this.setTeam = function(index) {
+    teamHolding = index;
+
+    if (!this.noTeamHolding()) {
+      this.timer = 1;
+    }
+
+    var color = teamColors[teamHolding];
+
+    var mat = this.gameObject.children[0].meshRenderer.materials[0];
+    mat.setUniform("color", getRingColor(color));
+
+    var l = this.gameObject.getChild("Light", true) || this.gameObject.getChild("Light (Copy)", true);
+    l.getComponents()[0].color = color;
+
+    scene.updateLights();
+  }
+
+  this.getTeam = function() {
+    return teamHolding;
+  }
+
+  this.getColor = function() {
+    return teamColors[teamHoldingTimer];
+  }
+
+  function getRingColor(color) {
+    return [
+      color[0] / 10,
+      color[1] / 10,
+      color[2] / 10
+    ];
+  }
 }
 
 function showKillAlert(player, special = "") {
@@ -1818,5 +1559,54 @@ function SetupEvents() {
         }, 200);
       }
     }
+  }
+}
+
+// bruh performance intensive
+// bruh add to renderer class
+function GLDebugger() {
+  this.index = 0;
+  this.cubes = [];
+  for (var i = 0; i < 50; i++) {
+    var c = this.cubes[i] = scene.add(renderer.CreateShape("cube"));
+    c.transform.position.y = -100;
+    c.castShadows = false;
+
+    var m = FindMaterials("", c)[0];
+    m.setUniform("albedo", [0, 0, 0, 1]);
+    m.setUniform("emissiveFactor", [Math.random(), Math.random(), Math.random()]);
+  }
+
+  this.clear = function() {
+    this.index = 0;
+    for (var cube of this.cubes) {
+      cube.transform.position.y = -100;
+    }
+  }
+
+  this.Vector = function(p, normal, size = 1, color) {
+    var c = this.cubes[this.index];
+    c.transform.matrix = Matrix.lookAt(Vector.add(p, Vector.multiply(normal, 0.5 * size)), Vector.add(p, normal), new Vector(0.1, 0.9, 0));
+    c.transform.scale = new Vector(0.01, 0.01, 0.5 * size);
+
+    if (color) {
+      FindMaterials("", c)[0].setUniform("emissiveFactor", color);
+    }
+
+    this.index++;
+    this.index = this.index % this.cubes.length;
+  }
+
+  this.Point = function(p, size = 0.2, color) {
+    var c = this.cubes[this.index];
+    c.transform.position = p;
+    c.transform.scale = Vector.fill(size);
+
+    if (color) {
+      FindMaterials("", c)[0].setUniform("emissiveFactor", color);
+    }
+
+    this.index++;
+    this.index = this.index % this.cubes.length;
   }
 }

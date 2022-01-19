@@ -322,6 +322,9 @@ function Renderer() {
     if (!settings.disableLitInstanced)
       this.litInstanced = litInstanced = await loadLitInstancedProgram(this.path);
 
+    if (!settings.disableParticleProgram)
+      this.particleProgram = await loadParticleProgram(this.path);
+
     if (!settings.disableUnlitInstanced)
       this.unlitInstanced = await loadUnlitInstancedProgram(this.path);
 
@@ -1073,6 +1076,14 @@ function Renderer() {
     return renderer.createProgram(vertexSource, fragmentSource);
   }
 
+  async function loadParticleProgram(path) {
+    console.log("Particle - Unlit instanced");
+    var vertexSource = await renderer.loadTextFile(path + `assets/shaders/built-in/webgl${renderer.version}/particleSystem/vertexInstanced.glsl`);
+    var fragmentSource = await renderer.loadTextFile(path + `assets/shaders/built-in/webgl${renderer.version}/particleSystem/fragment.glsl`);
+
+    return renderer.createProgram(vertexSource, fragmentSource);
+  }
+
   async function loadLitSkinnedProgram(path) {
     console.log("Lit skinned");
     return await renderer.createProgramFromFile(path + `assets/shaders/built-in/webgl${renderer.version}/lit/vertexSkinned.glsl`, path + `assets/shaders/built-in/webgl${renderer.version}/lit/fragment.glsl`);
@@ -1479,10 +1490,17 @@ function Renderer() {
     this.maxParticles = maxParticles;
 
     this.drawMode = gl.TRIANGLES;
-    this.material = CreateLitMaterial({albedoTexture: loadTexture("./assets/textures/snowParticle.png"), albedoColor: [2, 2, 2, 1]/*[40, 10, 5, 1]*/}, renderer.unlitInstanced);
+    this.material = CreateLitMaterial({
+      albedoTexture: loadTexture("./assets/textures/bulletTrail.png"),
+      albedoColor: [40, 10, 5, 1],
+    }, renderer.particleProgram);
+    // this.material = CreateLitMaterial({albedoTexture: loadTexture("./assets/textures/snowParticle.png"), albedoColor: [2, 2, 2, 1]/*[40, 10, 5, 1]*/}, renderer.unlitInstanced);
     this.meshData = md ?? getParticleMeshData();
 
-    this.particles = new Array(this.maxParticles).fill().map(() => new Particle(Vector.zero()));
+    this.particles = new Array(this.maxParticles);
+    for (var i = 0; i < this.particles.length; i++) {
+      this.particles[i] = new Particle(Vector.zero());
+    }
     var pool = [];
 
     this.matrixData = new Float32Array(this.maxParticles * 16);
@@ -1490,9 +1508,19 @@ function Renderer() {
       this.matrixData.set(this.particles[i].matrix, i * 16);
     }
 
+    this.colorData = new Float32Array(this.maxParticles * 4);
+    var d = new Float32Array(1, 0, 0, 1);
+    for (var i = 0; i < this.maxParticles * 4; i++) {
+      this.colorData[i] = 1;
+    }
+
     this.matrixBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.matrixBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, this.matrixData, gl.DYNAMIC_DRAW);
+
+    this.colorBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, this.colorData, gl.DYNAMIC_DRAW);
 
     var cameraPos;
 
@@ -1501,16 +1529,13 @@ function Renderer() {
     this.emitVelocity = () => Vector.zero();
 
     this.emit = function(amount = 1) {
-      var lastP;
       for (var i = 0; i < amount; i++) {
         if (pool.length > 0) {
           var p = pool.shift();
-          p.health = this.emitHealth;
           p.active = true;
-          p.position = system.emitPosition();
-          // p.velocity = system.emitVelocity();
-
-          p.velocity = new Vector((Math.random() - 0.5) * 2, (Math.random() - 0.5) * 4, 1.2);
+          p.health = p.maxHealth = this.emitHealth;
+          p.position = Vector.copy(system.emitPosition());
+          p.velocity = Vector.copy(system.emitVelocity());
         }
         else {
           break;
@@ -1524,31 +1549,44 @@ function Renderer() {
       }
 
       for (var i = 0; i < this.maxParticles; i++) {
-        this.matrixData.set(this.particles[i].getMatrix(), i * 16);
+        var p = this.particles[i];
+        this.matrixData.set(p.getMatrix(), i * 16);
+        this.colorData[i * 4 + 3] = p.getAlpha();
       }
 
       gl.bindBuffer(gl.ARRAY_BUFFER, this.matrixBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, this.matrixData, gl.DYNAMIC_DRAW);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, this.colorData, gl.DYNAMIC_DRAW);
     }
 
-    this.render = function(camera, baseMatrix, shadowPass = false) {
-      cameraPos = Matrix.getPosition(camera.cameraMatrix); // Bruh
+    this.render = function(camera, baseMatrix, shadowPass = false, opaquePass = true) {
+      if (!opaquePass) {
+        cameraPos = Matrix.getPosition(camera.cameraMatrix); // Bruh
 
-      useProgram(this.material.program);
-      this.meshData.bindBuffers(this.material.program);
+        useProgram(this.material.program);
+        this.meshData.bindBuffers(this.material.program);
 
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.matrixBuffer);
-      const matrixLoc = gl.getAttribLocation(this.material.program, 'modelMatrix'); //Bruh
-      for (var j = 0; j < 4; j++) {
-        const loc = matrixLoc + j;
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.matrixBuffer);
+        const matrixLoc = gl.getAttribLocation(this.material.program, 'modelMatrix'); //Bruh
+        for (var j = 0; j < 4; j++) {
+          const loc = matrixLoc + j;
+          gl.enableVertexAttribArray(loc);
+          gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 4 * 16, j * 16);
+          vertexAttribDivisor(loc, 1);
+        }
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
+        const loc = gl.getAttribLocation(this.material.program, 'color'); //Bruh
         gl.enableVertexAttribArray(loc);
-        gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 4 * 16, j * 16);
+        gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 0, 0);
         vertexAttribDivisor(loc, 1);
+
+        this.material.bindUniforms(camera);
+
+        drawElementsInstanced(this.drawMode, this.meshData.indices.length, this.meshData.indexType, 0, this.maxParticles);
       }
-
-      this.material.bindUniforms(camera);
-
-      drawElementsInstanced(this.drawMode, this.meshData.indices.length, this.meshData.indexType, 0, this.maxParticles);
     }
 
     function Particle(position) {
@@ -1556,10 +1594,15 @@ function Renderer() {
       this.matrix = Matrix.translate(this.position);
       this.velocity = Vector.zero();
       // this.size = Vector.multiply(new Vector(0.5, 2, 0.5), Math.random() * 0.7 + 0.3);
-      this.size = new Vector(0.3, 0.15 * (Math.random() * 0.4 + 0.6), 0.2);
+      this.size = new Vector(0.6 * (Math.random() * 0.8 + 0.2), 0.15 * (Math.random() * 0.4 + 0.6), 1);
       this.health = 0.5;
+      this.maxHealth = 0.5;
 
       this.active = true;
+      
+      this.getAlpha = function() {
+        return clamp(Math.exp(-3 * (1 - this.health / this.maxHealth)) - 0.1, 0, 1);
+      }
 
       this.getMatrix = function() {
         if (cameraPos) {
@@ -2185,6 +2228,9 @@ function Renderer() {
 
     this.name = "No name";
     this.doubleSided = false;
+    this.doubleSidedShadows = true;
+    this.opaque = true;
+
     this.uniforms = uniforms;
     this.textures = textures;
   
@@ -2193,14 +2239,18 @@ function Renderer() {
   
     this.copy = function() {
       // bruh not copy
-      return new Material(_program, this.uniforms, this.textures);
+      var m = new Material(_program, JSON.parse(JSON.stringify(this.uniforms)), this.textures);
+      m.doubleSided = this.doubleSided;
+      m.opaque = this.opaque;
+      return m;
     }
 
     this.isOpaque = function() {
       if (this.getUniform("opaque")) {
         return this.getUniform("opaque").arguments[0] != 0;
       }
-      return true;
+      
+      return this.opaque;
     }
 
     this.setFloat = function(name, value) {
@@ -2398,12 +2448,22 @@ function Renderer() {
       gl.uniformMatrix4fv(this.uniformLocations["modelMatrix"], false, matrix);
     }
 
-    this.setCulling = function() {
-      if (this.doubleSided) {
-        gl.disable(gl.CULL_FACE);
+    this.setCulling = function(shadowPass = false) {
+      if (shadowPass) {
+        if (this.doubleSidedShadows) {
+          gl.disable(gl.CULL_FACE);
+        }
+        else {
+          gl.enable(gl.CULL_FACE);
+        }
       }
       else {
-        gl.enable(gl.CULL_FACE);
+        if (this.doubleSided) {
+          gl.disable(gl.CULL_FACE);
+        }
+        else {
+          gl.enable(gl.CULL_FACE);
+        }
       }
     }
 
@@ -2530,7 +2590,7 @@ function Renderer() {
 
         this.skin.updateMatrixTexture();
   
-        mat.setCulling();
+        mat.setCulling(shadowPass);
         md.drawCall(this.drawMode);
       }
     }
@@ -2542,6 +2602,10 @@ function Renderer() {
     this.drawMode = def(options.drawMode, gl.TRIANGLES);
     this.meshData = meshData;
   
+    var matrixLocations = [];
+    for (var mat of this.materials) {
+      matrixLocations.push(gl.getAttribLocation(mat.program, 'modelMatrix'));
+    }
     const matrixBuffer = gl.createBuffer();
     this.matrices = [];
   
@@ -2556,12 +2620,14 @@ function Renderer() {
       return newMat;
     }
   
-    this.updateInstance = function(instance, newMatrix) {
-      Matrix.copy(instance, newMatrix);
+    this.updateInstance = function(instance, newMatrix, updateBuffer = true) {
+      Matrix.copy(newMatrix, instance);
       this.matrixData.set(instance, this.matrices.indexOf(instance) * 16);
   
-      gl.bindBuffer(gl.ARRAY_BUFFER, matrixBuffer);
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.matrixData);
+      if (updateBuffer) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, matrixBuffer);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.matrixData);
+      }
     }
   
     this.removeInstance = function(instance) {
@@ -2596,7 +2662,7 @@ function Renderer() {
           md.bindBuffers(mat.program);
   
           gl.bindBuffer(gl.ARRAY_BUFFER, matrixBuffer);
-          const matrixLoc = gl.getAttribLocation(mat.program, 'modelMatrix'); //Bruh
+          var matrixLoc = matrixLocations[i];
           for (var j = 0; j < 4; j++) {
             const loc = matrixLoc + j;
             gl.enableVertexAttribArray(loc);
@@ -2609,7 +2675,7 @@ function Renderer() {
           }
           mat.bindUniforms(camera);
   
-          mat.setCulling();
+          mat.setCulling(shadowPass);
           drawElementsInstanced(this.drawMode, md.indices.length, md.indexType, 0, this.matrices.length);
         }
       }
@@ -2645,7 +2711,7 @@ function Renderer() {
           renderer.shadowCascades.setUniforms(mat.program, mat.uniformLocations);
         }
   
-        mat.setCulling();
+        mat.setCulling(shadowPass);
         md.drawCall(this.drawMode);
       }
     }
@@ -3166,6 +3232,30 @@ function Renderer() {
           var gameObject = new GameObject(node.name, {matrix: mat, ...loadSettings.gameObjectOptions});
           gameObject.nodeIndex = nodeIndex;
           currentNodes[nodeIndex] = gameObject;
+
+          if (node.extensions && node.extensions.KHR_lights_punctual) {
+            var lightData = json.extensions.KHR_lights_punctual.lights[node.extensions.KHR_lights_punctual.light];
+            var intensity = lightData.intensity ?? 1;
+            var color = lightData.color ?? [1, 1, 1];
+            var type = lightData.type;
+            var typeLookup = {
+              point: 0,
+              spot: 1,
+              directional: 2
+            };
+
+            var light = gameObject.addComponent(new Light());
+            light.color = [
+              color[0] * intensity,
+              color[1] * intensity,
+              color[2] * intensity
+            ];
+            light.type = typeLookup[type];
+
+            if (lightData.spot && type == "spot") {
+              light.angle = lightData.spot.outerConeAngle;
+            }
+          }
         
           if (node.mesh != undefined) {
             var mesh = json.meshes[node.mesh];
@@ -3495,114 +3585,75 @@ function Renderer() {
             return out;
           }
 
+          function setTangentVector(tangents, i0, i1, i2) {
+            var v0 = getVertex(i0);
+            var v1 = getVertex(i1);
+            var v2 = getVertex(i2);
+
+            var uv0 = getUV(i0);
+            var uv1 = getUV(i1);
+            var uv2 = getUV(i2);
+            
+            var deltaPos1 = subtract(v1, v0);
+            var deltaPos2 = subtract(v2, v0);
+
+            var deltaUV1 = subtract(uv1, uv0);
+            var deltaUV2 = subtract(uv2, uv0);
+
+            var r = 1 / (deltaUV1[0] * deltaUV2[1] - deltaUV1[1] * deltaUV2[0]);
+
+            var tangent;
+            if (isNaN(r) || !isFinite(r)) {
+              failedTangents.push({tangent, deltaPos1, deltaPos2, deltaUV1, deltaUV2, v0, v1, v2, uv0, uv1, uv2, r});
+
+              var normal = getTriangleNormal([
+                Vector.fromArray(v0),
+                Vector.fromArray(v1),
+                Vector.fromArray(v2)
+              ]);
+              tangent = Vector.toArray(Vector.findOrthogonal(normal));
+            }
+            else {
+              tangent = [
+                (deltaPos1[0] * deltaUV2[1] - deltaPos2[0] * deltaUV1[1]) * r,
+                (deltaPos1[1] * deltaUV2[1] - deltaPos2[1] * deltaUV1[1]) * r,
+                (deltaPos1[2] * deltaUV2[1] - deltaPos2[2] * deltaUV1[1]) * r
+              ];
+            }
+
+            tangents[i0 * 3] = tangent[0];
+            tangents[i0 * 3 + 1] = tangent[1];
+            tangents[i0 * 3 + 2] = tangent[2];
+
+            tangents[i1 * 3] = tangent[0];
+            tangents[i1 * 3 + 1] = tangent[1];
+            tangents[i1 * 3 + 2] = tangent[2];
+
+            tangents[i2 * 3] = tangent[0];
+            tangents[i2 * 3 + 1] = tangent[1];
+            tangents[i2 * 3 + 2] = tangent[2];
+
+            return tangent;
+          }
+
+          var failedTangents = [];
           var tangents = new Float32Array(vertices.buffer.length);
 
           if (!indices) {
             for (var i = 0; i < vertices.buffer.length / 3; i += 3) {
-              var v0 = getVertex(i);
-              var v1 = getVertex(i + 1);
-              var v2 = getVertex(i + 2);
-
-              var uv0 = getUV(i);
-              var uv1 = getUV(i + 1);
-              var uv2 = getUV(i + 2);
-
-              var deltaPos1 = subtract(v1, v0);
-              var deltaPos2 = subtract(v2, v0);
-
-              var deltaUV1 = subtract(uv1, uv0);
-              var deltaUV2 = subtract(uv2, uv0);
-
-              var r = 1 / (deltaUV1[0] * deltaUV2[1] - deltaUV1[1] * deltaUV2[0]);
-
-              var tangent;
-              // var bitangent;
-              if (isNaN(r) || !isFinite(r)) {
-                console.log({tangent, deltaPos1, deltaPos2, deltaUV1, deltaUV2, v0, v1, v2, uv0, uv1, uv2, r});
-                // bruh
-                tangent = [0, 0, -1];
-                // bitangent = [0, 1, 0];
-              }
-              else {
-                tangent = [
-                  (deltaPos1[0] * deltaUV2[1] - deltaPos2[0] * deltaUV1[1]) * r,
-                  (deltaPos1[1] * deltaUV2[1] - deltaPos2[1] * deltaUV1[1]) * r,
-                  (deltaPos1[2] * deltaUV2[1] - deltaPos2[2] * deltaUV1[1]) * r
-                ];
-
-                // bitangent = [
-                //   (deltaPos2[0] * deltaUV1[0] - deltaPos1[0] * deltaUV2[0]) * r,
-                //   (deltaPos2[1] * deltaUV1[0] - deltaPos1[1] * deltaUV2[0]) * r,
-                //   (deltaPos2[2] * deltaUV1[0] - deltaPos1[2] * deltaUV2[0]) * r
-                // ];
-              }
-
-              // bruh
-              if (isNaN(tangent[0])) {
-                console.log({tangent, deltaPos1, deltaPos2, deltaUV1, deltaUV2, v0, v1, v2, uv0, uv1, uv2, r});
-              }
-
-              tangents[i * 3] = tangent[0];
-              tangents[i * 3 + 1] = tangent[1];
-              tangents[i * 3 + 2] = tangent[2];
-
-              tangents[(i + 1) * 3] = tangent[0];
-              tangents[(i + 1) * 3 + 1] = tangent[1];
-              tangents[(i + 1) * 3 + 2] = tangent[2];
-
-              tangents[(i + 2) * 3] = tangent[0];
-              tangents[(i + 2) * 3 + 1] = tangent[1];
-              tangents[(i + 2) * 3 + 2] = tangent[2];
+              setTangentVector(tangents, i, i + 1, i + 2);
             }
-            console.error("bruh2");
           }
           else {
             var ib = indices.buffer;
             for (var i = 0; i < ib.length; i += 3) {
-              var v0 = getVertex(ib[i]);
-              var v1 = getVertex(ib[i + 1]);
-              var v2 = getVertex(ib[i + 2]);
-
-              var uv0 = getUV(ib[i]);
-              var uv1 = getUV(ib[i + 1]);
-              var uv2 = getUV(ib[i + 2]);
-
-              var deltaPos1 = subtract(v1, v0);
-              var deltaPos2 = subtract(v2, v0);
-
-              var deltaUV1 = subtract(uv1, uv0);
-              var deltaUV2 = subtract(uv2, uv0);
-
-              var r = 1 / (deltaUV1[0] * deltaUV2[1] - deltaUV1[1] * deltaUV2[0]);
-
-              var tangent;
-              if (isNaN(r) || !isFinite(r)) {
-                console.log({tangent, deltaPos1, deltaPos2, deltaUV1, deltaUV2, v0, v1, v2, uv0, uv1, uv2, r});
-                // bruh
-                tangent = [1, 0, 0];
-              }
-              else {
-                tangent = [
-                  (deltaPos1[0] * deltaUV2[1] - deltaPos2[0] * deltaUV1[1]) * r,
-                  (deltaPos1[1] * deltaUV2[1] - deltaPos2[1] * deltaUV1[1]) * r,
-                  (deltaPos1[2] * deltaUV2[1] - deltaPos2[2] * deltaUV1[1]) * r
-                ];
-              }
-
-              tangents[ib[i] * 3] = tangent[0];
-              tangents[ib[i] * 3 + 1] = tangent[1];
-              tangents[ib[i] * 3 + 2] = tangent[2];
-
-              tangents[ib[i + 1] * 3] = tangent[0];
-              tangents[ib[i + 1] * 3 + 1] = tangent[1];
-              tangents[ib[i + 1] * 3 + 2] = tangent[2];
-
-              tangents[ib[i + 2] * 3] = tangent[0];
-              tangents[ib[i + 2] * 3 + 1] = tangent[1];
-              tangents[ib[i + 2] * 3 + 2] = tangent[2];
+              setTangentVector(tangents, ib[i], ib[i + 1], ib[i + 2]);
             }
           }
 
+          if (failedTangents.length > 0) {
+            console.warn(failedTangents.length + " tangents generated without UVs");
+          }
           return tangents;
         }
 
@@ -4246,8 +4297,11 @@ function GameObject(name = "Unnamed", options = {}) {
   // Bruh
   this.copy = function() {
     var newThis = new GameObject(this.name + " (Copy)");
+    newThis.layer = this.layer;
+    newThis.visible = this.visible;
+    newThis.castShadows = this.castShadows;
     newThis.transform.matrix = _this.transform.matrix;
-
+ 
     if (this.meshRenderer) {
       newThis.meshRenderer = this.meshRenderer.copy();
     }
@@ -4257,7 +4311,7 @@ function GameObject(name = "Unnamed", options = {}) {
     }
 
     for (var c of _components) {
-      newThis.addComponent(c.copy());
+      newThis.addComponent(c.copy(newThis));
     }
 
     for (var child of this.children) {
@@ -4751,8 +4805,8 @@ function Scene(name) {
         for (var light of lights) {
           allLights.push({
             type: light.type,
-            position: g.transform.position,
-            direction: g.transform.forward,
+            position: Matrix.getPosition(g.transform.worldMatrix),
+            direction: Matrix.getForward(g.transform.worldMatrix),
             angle: light.angle,
             color: light.color
           });
@@ -4812,6 +4866,14 @@ function Light() {
     retColor[2] *= intensity;
 
     return retColor;
+  }
+
+  this.copy = function() {
+    var l = new Light();
+    l.angle = this.angle;
+    l.color = Array.from(this.color);
+    l.type = this.type;
+    return l;
   }
 }
 

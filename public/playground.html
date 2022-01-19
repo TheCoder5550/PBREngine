@@ -75,11 +75,11 @@
         clearColor: [1, 0, 0, 1],
 
         version: 2,
-        disableLitInstanced: true,
-        disableUnlitInstanced: true,
-        disableLitSkinned: window.mobileCheck() ? false : true,
-        disableLitBillboard: true,
-        disableTrailLit: true,
+        // disableLitInstanced: true,
+        // disableUnlitInstanced: true,
+        // disableLitSkinned: window.mobileCheck() ? false : true,
+        // disableLitBillboard: true,
+        // disableTrailLit: true,
 
         shadowSizes: [4, 64],
         shadowBiases: [-0.0006, -0.0015]
@@ -90,14 +90,14 @@
 
       scene = new Scene();
       scene.environmentIntensity = 0.5;
-      scene.sunIntensity = Vector.fill(3);
+      scene.sunIntensity = Vector.fill(8);
       scene.smoothSkybox = true;
       // scene.skyboxVisible = false;
       renderer.add(scene);
-      await scene.loadEnvironment({
-        hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed", 
-        res: 512
-      });
+      // await scene.loadEnvironment({
+      //   hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed", 
+      //   res: 512
+      // });
       // var oldSkybox = scene.skyboxCubemap;
       // await scene.loadEnvironment("./assets/hdri/snowy_field_1k", 256);
 
@@ -129,24 +129,24 @@
         player.fixedUpdate(dt);
       }
 
-      var ball = await renderer.loadGLTF("./assets/models/primitives/texturedUVSphere.glb", { loadMaterials: true });
-      // FindMaterials("", ball)[0].setUniform("opaque", 0);
-      // FindMaterials("", ball)[0].setUniform("albedo", [1, 1, 1, 0.5]);
-      FindMaterials("", ball)[0].setUniform("roughness", 0.9);
+      // var ball = await renderer.loadGLTF("./assets/models/primitives/texturedUVSphere.glb", { loadMaterials: true });
+      // // FindMaterials("", ball)[0].setUniform("opaque", 0);
+      // // FindMaterials("", ball)[0].setUniform("albedo", [1, 1, 1, 0.5]);
+      // FindMaterials("", ball)[0].setUniform("roughness", 0.9);
 
-      for (var i = 0; i < 3; i++) {
-        for (var j = 0; j < 3; j++) {
-          for (var k = 0; k < 3; k++) {
-            var b = scene.add(ball.copy());
-            var rb = b.addComponent(new Rigidbody());
-            b.addComponent(new SphereCollider(1));
-            var m = (3 - 1) / 2;
-            rb.position.x = 10 + (i - m) * 2;
-            rb.position.y = 5 + (k - m) * 2;
-            rb.position.z = (j - m) * 2;
-          }
-        }
-      }
+      // for (var i = 0; i < 3; i++) {
+      //   for (var j = 0; j < 3; j++) {
+      //     for (var k = 0; k < 3; k++) {
+      //       var b = scene.add(ball.copy());
+      //       var rb = b.addComponent(new Rigidbody());
+      //       b.addComponent(new SphereCollider(1));
+      //       var m = (3 - 1) / 2;
+      //       rb.position.x = 10 + (i - m) * 2;
+      //       rb.position.y = 5 + (k - m) * 2;
+      //       rb.position.z = (j - m) * 2;
+      //     }
+      //   }
+      // }
 
       // var ball = scene.add(await renderer.loadGLTF("./assets/models/primitives/capsule.glb"));
       // FindMaterials("", ball)[0].setUniform("opaque", 0);
@@ -169,32 +169,35 @@
       // // rb.gravityScale = 0;
       // // rb.rotation = Quaternion.euler(Math.PI * 0.5, 0, 0);
 
-      var lightObject = scene.add(new GameObject("Light"));
-      lightObject.transform.position = new Vector(2, 1, 2);
-      var light = lightObject.addComponent(new Light());
-      light.color = light.kelvinToRgb(3000, 10);
+      scene.add(await renderer.loadGLTF("./assets/models/test/lightExport.glb"));
+      scene.updateLights();
 
-      var lightObject = scene.add(new GameObject("Light"));
-      lightObject.transform.position = new Vector(0, -2, 0);
-      var light = lightObject.addComponent(new Light());
-      light.color = light.kelvinToRgb(8000, 20);
+      // var lightObject = scene.add(new GameObject("Light"));
+      // lightObject.transform.position = new Vector(2, 1, 2);
+      // var light = lightObject.addComponent(new Light());
+      // light.color = light.kelvinToRgb(3000, 10);
 
-      var lightObject = scene.add(new GameObject("Light"));
-      lightObject.transform.position = new Vector(2, 1, -2);
-      var light = lightObject.addComponent(new Light());
-      light.color = [30, 1, 30];
+      // var lightObject = scene.add(new GameObject("Light"));
+      // lightObject.transform.position = new Vector(0, -2, 0);
+      // var light = lightObject.addComponent(new Light());
+      // light.color = light.kelvinToRgb(8000, 20);
 
-      var lightObject = scene.add(new GameObject("Light"));
-      lightObject.transform.position = new Vector(-2, 1, -2);
-      var light = lightObject.addComponent(new Light());
-      // light.type = 1;
-      light.color = [1, 20, 1];
+      // var lightObject = scene.add(new GameObject("Light"));
+      // lightObject.transform.position = new Vector(2, 1, -2);
+      // var light = lightObject.addComponent(new Light());
+      // light.color = [30, 1, 30];
 
-      var sun2 = scene.add(new GameObject("Light"));
-      sun2.transform.matrix = Matrix.lookAt(Vector.zero(), new Vector(0, -1, 0));
-      var light = sun2.addComponent(new Light());
-      light.type = 2;
-      light.color = [2, 2, 3];
+      // var lightObject = scene.add(new GameObject("Light"));
+      // lightObject.transform.position = new Vector(-2, 1, -2);
+      // var light = lightObject.addComponent(new Light());
+      // // light.type = 1;
+      // light.color = [1, 20, 1];
+
+      // var sun2 = scene.add(new GameObject("Light"));
+      // sun2.transform.matrix = Matrix.lookAt(Vector.zero(), new Vector(0, -1, 0));
+      // var light = sun2.addComponent(new Light());
+      // light.type = 2;
+      // light.color = [2, 2, 3];
 
       // scene.updateLights();
 

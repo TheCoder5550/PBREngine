@@ -108,8 +108,8 @@ async function setup() {
   // cube.transform.scale = Vector.fill(0.1);
 
   setLoadingStatus("Loading map");
-  // var map = scene.add(await renderer.loadGLTF("./map.glb"));
-  // map.transform.position = new Vector(0, -2.1, 0);
+  var map = scene.add(await renderer.loadGLTF("./map.glb"));
+  map.transform.position = new Vector(0, -2.1, 0);
 
   setLoadingStatus("Creating map collider");
   var mapCollider = scene.add(await renderer.loadGLTF("./mapCollider.glb"));

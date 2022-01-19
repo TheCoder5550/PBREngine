@@ -60,7 +60,7 @@ uniform samplerCube u_specularIBL;
 uniform sampler2D u_splitSum;
 
 // Shadows
-int shadowQuality = 0;
+int shadowQuality = 2;
 float shadowDarkness = 0.;
 // bruh
 vec2 shadowStepSize = 1. / vec2(1024);
@@ -117,7 +117,7 @@ void main() {
 
   vec4 currentAlbedo = useTexture ? sampleTexture(albedoTexture, vUV) : vec4(1);
   currentAlbedo *= albedo;
-  currentAlbedo *= vec4(vec3(1) - vColor, 1);
+  currentAlbedo.xyz *= vec3(1) - vColor;
 
   currentAlbedo += texture(unsued2D, vec2(0, 0)) * 0.;
   currentAlbedo += texture(unsued3D, vec3(0, 0, 0)) * 0.;
@@ -149,7 +149,7 @@ void main() {
   vec3 _tangentNormal = vec3(0, 0, 1);
   // bruh ? flickering
   if (useNormalMap) {
-    // _tangentNormal = sampleTexture(normalTexture, vUV).rgb * 2. - 1.;
+    _tangentNormal = sampleTexture(normalTexture, vUV).rgb * 2. - 1.;
 
     if (normalStrength != 0.) {
       _tangentNormal = setNormalStrength(_tangentNormal, normalStrength);
@@ -486,7 +486,14 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
   // vec3 N = normalize(mat3(modelMatrix) * vNormal);
   vec3 V = normalize(vec3(inverseViewMatrix * vec4(0, 0, 0, 1)) - vPosition);
 
-  vec3 N = normalize(vTBN * _tangentNormal);
+  vec3 N;
+  if (vTangent != vec3(0)) {
+    N = normalize(vTBN * _tangentNormal);
+  }
+  else {
+    N = normalize(mat3(modelMatrix) * vNormal);
+  }
+
   if (!gl_FrontFacing) {
     N *= -1.;
   }

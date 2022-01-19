@@ -312,7 +312,7 @@ function Octree(aabb, maxDepth = 7) {
     );
   }
 
-  this.render = function(topCall = true) {
+  this.render = function(scene, topCall = true) {
     if (this.children.length == 0) {
       var aabb = this.aabb;
       scene.root.getChild("AABB").meshRenderer.addInstance(Matrix.transform([
@@ -324,7 +324,7 @@ function Octree(aabb, maxDepth = 7) {
     }
     else {
       for (var i = 0; i < this.children.length; i++) {
-        this.children[i].render(false);
+        this.children[i].render(scene, false);
       }
     }
     
@@ -394,7 +394,7 @@ AABB.bounds = function(points) {
   return new AABB(min, max);
 }
 
-function PhysicsEngine(scene) {
+function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fill(200.33))) {
   this.scene = scene;
 
   var constraintsToSolve = [];
@@ -410,8 +410,7 @@ function PhysicsEngine(scene) {
 
   // bruh make dynamicly resize when adding mesh
   // var octree = new Octree(new AABB({x: -50, y: -20.5, z: -50}, {x: 50, y: 20, z: 50}));
-  // var octree = new Octree(new AABB(Vector.fill(-200), Vector.fill(200))); // Bruh offset by epsilon for plane at y=0
-  var octree = new Octree(new AABB(Vector.fill(-200.15), Vector.fill(200.33)));
+  var octree = new Octree(bounds, 5);
   this.octree = octree;
 
   this.Raycast = function(origin, direction) {
@@ -783,7 +782,7 @@ function PhysicsEngine(scene) {
                 pc.z
               );
 
-              var [ tangent, bitangent ] = formOrthogonalBasis(body.normal);
+              var [ tangent, bitangent ] = Vector.formOrthogonalBasis(body.normal);
 
               var pc = Vector.cross(Vector.subtract(body.p, body.body.position), tangent);
               tangentJacobian.push(
@@ -1134,21 +1133,6 @@ function PhysicsEngine(scene) {
     }
 
     return 1 / sum;
-  }
-
-  function findOrthogonal(v) {
-    if (Math.abs(v.x) >= 1 / Math.sqrt(3))
-      return Vector.normalize(new Vector(v.y, -v.x, 0));
-    else
-      return Vector.normalize(new Vector(0, v.z, -v.y));
-  }
-
-  function formOrthogonalBasis(v) {
-    var a = findOrthogonal(v);
-    return [
-      a,
-      Vector.cross(a, v)
-    ];
   }
 
   function getCombinedFriction(bodies) {

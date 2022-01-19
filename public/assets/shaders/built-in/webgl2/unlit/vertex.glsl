@@ -3,7 +3,7 @@
 in vec3 position;
 in vec3 normal;
 in vec3 tangent;
-in vec3 color;
+in vec4 color;
 in vec2 uv;
 
 uniform mat4 projectionMatrix;
@@ -12,7 +12,7 @@ uniform mat4 modelMatrix;
 
 out vec3 vNormal;
 out vec3 vTangent;
-out vec3 vColor;
+out vec4 vColor;
 out vec2 vUV;
 
 void main() {
