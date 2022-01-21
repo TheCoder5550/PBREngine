@@ -60,7 +60,7 @@ uniform samplerCube u_specularIBL;
 uniform sampler2D u_splitSum;
 
 // Shadows
-int shadowQuality = 2;
+int shadowQuality = 0;
 float shadowDarkness = 0.;
 // bruh
 vec2 shadowStepSize = 1. / vec2(1024);
@@ -75,10 +75,6 @@ const int levels = 2;
 in vec4 projectedTexcoords[levels];
 uniform float biases[levels];
 uniform sampler2D projectedTextures[levels];
-
-// Debug
-uniform sampler2D unsued2D;
-uniform samplerCube unsued3D;
 
 // No tiling
 vec4 hash4(vec2 p);
@@ -118,9 +114,6 @@ void main() {
   vec4 currentAlbedo = useTexture ? sampleTexture(albedoTexture, vUV) : vec4(1);
   currentAlbedo *= albedo;
   currentAlbedo.xyz *= vec3(1) - vColor;
-
-  currentAlbedo += texture(unsued2D, vec2(0, 0)) * 0.;
-  currentAlbedo += texture(unsued3D, vec3(0, 0, 0)) * 0.;
 
   if (doNoTiling) {
     currentAlbedo.rgb = mix(vec3(0.2), currentAlbedo.rgb, noise(vUV / 5.));

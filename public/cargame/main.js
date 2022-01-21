@@ -112,7 +112,7 @@ async function setup() {
   map.transform.position = new Vector(0, -2.1, 0);
 
   setLoadingStatus("Creating map collider");
-  var mapCollider = scene.add(await renderer.loadGLTF("./mapCollider.glb"));
+  var mapCollider = await renderer.loadGLTF("./mapCollider.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
   mapCollider.transform.position = new Vector(0, -2.1, 0);
   physicsEngine.addMeshToOctree(mapCollider);
 
@@ -1075,7 +1075,7 @@ function DebugLines() {
   var gl = renderer.gl;
 
   this.drawMode = gl.TRIANGLES;
-  this.material = renderer.CreateLitMaterial({albedoTexture: renderer.loadTexture("../assets/textures/snowParticle.png"), albedoColor: [2, 2, 2, 1]/*[40, 10, 5, 1]*/}, renderer.unlitInstanced);
+  this.material = renderer.CreateLitMaterial({albedoTexture: renderer.loadTexture("../assets/textures/snowParticle.png"), albedoColor: [2, 2, 2, 1]/*[40, 10, 5, 1]*/}, renderer.unlitInstancedContainer);
   this.meshData = renderer.getParticleMeshData();
 
   this.matrixBuffer = gl.createBuffer();

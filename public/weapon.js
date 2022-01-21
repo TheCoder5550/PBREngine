@@ -1,5 +1,6 @@
 import Vector from "./engine/vector.js";
 import Matrix from "./engine/matrix.js";
+import { clamp } from "./engine/helper.js";
 
 var WEAPONENUMS = {
   FIREMODES: {SINGLE: 0, BURST: 1, AUTO: 2},
@@ -355,6 +356,8 @@ function Weapon(settings = {}) {
         ["rz", this.modelRecoilRotation.z * adsT],
         ["ry", this.modelRecoilRotation.y * adsT],
         ["rx", this.modelRecoilRotation.x * adsT],
+
+        ["translate", Vector.multiply({x: 0, y: -clamp(currentPlayerVelYOffset * 0.005, -0.08, 0.08), z: 0}, adsT)]
 
         // ["rx", this.swayRotation.x],
         // ["ry", this.swayRotation.y],

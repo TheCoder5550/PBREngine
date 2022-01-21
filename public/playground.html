@@ -94,10 +94,10 @@
       scene.smoothSkybox = true;
       // scene.skyboxVisible = false;
       renderer.add(scene);
-      // await scene.loadEnvironment({
-      //   hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed", 
-      //   res: 512
-      // });
+      await scene.loadEnvironment({
+        hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed", 
+        res: 512
+      });
       // var oldSkybox = scene.skyboxCubemap;
       // await scene.loadEnvironment("./assets/hdri/snowy_field_1k", 256);
 
@@ -116,17 +116,17 @@
       //   maxTextureSize: 1024
       // }));
 
-      var ca = scene.add(await renderer.loadGLTF("./cargame/coordinateAxis.glb"));
-      ca.transform.position.y = 3;
+      // var ca = scene.add(await renderer.loadGLTF("./cargame/coordinateAxis.glb"));
+      // ca.transform.position.y = 3;
 
-      var collider = scene.add(await renderer.loadGLTF("./assets/models/test/playerArea.glb"));
-      physicsEngine.addMeshToOctree(collider);
+      // var collider = scene.add(await renderer.loadGLTF("./assets/models/test/playerArea.glb"));
+      // physicsEngine.addMeshToOctree(collider);
 
-      window.player = new PlayerController();
-      await player.setup();
+      // window.player = new PlayerController();
+      // await player.setup();
 
       physicsEngine.fixedUpdate = (dt) => {
-        player.fixedUpdate(dt);
+        // player.fixedUpdate(dt);
       }
 
       // var ball = await renderer.loadGLTF("./assets/models/primitives/texturedUVSphere.glb", { loadMaterials: true });
@@ -169,8 +169,8 @@
       // // rb.gravityScale = 0;
       // // rb.rotation = Quaternion.euler(Math.PI * 0.5, 0, 0);
 
-      scene.add(await renderer.loadGLTF("./assets/models/test/lightExport.glb"));
-      scene.updateLights();
+      // scene.add(await renderer.loadGLTF("./assets/models/test/lightExport.glb"));
+      // scene.updateLights();
 
       // var lightObject = scene.add(new GameObject("Light"));
       // lightObject.transform.position = new Vector(2, 1, 2);
@@ -221,6 +221,8 @@
       // cube.transform.position = new Vector(0, 6, 0);
       // scene.add(cube);
 
+      scene.add(await renderer.loadGLTF("./assets/models/warehouse/model.glb"));
+
       window.renderer = renderer;
       window.scene = scene;
       window.camera = camera;
@@ -229,8 +231,10 @@
       window.Vector = Vector;
       window.Matrix = Matrix;
 
+      scene.updateLights();
+
       renderer.on("renderloop", function(frameTime, time) {
-        Debug?.clear?.();
+        // Debug?.clear?.();
 
         // if (renderer.getKey(38)) {
         //   rb.position.x = 0;
@@ -245,11 +249,11 @@
         // if (renderer.getKey(32)) {
           // physicsEngine.update(frameTime);
         // }
-        scene.update(frameTime);
-        physicsEngine.update(frameTime);
+        // scene.update(frameTime);
+        // physicsEngine.update(frameTime);
         renderer.render(camera.camera);
 
-        stats.update();
+        // stats.update();
       });
 
       function PlayerController() {
@@ -367,12 +371,12 @@
         }
       }
 
-      if (!mobileCheck()) {
-        window.Debug = new GLDebugger();
-      }
-      else {
-        window.Debug = undefined;
-      }
+      // if (!mobileCheck()) {
+      //   window.Debug = new GLDebugger();
+      // }
+      // else {
+      //   window.Debug = undefined;
+      // }
 
       function GLDebugger() {
         this.index = 0;

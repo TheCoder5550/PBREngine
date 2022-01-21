@@ -410,7 +410,7 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
 
   // bruh make dynamicly resize when adding mesh
   // var octree = new Octree(new AABB({x: -50, y: -20.5, z: -50}, {x: 50, y: 20, z: 50}));
-  var octree = new Octree(bounds, 5);
+  var octree = new Octree(bounds, 3);
   this.octree = octree;
 
   this.Raycast = function(origin, direction) {

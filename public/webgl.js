@@ -266,8 +266,8 @@ async function setup() {
 
   // Create programs / shaders
   loadingStatus.innerText = "Loading assets";
-  var litParallax = await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/litParallax");
-  var solidColorInstanceProgram = await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/solidColor");
+  var litParallax = new renderer.ProgramContainer(await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/litParallax"));
+  var solidColorInstanceProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/solidColor"));
   // var foliage = await createProgram("./assets/shaders/foliage");
   // var waterShader = await createProgram("./assets/shaders/water");
 
@@ -299,13 +299,13 @@ async function setup() {
 
   // Bullet holes
   bulletHoles = scene.add(new GameObject("HitObject", {
-    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({opaque: 0, albedoTexture: bulletHole}, renderer.litInstanced)], [new renderer.MeshData(await renderer.loadObj("./assets/models/plane.obj"))]),
+    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({opaque: 0, albedoTexture: bulletHole}, renderer.litInstancedContainer)], [new renderer.MeshData(await renderer.loadObj("./assets/models/plane.obj"))]),
     castShadows: false
   }));
 
   // Bullet trails
   scene.add(new GameObject("BulletTrail", {
-    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({opaque: 0, emissiveFactor: [40, 5, 5], emissiveTexture: bulletTrail, albedo: [0, 0, 0, 1], albedoTexture: bulletTrail}, renderer.litInstanced)], [new renderer.MeshData(await renderer.loadObj("./assets/models/bulletTrail.obj"))]),
+    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({opaque: 0, emissiveFactor: [40, 5, 5], emissiveTexture: bulletTrail, albedo: [0, 0, 0, 1], albedoTexture: bulletTrail}, renderer.litInstancedContainer)], [new renderer.MeshData(await renderer.loadObj("./assets/models/bulletTrail.obj"))]),
     castShadows: false
   }));
 
@@ -321,11 +321,11 @@ async function setup() {
   // var mapCollider = await renderer.loadGLTF("./assets/models/city/collider.glb");
   // var map = scene.add(await renderer.loadGLTF("./assets/models/test/playerArea.glb"));
   // var mapCollider = await renderer.loadGLTF("./assets/models/test/playerArea.glb");
-  var map = scene.add(await renderer.loadGLTF("./assets/models/warehouse/model.glb", { loadMaterials: false, maxTextureSize: 128 }));
+  var map = scene.add(await renderer.loadGLTF("./assets/models/warehouse/model.glb", { loadMaterials: true, maxTextureSize: 512 }));
   // map.getChild("Plane").meshRenderer.materials[0].setUniform("doNoTiling", 1);
 
   loadingStatus.innerText = "Generating collider";
-  var mapCollider = await renderer.loadGLTF("./assets/models/warehouse/collider.glb");
+  var mapCollider = await renderer.loadGLTF("./assets/models/warehouse/collider.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
 
   console.time("addMeshToOctree");
   physicsEngine.addMeshToOctree(mapCollider);
@@ -1193,9 +1193,9 @@ function CaptureZone(position = Vector.zero(), zoneInstance) {
   var teamHolding = 0;
   var teamHoldingTimer = 0;
   var teamColors = [
-    [50, 50, 50],
-    [10, 10, 50],
-    [50, 20, 2]
+    [50, 50, 50], // White
+    [10, 25, 50], // Blue
+    [50, 20, 2]   // Orange
   ];
   
   this.captureSpeed = 1 / 4;
@@ -1210,7 +1210,7 @@ function CaptureZone(position = Vector.zero(), zoneInstance) {
       this.gameObject = scene.add(await renderer.loadGLTF("./assets/models/captureZone.glb"));
       this.gameObject.children[0].castShadows = false;
 
-      var zoneProgram = await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/captureZone");
+      var zoneProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/captureZone"));
       var mat = this.gameObject.children[0].meshRenderer.materials[0] = new renderer.Material(zoneProgram);
       mat.setUniform("color", [5, 5, 5]);
       mat.doubleSided = true;
