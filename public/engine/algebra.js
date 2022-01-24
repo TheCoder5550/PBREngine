@@ -190,8 +190,16 @@ function Project(points, axis) {
   return [min, max];
 }
 
+function AABBTriangleToAABB(a, b, c, aabb) {
+  return Math.max(a.x, b.x, c.x) >= aabb.bl.x && Math.min(a.x, b.x, c.x) <= aabb.tr.x && 
+         Math.max(a.y, b.y, c.y) >= aabb.bl.y && Math.min(a.y, b.y, c.y) <= aabb.tr.y && 
+         Math.max(a.z, b.z, c.z) >= aabb.bl.z && Math.min(a.z, b.z, c.z) <= aabb.tr.z;
+}
+
 /* Bruh - Slow? Prolly */
 function AABBToTriangle(box, triangle) {
+  window.AABBToTriangleCalls++;
+
   // Triangle vertices
   for (var i = 0; i < 3; i++) {
     if (box.pointInside(triangle[i])) {
@@ -444,6 +452,7 @@ export {
   closestPointOnTriangle,
   rayToTriangle,
   rayToPlane,
+  AABBTriangleToAABB,
   AABBToTriangle,
   rayToAABB,
   getTriangleNormal,

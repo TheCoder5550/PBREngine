@@ -25,6 +25,7 @@ import {
   closestPointOnTriangle,
   rayToTriangle,
   rayToPlane,
+  AABBTriangleToAABB,
   AABBToTriangle,
   rayToAABB,
   getTriangleNormal,
@@ -240,42 +241,109 @@ function Octree(aabb, maxDepth = 7) {
   this.maxDepth = maxDepth;
   this.divided = false;
 
-  this.queryAABB = function(aabb, output = []) {
-    if (!AABBToAABB(this.aabb, aabb)) {
+  this.trianglesArray = null;
+
+  this.query = function(origin, direction) {
+    var indices = this._query((cAABB) => {
+      return rayToAABB(origin, direction, cAABB);
+    });
+    
+    if (!indices) {
+      return false;
+    }
+
+    var triangles = [];
+    for (var i = 0; i < indices.length; i++) {
+      triangles.push(this.getTriangleFromIndex(this.trianglesArray, indices[i]));
+    }
+
+    return triangles;
+  }
+
+  this.queryAABB = function(aabb) {
+    var indices = this._query((cAABB) => {
+      return AABBToAABB(cAABB, aabb);
+    });
+
+    if (!indices) {
+      return false;
+    }
+
+    var triangles = [];
+    for (var i = 0; i < indices.length; i++) {
+      triangles.push(this.getTriangleFromIndex(this.trianglesArray, indices[i]));
+    }
+
+    return triangles;
+  }
+
+  this._query = function(func, output = []) {
+    if (!func(this.aabb)) {
       return;
     }
 
     for (var i = 0; i < this.items.length; i++) {
-      if (!output.includes(this.items[i])) {
+      // if (!output.includes(this.items[i])) {
         output.push(this.items[i]);
-      }
+      // }
     }
 
     for (var i = 0; i < this.children.length; i++) {
-      this.children[i].queryAABB(aabb, output);
+      this.children[i]._query(func, output);
     }
 
     return output;
   }
 
-  this.query = function(origin, direction, output = []) {
-    if (!rayToAABB(origin, direction, this.aabb)) {
-      return;
-    }
+  // this.queryAABB = function(aabb, output = [], trianglesArray = this.trianglesArray) {
+  //   if (!AABBToAABB(this.aabb, aabb)) {
+  //     return;
+  //   }
 
-    for (var i = 0; i < this.items.length; i++) {
-      output.push(this.items[i]);
-    }
+  //   for (var i = 0; i < this.items.length; i++) {
+  //     output.push(this.getTriangleFromIndex(trianglesArray, this.items[i])); // bruh
 
-    for (var i = 0; i < this.children.length; i++) {
-      this.children[i].query(origin, direction, output);
-    }
+  //     if (!output.includes(this.items[i])) {
+  //       output.push(this.items[i]);
+  //     }
+  //   }
 
-    return output;
+  //   for (var i = 0; i < this.children.length; i++) {
+  //     this.children[i].queryAABB(aabb, output, trianglesArray);
+  //   }
+
+  //   return output;
+  // }
+
+  // this.query = function(origin, direction, output = [], trianglesArray = this.trianglesArray) {
+  //   if (!rayToAABB(origin, direction, this.aabb)) {
+  //     return;
+  //   }
+
+  //   for (var i = 0; i < this.items.length; i++) {
+  //     output.push(this.getTriangleFromIndex(trianglesArray, this.items[i]));
+  //     // output.push(this.items[i]);
+  //   }
+
+  //   for (var i = 0; i < this.children.length; i++) {
+  //     this.children[i].query(origin, direction, output, trianglesArray);
+  //   }
+
+  //   return output;
+  // }
+
+  this.addTriangles = function(arr) {
+    this.trianglesArray = arr;
+    for (var i = 0; i < this.trianglesArray.length; i += 9) {
+      var v1 = {x: this.trianglesArray[i + 0], y: this.trianglesArray[i + 1], z: this.trianglesArray[i + 2]};
+      var v2 = {x: this.trianglesArray[i + 3], y: this.trianglesArray[i + 4], z: this.trianglesArray[i + 5]};
+      var v3 = {x: this.trianglesArray[i + 6], y: this.trianglesArray[i + 7], z: this.trianglesArray[i + 8]};
+      this.addTriangle(i, [v1, v2, v3]);
+    }
   }
 
-  this.addTriangle = function(triangle, depth = 0) {
-    if (depth >= this.maxDepth || !AABBToTriangle(this.aabb, triangle)) {
+  this.addTriangle = function(index, triangle, depth = 0) {
+    if (depth >= this.maxDepth || !(AABBTriangleToAABB(triangle[0], triangle[1], triangle[2], this.aabb) && AABBToTriangle(this.aabb, triangle))) {
       return false;
     }
 
@@ -286,16 +354,24 @@ function Octree(aabb, maxDepth = 7) {
 
     var found = false;
     for (var i = 0; i < this.children.length; i++) {
-      if (this.children[i].addTriangle(triangle, depth + 1)) {
+      if (this.children[i].addTriangle(index, triangle, depth + 1)) {
         found = true;
       }
     }
   
     if (!found) {
-      this.items.push(triangle);
+      this.items.push(index);
+      // this.items.push(triangle);
     }
 
     return true;
+  }
+
+  this.getTriangleFromIndex = function(arr, i) {
+    var v1 = {x: arr[i + 0], y: arr[i + 1], z: arr[i + 2]};
+    var v2 = {x: arr[i + 3], y: arr[i + 4], z: arr[i + 5]};
+    var v3 = {x: arr[i + 6], y: arr[i + 7], z: arr[i + 8]};
+    return [v1, v2, v3];
   }
 
   this.subdivide = function() {
@@ -397,6 +473,8 @@ AABB.bounds = function(points) {
 function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fill(200.33))) {
   this.scene = scene;
 
+  // this.gravity = new Vector(0, -9.82, 0);
+
   var constraintsToSolve = [];
   this.constraintIterations = 20;//5;
   this.constraintBias = 0.4;
@@ -410,7 +488,7 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
 
   // bruh make dynamicly resize when adding mesh
   // var octree = new Octree(new AABB({x: -50, y: -20.5, z: -50}, {x: 50, y: 20, z: 50}));
-  var octree = new Octree(bounds, 3);
+  var octree = new Octree(bounds, 4);
   this.octree = octree;
 
   this.Raycast = function(origin, direction) {
@@ -475,22 +553,65 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
   }
 
   this.addMeshToOctree = function(gameObject) {
-    addMeshToOctreeRec(gameObject);
+    var nrTriangles = 0;
 
-    for (var i = 0; i < gameObject.children.length; i++) {
-      var child = gameObject.children[i];
-      addMeshToOctreeRec(child);
-    }
+    gameObject.traverse(o => {
+      if (o.meshRenderer) {
+        for (var j = 0; j < o.meshRenderer.meshData.length; j++) {
+          var md = o.meshRenderer.meshData[j].data;
+          nrTriangles += md.indices.bufferData.length / 3;
+        }
+      }
+    });
+
+    var trianglesArray = new Float32Array(nrTriangles * 3 * 3);
+    var triangleIndex = 0;
+
+    gameObject.traverse(o => {
+      if (o.meshRenderer) {
+        var worldMatrix = o.transform.worldMatrix;
+
+        for (var j = 0; j < o.meshRenderer.meshData.length; j++) {
+          var md = o.meshRenderer.meshData[j].data;
+
+          for (var k = 0; k < md.indices.bufferData.length; k += 3) {
+            for (var l = 0; l < 3; l++) {
+              var currentIndex = md.indices.bufferData[k + l] * 3;
+              var vec = Vector.fromArray(md.position.bufferData, currentIndex);
+              vec = {x: vec.x, y: vec.y, z: vec.z};
+              var transVec = Matrix.transformVector(worldMatrix, vec);
+
+              trianglesArray[triangleIndex * 9 + l * 3 + 0] = transVec.x;
+              trianglesArray[triangleIndex * 9 + l * 3 + 1] = transVec.y;
+              trianglesArray[triangleIndex * 9 + l * 3 + 2] = transVec.z;
+            }
+
+            triangleIndex++;
+          }
+        }
+      }
+    });
+
+    octree.addTriangles(trianglesArray);
+
+
+
+    // addMeshToOctreeRec(gameObject);
+
+    // for (var i = 0; i < gameObject.children.length; i++) {
+    //   var child = gameObject.children[i];
+    //   addMeshToOctreeRec(child);
+    // }
   }
 
   function addMeshToOctreeRec(gameObject) {
     if (gameObject.meshRenderer) {
       var worldMatrix = gameObject.transform.worldMatrix;
 
-      gameObject.meshColliders = [];
+      // gameObject.meshColliders = [];
       // gameObject.octrees = [];
       for (var j = 0; j < gameObject.meshRenderer.meshData.length; j++) {
-        gameObject.meshColliders.push(new MeshCollider(gameObject.meshRenderer.meshData[j].data, worldMatrix));
+        // gameObject.meshColliders.push(new MeshCollider(gameObject.meshRenderer.meshData[j].data, worldMatrix));
 
         var md = gameObject.meshRenderer.meshData[j].data;
         for (var k = 0; k < md.indices.bufferData.length; k += 3) {

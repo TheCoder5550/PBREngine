@@ -28,7 +28,8 @@ import {
   getTriangleNormal,
   sphereToTriangle,
   capsuleToTriangle,
-  ClosestPointOnLineSegment
+  ClosestPointOnLineSegment,
+  AABBTriangleToAABB
 } from "./engine/algebra.js";
 import { WEAPONENUMS, updateBulletTrails, Weapon } from "./weapon.js";
 import OrbitCamera from "./engine/orbitCamera.js";
@@ -214,14 +215,15 @@ var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 300
 var weaponCamera = new Camera({near: 0.005, far: 20, layer: 1, fov: 32});
 
 var defaultFov = 40;//45;//37;
-var targetFov = defaultFov;
+window.targetFov = defaultFov;
 var currentFov = defaultFov;
 
 var crosshair = new Crosshair();
 var hitmarker = new Hitmarker();
 window.player = null;
 
-var physicsEngine = new PhysicsEngine(scene, new AABB({x: -20, y: -1.33, z: -30}, {x: 20, y: 15, z: 30}));
+var physicsEngine = new PhysicsEngine(scene, new AABB({x: -100, y: -50.33, z: -150}, {x: 100, y: 50, z: 300}));
+// var physicsEngine = new PhysicsEngine(scene, new AABB({x: -20, y: -1.33, z: -30}, {x: 20, y: 15, z: 30}));
 // var colliders = [];
 
 var time = 0;
@@ -240,17 +242,20 @@ async function setup() {
   console.time("renderer.setup");
   await renderer.setup({
     version: 2,
-    shadowSizes: [4, 45]
+    shadowSizes: [4, 45],
+    renderScale: 0.75
   });
-  renderer.postprocessing.exposure = -1.5;
+  renderer.postprocessing.exposure = -0.5;
+  renderer.settings.enableShadows = false;
   renderer.add(scene);
   console.timeEnd("renderer.setup");
 
   loadingStatus.innerText = "Loading environment";
   console.time("loadEnvironment");
+  scene.smoothSkybox = true;
+  scene.environmentIntensity = 0.7;
+  scene.sunIntensity = Vector.fill(5);
   await scene.loadEnvironment({ hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed" });
-  scene.environmentIntensity = 0.3;
-  scene.sunIntensity = Vector.zero();
   console.timeEnd("loadEnvironment");
 
   orbitCamera = new OrbitCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 23});
@@ -259,10 +264,6 @@ async function setup() {
     mainCamera.setAspect(renderer.aspect);
     weaponCamera.setAspect(renderer.aspect);
   });
-
-  physicsEngine.fixedUpdate = function(dt) {
-    player.fixedUpdate(dt);
-  }
 
   // Create programs / shaders
   loadingStatus.innerText = "Loading assets";
@@ -321,14 +322,17 @@ async function setup() {
   // var mapCollider = await renderer.loadGLTF("./assets/models/city/collider.glb");
   // var map = scene.add(await renderer.loadGLTF("./assets/models/test/playerArea.glb"));
   // var mapCollider = await renderer.loadGLTF("./assets/models/test/playerArea.glb");
-  var map = scene.add(await renderer.loadGLTF("./assets/models/warehouse/model.glb", { loadMaterials: true, maxTextureSize: 512 }));
+  var map = await renderer.loadGLTF("./assets/models/city/model.glb", { loadMaterials: true, maxTextureSize: 512 });
+  scene.add(renderer.BatchGameObject(map));
   // map.getChild("Plane").meshRenderer.materials[0].setUniform("doNoTiling", 1);
 
   loadingStatus.innerText = "Generating collider";
-  var mapCollider = await renderer.loadGLTF("./assets/models/warehouse/collider.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
+  // var mapCollider = await renderer.loadGLTF("./assets/models/warehouse/collider.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
 
   console.time("addMeshToOctree");
-  physicsEngine.addMeshToOctree(mapCollider);
+  window.AABBToTriangleCalls = 0;
+  physicsEngine.addMeshToOctree(map);
+  console.log("Calls:", window.AABBToTriangleCalls);
   console.timeEnd("addMeshToOctree");
   // physicsEngine.octree.render(scene);
 
@@ -339,6 +343,10 @@ async function setup() {
 
   captureZoneManager.add(z1);
   captureZoneManager.add(z2);
+
+  physicsEngine.fixedUpdate = function(dt) {
+    player.fixedUpdate(dt);
+  }
 
   // var rock = (await CreateGameObjectFromGLTF("./assets/models/rock.glb"))[0];
   // rock.position = new Vector(4, 0, 0);
@@ -480,7 +488,7 @@ async function setup() {
     //   return {x: -0.9, y: (Math.random() - 0.5) * 0.3, z: 0};
     // }}),
     pistol: () => new Weapon({weaponObject: pistolGameObject, reloadTime: 1200, weaponModelOffset: new Vector(-0.15, 0.1, 0.25)}),
-    sks: () => new Weapon({weaponObject: sks, sniperScope: true, ADSFOV: 8.5, ADSMouseSensitivity: 0.2, roundsPerSecond: 1, magSize: 5, reloadTIme: 150, sequentialReloading: true, fireMode: WEAPONENUMS.FIREMODES.SINGLE, fireSoundBufferSize: 40, recoil: function() {
+    sks: () => new Weapon({weaponObject: sks, sniperScope: true, ADSFOV: 8.5, ADSMouseSensitivity: 0.2, roundsPerSecond: 1, magSize: 5, reloadTime: 350, sequentialReloading: true, fireMode: WEAPONENUMS.FIREMODES.SINGLE, fireSoundBufferSize: 40, recoil: function() {
       return {x: -3, y: (Math.random() - 0.5) * 0.1, z: 0};
     }}),
     // overpowered: () => new Weapon({weaponObject: pistolGameObject, roundsPerSecond: 1000, magSize: 5000, fireMode: WEAPONENUMS.FIREMODES.AUTO, recoil: function() {
@@ -547,7 +555,6 @@ async function setup() {
     window.mainCamera = mainCamera;
     window.bulletHoles = bulletHoles;
     window.sparks = sparks;
-    window.targetFov = targetFov;
     window.defaultFov = defaultFov;
 
     // window.Debug = new GLDebugger();
@@ -835,6 +842,7 @@ function Player(pos = Vector.zero()) {
   this.startPosition = pos;
   this.velocity = Vector.zero();
 
+  this.crouching = false;
   this.standHeight = 2;
   this.crouchHeight = 1.1;
   this.height = this.standHeight;
@@ -845,6 +853,8 @@ function Player(pos = Vector.zero()) {
   this.walkAcceleration = 150 * 0.3;
   this.runningAcceleration = 225 * 0.3;
   this.friction = 10;
+  this.coyoteTime = 0.11;
+  var groundCounter = 0;
 
   this.collisionIterations = 3;
   this.grounded = false;
@@ -960,7 +970,8 @@ function Player(pos = Vector.zero()) {
   }
 
   this.update = function(dt) {
-    this.height = renderer.getKey(67) ? this.crouchHeight : this.standHeight;
+    this.crouching = renderer.getKey(67);
+    this.height = this.crouching ? this.crouchHeight : this.standHeight;
 
     if (this.getCurrentWeapon()) {
       this.getCurrentWeapon().update(dt);
@@ -1018,17 +1029,41 @@ function Player(pos = Vector.zero()) {
     }
 
     // Jumping
-    if (renderer.getKey(32) && this.grounded) {
+    // if (renderer.getKey(32) && this.grounded) {
+    //   this.velocity.y = 6;
+    //   this.position.y += 0.2;
+    //   actionQueue.push({type: "jump", time: new Date()});
+    // }
+
+    if (this.grounded) {
+      groundCounter = this.coyoteTime;
+    }
+
+    if (renderer.getKey(32) && groundCounter > 0) {
       this.velocity.y = 6;
-      this.position.y += 0.2;
+      groundCounter = 0;
       actionQueue.push({type: "jump", time: new Date()});
     }
+
+    groundCounter -= dt;
 
     // Ground friction/drag
     if (this.grounded) {
       var projectedVelocity = Vector.projectOnPlane(this.velocity, this.fakeGroundNormal);//{x: this.velocity.x, y: 0, z: this.velocity.z};
       var speed = Vector.length(projectedVelocity);
       this.velocity = Vector.add(this.velocity, Vector.multiply(Vector.normalize(projectedVelocity), -speed * dt * this.friction));
+
+      // Sliding / turning
+      if (this.crouching) {
+        var v = Vector.rotateAround({
+          x: Vector.length(Vector.projectOnPlane(this.velocity, this.fakeGroundNormal)),
+          y: 0,
+          z: 0
+        }, this.fakeGroundNormal, -this.rotation.y + Math.PI / 2);
+        
+        this.velocity.x = v.x;
+        this.velocity.z = v.z;
+      }
     }
 
     this.position = Vector.add(this.position, Vector.multiply(this.velocity, dt));
@@ -1046,6 +1081,10 @@ function Player(pos = Vector.zero()) {
     for (var iter = 0; iter < this.collisionIterations; iter++) {
       if (q) {
         for (var k = 0; k < q.length; k++) {
+          if (!AABBTriangleToAABB(q[k][0], q[k][1], q[k][2], playerAABB)) {
+            continue;
+          }
+
           var col = capsuleToTriangle(Vector.add(this.position, radiusOffset), Vector.subtract(Vector.add(this.position, new Vector(0, this.height, 0)), radiusOffset), this.colliderRadius, q[k][0], q[k][1], q[k][2], true);
           
           if (col && !Vector.equal(col.normal, Vector.zero(), 0.001)) {
@@ -1091,7 +1130,7 @@ function Player(pos = Vector.zero()) {
       this.getCurrentWeapon().fixedUpdate(dt);
     }
 
-    currentFov += (window.targetFov - currentFov) / 3;
+    currentFov += (targetFov - currentFov) / 3;
   }
 }
 

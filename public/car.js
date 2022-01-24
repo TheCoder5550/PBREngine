@@ -1,416 +1,21 @@
-"use strict";
-
-import Renderer, { GameObject, Scene, Camera, AudioListener3D, FindMaterials } from "../engine/renderer.js";
-import { PhysicsEngine, Rigidbody, SphereCollider } from "../engine/physics.js";
-import Vector from "../engine/vector.js";
-import Matrix from "../engine/matrix.js";
-import Quaternion from "../engine/quaternion.js";
-import { clamp, lerp } from "../engine/helper.js";
-
-var loadingScreen = document.querySelector(".loadingScreen");
-var loadingStatus = loadingScreen.querySelector(".status");
-var loader = loadingScreen.querySelector(".loader");
-
-var carColorInput = document.querySelector("#carColor");
-var carEmissionInput = document.querySelector("#carEmission");
-var carMetallicInput = document.querySelector("#carMetallic");
-var carRoughnessInput = document.querySelector("#carRoughness");
-
-var perlin = typeof Perlin == "undefined" ? {noise: _ => 0} : new Perlin();
-var gamepadManager = new GamepadManager();
-
-var stats;
-var anyError = false;
-var rafID;
-
-var ui = new GameCanvas({publicMethods: false});
-ui.canvas.classList.add("ingameUICanvas");
-
-var renderer = new Renderer();
-var scene = new Scene("Main scene");
-
-var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 20});
-var cameraEulerAngles = Vector.zero();
-var cameraCarForward = Vector.zero();
-
-var physicsEngine = new PhysicsEngine(scene);
-var audioListener = new AudioListener3D();
-var keybindings = new Keybindings();
-
-var debugLines;
-
-var lastUpdate = performance.now();
-
-var player = {
-  position: Vector.zero(),
-  rotation: Vector.zero()
-};
-
-var car;
-var tiltAngle = 0;
-var touchDriveInput = 0;
-
-setup();
-async function setup() {
-  console.time("Setup");
-
-  renderer.on("resize", function() {
-    mainCamera.setAspect(renderer.aspect);
-  });
-
-  renderer.on("error", function() {
-    setError("Error!");
-  });
-
-  renderer.on("contextlost", function() {
-    setError("Context lost!");
-  })
-
-  setLoadingStatus("Setting up renderer");
-  await renderer.setup({
-    path: "../",
-    clearColor: [0, 0, 1, 1],
-    shadowSizes: [16, 64],
-    shadowBiases: [-0.0005, -0.001],
-
-    // Mobile
-    version: 2,
-    // renderScale: 0.1,
-    disableLitInstanced: true,
-    disableLitSkinned: true,
-    disableLitBillboard: true
-  });
-  renderer.canvas.classList.add("webglCanvas");
-  if (renderer.postprocessing) renderer.postprocessing.exposure = -1.5;
-  renderer.add(scene);
-
-  setLoadingStatus("Loading environment");
-  await scene.loadEnvironment({
-    hdrFolder: "../assets/hdri/wide_street_01_1k_precomputed",
-    res: 256
-  });
-
-  var solidColorInstanceProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/solidColor"));
-
-  // AABB visualizer
-  scene.add(new GameObject("AABB", {
-    meshRenderer: new renderer.MeshInstanceRenderer([new renderer.Material(solidColorInstanceProgram)], [new renderer.MeshData(renderer.getLineCubeData())], {drawMode: renderer.gl.LINES}),
-    castShadows: false
-  }));
-
-  // await createPBRGrid(10, 10);
-  // scene.add(await renderer.loadGLTF("./porsche.glb"));
-  // var helmet = scene.add(await renderer.loadGLTF("./assets/models/DamagedHelmetTangents.glb"));
-
-  // scene.add(await renderer.loadGLTF("./coordinateAxis.glb"));
-  // var cube = scene.add(renderer.CreateShape("cube"));
-  // cube.transform.position = new Vector(1.5, 0, 1.5);
-  // cube.transform.scale = Vector.fill(0.1);
-
-  setLoadingStatus("Loading map");
-  var map = await renderer.loadGLTF("./map2.glb");
-  map.transform.position = new Vector(0, -2.1, 0);
-  scene.add(renderer.BatchGameObject(map));
-
-  setLoadingStatus("Creating map collider");
-  var mapCollider = await renderer.loadGLTF("./mapCollider.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
-  mapCollider.transform.position = new Vector(0, -2.1, 0);
-  physicsEngine.addMeshToOctree(mapCollider);
-
-  // var grass = scene.add(await renderer.loadGLTF("./grass.glb"));
-  // grass.children[0].meshRenderer = grass.children[0].meshRenderer.getInstanceMeshRenderer();
-
-  // for (var i = 0; i < 1000; i++) {
-  //   var origin = new Vector((Math.random() - 0.5) * 50, 100, (Math.random() - 0.5) * 50 - 50);
-  //   var hit = physicsEngine.Raycast(origin, Vector.down());
-  //   if (hit) {
-  //     grass.children[0].meshRenderer.addInstance(Matrix.transform([
-  //       ["translate", hit.firstHit.point],
-  //       ["scale", Vector.fill(1 + Math.random() * 3)],
-  //     ]));
-  //   }
-  // }
-
-  // var porsche = scene.add(await renderer.loadGLTF("./porsche.glb"));
-  // // porsche.transform.rotation = Quaternion.euler(Math.PI / 2, 0, 0);
-  // porsche.transform.position = new Vector(2, 0, 0);
-  // Matrix.pprint(porsche.transform.matrix);
-  // window.porsche = porsche;
-
-  setLoadingStatus("Creating car");
-  car = new Car({
-    drivetrain: "AWD",
-    gearRatios: [2],
-    friction: 1,
-    forwardFricton: 2,
-    sidewaysFriction: 1.5
-  });
-  await car.setup("./porsche.glb");
-  FindMaterials("paint", car.gameObject)?.[0]?.setUniform("metallic", 0.2);
-  FindMaterials("window", car.gameObject)?.[0]?.setUniform("albedo", [0, 0, 0, 0.99]);
-
-  function updateCarColor() {
-    var c = hexToRgb(carColorInput.value);
-    var e = parseFloat(carEmissionInput.value);
-    FindMaterials("paint", car.gameObject)?.[0]?.setUniform("albedo", [c.r, c.g, c.b, 1]);
-    FindMaterials("paint", car.gameObject)?.[0]?.setUniform("emissiveFactor", [c.r * e, c.g * e, c.b * e]);
-  }
-
-  carColorInput.oninput = updateCarColor;
-  carEmissionInput.oninput = updateCarColor;
-
-  carMetallicInput.oninput = function() {
-    FindMaterials("paint", car.gameObject)?.[0]?.setUniform("metallic", parseFloat(carMetallicInput.value));
-  }
-
-  carRoughnessInput.oninput = function() {
-    FindMaterials("paint", car.gameObject)?.[0]?.setUniform("roughness", parseFloat(carRoughnessInput.value));
-  }
-
-  physicsEngine.fixedUpdate = function(dt) {
-    car.fixedUpdate(dt);
-  }
-
-  // physicsEngine.octree.render();
-
-  debugLines = new DebugLines();
-
-  scene.root.traverse(function(gameObject) {
-    if (gameObject.meshRenderer && gameObject.meshRenderer.skin) {
-      gameObject.meshRenderer.skin.updateMatrixTexture();
-    }
-  });
-
-  SetupEvents();
-
-  renderer.disableCulling();
-
-  console.timeEnd("Setup");
-
-  if (!anyError) {
-    stats = new Stats();
-    document.body.appendChild(stats.dom);
-
-    loadingScreen.style.display = "none";
-    loop();
-  }
-
-  window.renderer = renderer;
-  window.scene = scene;
-  window.camera = mainCamera;
-  window.FindMaterials = FindMaterials;
-}
-
-function loop() {
-  var frameTime = getFrameTime();
-  debugLines.clear();
-
-  if (keybindings.getInputDown("resetGame")) {
-    car.rb.velocity = Vector.zero();
-    car.rb.angularVelocity = Vector.zero();
-    car.rb.rotation = Quaternion.identity();
-
-    car.rb.position = Vector.zero();
-    car.gameObject.transform.position = Vector.zero();
-  }
-
-  physicsEngine.update();
-  if (car) car.update(frameTime);
-  scene.update(physicsEngine.dt);
-
-  cameraControls(frameTime);
-
-  renderer.render(mainCamera);
-  // debugLines.render(mainCamera);
-  renderUI(frameTime);
-
-  stats.update();
-  rafID = requestAnimationFrame(loop);
-}
-
-function renderUI(dt) {
-  ui.clearScreen();
-  
-  if (car) {
-    car.renderUI();
-  }
-}
-
-function DrawGuage(t, min, max, x, y, size = 100) {
-  // ui.ring(x, y, size, "black", 2);
-
-  var steps = max / 1000;
-  var tickSize = 0.9;
-  var number = 0;
-  for (var i = 0; i <= 270; i += 270 / steps) {
-    var angle = (i + 135) * Math.PI / 180;
-    ui.line(x + Math.cos(angle) * size, y + Math.sin(angle) * size, x + Math.cos(angle) * (size * tickSize), y + Math.sin(angle) * (size * tickSize), "black", 2);
-    ui.text(number, x + Math.cos(angle) * (size * tickSize * 0.9), y + Math.sin(angle) * (size * tickSize * 0.9), size / 6, "black");
-
-    number++;
-  }
-
-  var tickSize = 0.95;
-  for (var i = 0; i <= 270; i += 270 / steps / 5) {
-    var angle = (i + 135) * Math.PI / 180;
-    ui.line(x + Math.cos(angle) * size, y + Math.sin(angle) * size, x + Math.cos(angle) * (size * tickSize), y + Math.sin(angle) * (size * tickSize), "black", 1);
-  }
-
-  var angle = (ui.mapValue(t, min, max, 0, 270) + 135) * Math.PI / 180;
-  ui.line(x, y, x + Math.cos(angle) * size * 0.95, y + Math.sin(angle) * size * 0.95, "red", 3);
-}
-
-function cameraControls(dt) {
-  // mainCamera.position = new Vector(-2.35, 1.12, -3.49);
-  // mainCamera.rotation = new Vector(-0.146 + Math.sin(physicsEngine.time * 0.7) * 0.02, -0.728 + Math.sin(physicsEngine.time * 0.5) * 0.02, 0);
-
-  if (car) {
-    if (car.cameraMode == 0) {
-      var followDistance = 5;
-      var followHeight = 0.35;
-      var followSpeed = 0.05;
-
-      var planeVelocity = Vector.projectOnPlane(car.rb.velocity, Vector.up());
-      var currentForward = Matrix.getForward(car.gameObject.transform.worldMatrix);//Vector.slerp(Matrix.getForward(car.gameObject.transform.worldMatrix), Vector.normalize(Vector.negate(planeVelocity)), clamp(Vector.lengthSqr(planeVelocity) / 5, 0, 1));
-      cameraCarForward = Vector.slerp(cameraCarForward, currentForward, followSpeed);
-
-      var finalCameraDir = null;
-
-      var origin = car.gameObject.transform.position;
-      var dirNorm = Vector.normalize(Vector.add(cameraCarForward, new Vector(0, followHeight, 0)));
-
-      var hit = physicsEngine.Raycast(origin, dirNorm);
-      if (hit && hit.firstHit && hit.firstHit.distance < followDistance) {
-        var d = hit.firstHit.distance;
-        // currentFollowDist = clamp(d - 0.2, 0.5, followDistance);
-        var h = Math.sqrt(followDistance * followDistance - d * d + (followHeight * d) ** 2) / d;
-
-        var newDir = Vector.normalize(Vector.add(cameraCarForward, new Vector(0, h, 0)));
-        hit = physicsEngine.Raycast(origin, newDir);
-        if (hit && hit.firstHit && hit.firstHit.distance < followDistance) {
-          finalCameraDir = Vector.multiply(newDir, hit.firstHit.distance - 0.5);
-        }
-        else {
-          finalCameraDir = Vector.multiply(newDir, followDistance);
-        }
-      }
-      else {
-        finalCameraDir = Vector.multiply(dirNorm, followDistance);
-      }
-
-      mainCamera.transform.matrix = Matrix.lookAt(Vector.add(origin, finalCameraDir), origin);
-      
-      Matrix.rotateX(mainCamera.transform.matrix, 0.15, mainCamera.transform.matrix);
-
-      // var euler = Quaternion.toEulerAngles(mainCamera.transform.rotation);
-      // euler[0] += 0.2;
-      // mainCamera.transform.rotation = Quaternion.euler(euler[0], euler[1], euler[2]);
-    }
-    else if (car.cameraMode == 1) {
-      var hoodCamera = car.gameObject.getChild("HoodCamera", true);
-      if (hoodCamera) {
-        mainCamera.transform.matrix = hoodCamera.transform.worldMatrix;
-      }
-    }
-  }
-  else {
-    var x = gamepadManager.getAxis("RSHorizontal");
-    var y = gamepadManager.getAxis("RSVertical");
-    x = (Math.abs(x) > 0.08 ? x : 0);
-    y = (Math.abs(y) > 0.08 ? y : 0);
-    cameraEulerAngles.x -= Math.abs(y) * y * 0.07;
-    cameraEulerAngles.y -= Math.abs(x) * x * 0.07;
-
-    flyCamera(renderer, mainCamera, cameraEulerAngles, dt);
-
-    mainCamera.transform.rotation = Quaternion.euler(cameraEulerAngles.x, cameraEulerAngles.y, cameraEulerAngles.z);
-  }
-}
-
-function Keybindings() {
-  var bindings = {
-    "resetGame": {
-      keyboard: "Escape",
-      controller: "Menu"
-    },
-
-    "drive": {
-      keyboard: "KeyW",
-      controller: "RT"
-    },
-    "brake": {
-      keyboard: "KeyS",
-      controller: "LT"
-    },
-    "ebrake": {
-      keyboard: "Space",
-      controller: "A"
-    },
-    "steer": {
-      keyboard: ["KeyA", "KeyD"],
-      controller: "LSHorizontal"
-    },
-    "gearDown": {
-      keyboard: "KeyQ",
-      controller: "X"
-    },
-    "gearUp": {
-      keyboard: "KeyE",
-      controller: "B"
-    },
-    "resetCar": {
-      keyboard: "KeyR",
-      controller: "Menu"
-    },
-    "cameraMode": {
-      keyboard: "KeyC",
-      controller: "RB"
-    }
-  }
-
-  this.getInput = function(name) {
-    if (bindings[name]) {
-      var keyboardValue = 0;
-      if (Array.isArray(bindings[name].keyboard)) {
-        var a = renderer.getKey(bindings[name].keyboard[0]) ? 1 : 0;
-        var b = renderer.getKey(bindings[name].keyboard[1]) ? 1 : 0;
-        keyboardValue = b - a;
-      }
-      else {
-        keyboardValue = renderer.getKey(bindings[name].keyboard) ? 1 : 0;
-      }
-
-      var controllerValue = gamepadManager.getButton(bindings[name].controller) ?? gamepadManager.getAxis(bindings[name].controller) ?? 0;
-
-      return Math.abs(keyboardValue) > Math.abs(controllerValue) ? keyboardValue : controllerValue;
-    }
-
-    throw new Error("Invalid keybinding name: " + name);
-  }
-
-  this.getInputDown = function(name) {
-    if (bindings[name]) {
-      var keyboardValue = 0;
-      if (Array.isArray(bindings[name].keyboard)) {
-        var a = renderer.getKeyDown(bindings[name].keyboard[0]) ? 1 : 0;
-        var b = renderer.getKeyDown(bindings[name].keyboard[1]) ? 1 : 0;
-        keyboardValue = b - a;
-      }
-      else {
-        keyboardValue = renderer.getKeyDown(bindings[name].keyboard) ? 1 : 0;
-      }
-
-      var controllerValue = gamepadManager.getButtonDown(bindings[name].controller) ?? gamepadManager.getAxis(bindings[name].controller) ?? 0;
-
-      return Math.abs(keyboardValue) > Math.abs(controllerValue) ? keyboardValue : controllerValue;
-    }
-
-    throw new Error("Invalid keybinding name: " + name);
-  }
-}
-
-function Car(settings = {}) {
+import Vector from "./engine/vector.js";
+import Matrix from "./engine/matrix.js";
+import Quaternion from "./engine/quaternion.js";
+import { FindMaterials } from "./engine/renderer.js";
+import { 
+  SphereCollider,
+  Rigidbody
+} from "./engine/physics.js";
+import {
+  clamp,
+  lerp
+} from "./engine/helper.js";
+
+function Car(scene, settings = {}) {
   var _this = this;
+  var renderer = scene.renderer;
+  var keybindings = new Keybindings();
+  var gamepadManager = new GamepadManager();
 
   var radPerSecToRPM = 30 / Math.PI;
 
@@ -562,7 +167,7 @@ function Car(settings = {}) {
     }
 
     if (keybindings.getInputDown("resetCar")) {
-      car.reset();
+      this.reset();
     }
 
     if (keybindings.getInputDown("gearDown")) {
@@ -573,7 +178,7 @@ function Car(settings = {}) {
     }
     this.currentGear = clamp(this.currentGear, 0, this.allGearRatios.length - 1);
 
-    driveInput = clamp(keybindings.getInput("drive") + touchDriveInput, 0, 1);
+    driveInput = clamp(keybindings.getInput("drive"), 0, 1);
     brakeInput = keybindings.getInput("brake");
     ebrakeInput += (keybindings.getInput("ebrake") - ebrakeInput) * 0.2;
 
@@ -606,7 +211,7 @@ function Car(settings = {}) {
     var slipAngle = -Math.atan2(sidewaysVelocity, Math.abs(forwardVelocity));
     if (isNaN(slipAngle) || !isFinite(slipAngle)) slipAngle = 0;
 
-    var userInput = clamp(-deadZone(keybindings.getInput("steer"), 0.1) + tiltAngle / 45, -1, 1) * Math.exp(-Math.abs(forwardVelocity) / 40);
+    var userInput = clamp(-deadZone(keybindings.getInput("steer"), 0.1), -1, 1) * Math.exp(-Math.abs(forwardVelocity) / 40);
     // steerInput += -Math.sign(steerInput - userInput) * Math.min(Math.abs(steerInput - userInput), 0.05);
     steerInput += (userInput - steerInput) * 0.08;
 
@@ -1069,139 +674,90 @@ function Car(settings = {}) {
 
     throw new Error("No peak found!");
   }
-}
 
-function DebugLines() {
-  var matrices = [];
-  var gl = renderer.gl;
-
-  this.drawMode = gl.TRIANGLES;
-  this.material = renderer.CreateLitMaterial({albedoTexture: renderer.loadTexture("../assets/textures/snowParticle.png"), albedoColor: [2, 2, 2, 1]/*[40, 10, 5, 1]*/}, renderer.unlitInstancedContainer);
-  this.meshData = renderer.getParticleMeshData();
-
-  this.matrixBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, this.matrixBuffer);
-  // gl.bufferData(gl.ARRAY_BUFFER, this.matrixData, gl.DYNAMIC_DRAW);
-
-  this.clear = function() {
-    matrices = [];
-  }
-
-  this.drawVector = function(origin, direction, len, color) {
-    matrices.push(Matrix.translate(origin));
-  }
-
-  this.render = function(camera) {
-    var matrixData = new Float32Array(matrices.length * 16);
-    for (var i = 0; i < matrices.length; i++) {
-      matrixData.set(matrices[i], i * 16);
+  function Keybindings() {
+    var bindings = {
+      "resetGame": {
+        keyboard: "Escape",
+        controller: "Menu"
+      },
+  
+      "drive": {
+        keyboard: "KeyW",
+        controller: "RT"
+      },
+      "brake": {
+        keyboard: "KeyS",
+        controller: "LT"
+      },
+      "ebrake": {
+        keyboard: "Space",
+        controller: "A"
+      },
+      "steer": {
+        keyboard: ["KeyA", "KeyD"],
+        controller: "LSHorizontal"
+      },
+      "gearDown": {
+        keyboard: "KeyQ",
+        controller: "X"
+      },
+      "gearUp": {
+        keyboard: "KeyE",
+        controller: "B"
+      },
+      "resetCar": {
+        keyboard: "KeyR",
+        controller: "Menu"
+      },
+      "cameraMode": {
+        keyboard: "KeyC",
+        controller: "RB"
+      }
     }
-
-    gl.useProgram(this.material.program);
-    this.meshData.bindBuffers(this.material.program);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.matrixBuffer);
-    const matrixLoc = gl.getAttribLocation(this.material.program, 'modelMatrix'); //Bruh
-    for (var j = 0; j < 4; j++) {
-      const loc = matrixLoc + j;
-      gl.enableVertexAttribArray(loc);
-      gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 4 * 16, j * 16);
-      gl.vertexAttribDivisor(loc, 1);
+  
+    this.getInput = function(name) {
+      if (bindings[name]) {
+        var keyboardValue = 0;
+        if (Array.isArray(bindings[name].keyboard)) {
+          var a = renderer.getKey(bindings[name].keyboard[0]) ? 1 : 0;
+          var b = renderer.getKey(bindings[name].keyboard[1]) ? 1 : 0;
+          keyboardValue = b - a;
+        }
+        else {
+          keyboardValue = renderer.getKey(bindings[name].keyboard) ? 1 : 0;
+        }
+  
+        var controllerValue = gamepadManager.getButton(bindings[name].controller) ?? gamepadManager.getAxis(bindings[name].controller) ?? 0;
+  
+        return Math.abs(keyboardValue) > Math.abs(controllerValue) ? keyboardValue : controllerValue;
+      }
+  
+      throw new Error("Invalid keybinding name: " + name);
     }
-
-    this.material.bindUniforms(camera);
-
-    gl.drawElementsInstanced(this.drawMode, this.meshData.indices.length, this.meshData.indexType, 0, matrices.length);
-  }
-}
-
-function SetupEvents() {
-  renderer.disableContextMenu();
-  renderer.disablePinchToZoom();
-
-  renderer.on("mousemove", function(e) {
-    if (renderer.isPointerLocked()) {
-      cameraEulerAngles.x -= e.movementY * 0.002;
-      cameraEulerAngles.y -= e.movementX * 0.002;
-    }
-  });
-
-  function touchEvent(e) {
-    touchDriveInput = 0;
-    for (var touch of e.touches) {
-      console.log(touch);
-      // if (touch.clientX > renderer.canvas.width / 2) {
-        touchDriveInput = 1;
-      // }
-    }
-
-    e.preventDefault();
-  }
-
-  renderer.canvas.addEventListener("touchstart", touchEvent);
-  renderer.canvas.addEventListener("touchmove", touchEvent);
-
-  renderer.canvas.addEventListener("touchend", function(e) {
-    if (e.touches.length == 0) {
-      touchDriveInput = 0;
-    }
-  });
-
-  window.addEventListener("click", function() {
-    requestDeviceOrientation();
-  });
-
-  function requestDeviceOrientation() {
-    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-      // Handle iOS 13+ devices.
-      DeviceOrientationEvent.requestPermission()
-        .then((state) => {
-          if (state === 'granted') {
-            window.addEventListener('deviceorientation', handleOrientation);
-          } else {
-            console.error('Request to access the orientation was rejected');
-          }
-        })
-        .catch(console.error);
-    } else {
-      // Handle regular non iOS 13+ devices.
-      window.addEventListener('deviceorientation', handleOrientation);
+  
+    this.getInputDown = function(name) {
+      if (bindings[name]) {
+        var keyboardValue = 0;
+        if (Array.isArray(bindings[name].keyboard)) {
+          var a = renderer.getKeyDown(bindings[name].keyboard[0]) ? 1 : 0;
+          var b = renderer.getKeyDown(bindings[name].keyboard[1]) ? 1 : 0;
+          keyboardValue = b - a;
+        }
+        else {
+          keyboardValue = renderer.getKeyDown(bindings[name].keyboard) ? 1 : 0;
+        }
+  
+        var controllerValue = gamepadManager.getButtonDown(bindings[name].controller) ?? gamepadManager.getAxis(bindings[name].controller) ?? 0;
+  
+        return Math.abs(keyboardValue) > Math.abs(controllerValue) ? keyboardValue : controllerValue;
+      }
+  
+      throw new Error("Invalid keybinding name: " + name);
     }
   }
-
-  function handleOrientation(e) {
-    tiltAngle = e.beta;
-    renderer.canvas.style.transform = "rotate(" + (-e.beta) + "deg)";
-  }
 }
 
-function getFrameTime() {
-  var now = performance.now();
-  var frameTime = (now - lastUpdate) / 1000;
-  lastUpdate = now;
-
-  return frameTime;
-}
-
-function hexToRgb(hex) {
-  var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result ? {
-    r: parseInt(result[1], 16) / 255,
-    g: parseInt(result[2], 16) / 255,
-    b: parseInt(result[3], 16) / 255
-  } : null;
-}
-
-function setLoadingStatus(str) {
-  if (!anyError) {
-    loadingStatus.innerText = str;
-  }
-}
-
-function setError(str) {
-  setLoadingStatus(str);
-  anyError = true;
-  loader.style.display = "none";
-  loadingScreen.style.display = "flex";
-  cancelAnimationFrame(rafID);
-}
+export {
+  Car
+};

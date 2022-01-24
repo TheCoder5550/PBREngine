@@ -121,6 +121,11 @@ function Weapon(settings = {}) {
   }
 
   this.fire = function() {
+    if (this.isReloading && this.sequentialReloading) {
+      this.cancelReload();
+      return false;
+    }
+
     if (!this.isFiring && !this.isReloading) {
       this.isFiring = true;
 
