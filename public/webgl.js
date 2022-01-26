@@ -212,7 +212,7 @@ var scene = new Scene("Main scene");
 
 var orbitCamera;
 var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 23});
-var weaponCamera = new Camera({near: 0.005, far: 20, layer: 1, fov: 32});
+var weaponCamera = new Camera({near: 0.005, far: 20, layer: 1, fov: 23});
 
 var defaultFov = 40;//45;//37;
 window.targetFov = defaultFov;
@@ -243,7 +243,7 @@ async function setup() {
   await renderer.setup({
     version: 2,
     shadowSizes: [4, 45],
-    renderScale: 0.75
+    renderScale: 0.9
   });
   renderer.postprocessing.exposure = -0.5;
   renderer.settings.enableShadows = false;
@@ -252,7 +252,7 @@ async function setup() {
 
   loadingStatus.innerText = "Loading environment";
   console.time("loadEnvironment");
-  scene.smoothSkybox = true;
+  // scene.smoothSkybox = true;
   scene.environmentIntensity = 0.7;
   scene.sunIntensity = Vector.fill(5);
   await scene.loadEnvironment({ hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed" });
@@ -260,13 +260,16 @@ async function setup() {
 
   orbitCamera = new OrbitCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 23});
 
-  renderer.on("resize", function() {
+  var resizeEvent = function() {
     mainCamera.setAspect(renderer.aspect);
     weaponCamera.setAspect(renderer.aspect);
-  });
+  }
+  renderer.on("resize", resizeEvent);
+  resizeEvent();
 
   // Create programs / shaders
   loadingStatus.innerText = "Loading assets";
+  var reddotProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/reddot"));
   var litParallax = new renderer.ProgramContainer(await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/litParallax"));
   var solidColorInstanceProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/solidColor"));
   // var foliage = await createProgram("./assets/shaders/foliage");
@@ -274,10 +277,15 @@ async function setup() {
 
   var bulletHole = renderer.loadTexture("./assets/textures/bullethole.png");
   var bulletTrail = renderer.loadTexture("./assets/textures/bulletTrail.png");
+  var reddotTexture = renderer.loadTexture("./assets/textures/reddot.png", { TEXTURE_WRAP_S: renderer.gl.CLAMP_TO_EDGE, TEXTURE_WRAP_T: renderer.gl.CLAMP_TO_EDGE });
   // var leaves = loadTexture("./assets/textures/leaves.png");
   // var waterNormal = loadTexture("./assets/textures/water-normal.png");
 
   // Materials
+  var reddotMaterial = new renderer.Material(reddotProgram);
+  reddotMaterial.setUniform("albedoTexture", reddotTexture);
+  reddotMaterial.setUniform("textureScale", 0.2);
+
   // var foliageMat = new Material(foliage, [
   //   {type: "1i", name: "useTexture", arguments: [1]},
   //   {type: "1i", name: "albedoTexture", arguments: [0]},
@@ -322,16 +330,16 @@ async function setup() {
   // var mapCollider = await renderer.loadGLTF("./assets/models/city/collider.glb");
   // var map = scene.add(await renderer.loadGLTF("./assets/models/test/playerArea.glb"));
   // var mapCollider = await renderer.loadGLTF("./assets/models/test/playerArea.glb");
-  var map = await renderer.loadGLTF("./assets/models/city/model.glb", { loadMaterials: true, maxTextureSize: 512 });
+  var map = await renderer.loadGLTF("./assets/models/warehouse/model.glb", { loadMaterials: true, maxTextureSize: 1024 });
   scene.add(renderer.BatchGameObject(map));
   // map.getChild("Plane").meshRenderer.materials[0].setUniform("doNoTiling", 1);
 
   loadingStatus.innerText = "Generating collider";
-  // var mapCollider = await renderer.loadGLTF("./assets/models/warehouse/collider.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
+  var mapCollider = await renderer.loadGLTF("./assets/models/warehouse/collider.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
 
   console.time("addMeshToOctree");
   window.AABBToTriangleCalls = 0;
-  physicsEngine.addMeshToOctree(map);
+  physicsEngine.addMeshToOctree(mapCollider);
   console.log("Calls:", window.AABBToTriangleCalls);
   console.timeEnd("addMeshToOctree");
   // physicsEngine.octree.render(scene);
@@ -438,10 +446,32 @@ async function setup() {
   /*
     Weapons models
   */
+
   loadingStatus.innerText = "Loading weapons";
-  var pistolGameObject = scene.add(await renderer.loadGLTF("./assets/models/pistolSuppressor.glb", {gameObjectOptions: {castShadows: false}}));
-  pistolGameObject.setLayer(1, true);
-  for (var animation of pistolGameObject.animationController.animations) {
+
+  var weaponModels = {
+    pistol: scene.add(await renderer.loadGLTF("./assets/models/pistolSuppressor.glb", {gameObjectOptions: {castShadows: false}})),
+    AK12: scene.add(await renderer.loadGLTF("./assets/models/weapons/AK12.glb", { gameObjectOptions: {castShadows: false}})),
+    sniper: scene.add(renderer.BatchGameObject(await renderer.loadGLTF("./assets/models/weapons/sniper.glb", {gameObjectOptions: {castShadows: false}}))),
+
+    // ak47: scene.add(await renderer.loadGLTF("./assets/models/ak47Hands.glb", { loadMaterials: true, maxTextureSize: 256, gameObjectOptions: {castShadows: false}})),
+    // shotgun: scene.add(await renderer.loadGLTF("./assets/models/shotgun.glb", {gameObjectOptions: {castShadows: false}})),
+    // sks: scene.add(await renderer.loadGLTF("./assets/models/sks.glb", { loadMaterials: false, gameObjectOptions: {castShadows: false}}))
+  };
+
+  for (var key in weaponModels) {
+    var w = weaponModels[key];
+    w.setLayer(1, true);
+    w.visible = false;
+
+    // Red dot
+    var s = w.getChild("Reddot", true);
+    if (s) {
+      s.meshRenderer.materials[0] = reddotMaterial;
+    }
+  }
+  
+  for (var animation of weaponModels.pistol.animationController.animations) {
     if (animation.name.indexOf("Reload") != -1) {
       animation.speed = 0.9;
     }
@@ -450,53 +480,72 @@ async function setup() {
     }
   }
 
-  var sks = scene.add(await renderer.loadGLTF("./assets/models/sks.glb", { loadMaterials: false, gameObjectOptions: {castShadows: false}}));
-  sks.visible = false;
+  weaponModels.AK12.transform.scale = Vector.fill(0.1);
 
-  var shotgun = scene.add(await renderer.loadGLTF("./assets/models/shotgun.glb", {gameObjectOptions: {castShadows: false}}));
-  shotgun.setLayer(1, true);
-  shotgun.visible = false;
-  shotgun.animationController.speed = 2.5;
+  // var ak47 = weaponModels.ak47;
+  // ak47.children[0].transform.rotation = Quaternion.euler(0, Math.PI, 0);
+  // ak47.transform.scale = Vector.fill(2 / 20);
+  // ak47.animationController.speed = 2.5;
 
-  // var ar15 = scene.add(await CreateGameObjectFromGLTF("./assets/models/AR15.glb", {gameObjectOptions: {castShadows: false}}))[0];
-  // ar15.setLayer(1, true);
-  // ar15.visible = false;
-  // ar15.scale = Vector.fill(0.1);
-
-  // for (var animation of ar15.animationController.animations) {
-  //   if (animation.name.indexOf("Fire") != -1) {
-  //     animation.speed = 2;
-  //   }
-  // }
-
-  var ak47 = scene.add(await renderer.loadGLTF("./assets/models/ak47Hands.glb", { loadMaterials: false, maxTextureSize: 128, gameObjectOptions: {castShadows: false}}));
-  ak47.children[0].transform.rotation = Quaternion.euler(0, Math.PI, 0);
-  ak47.transform.scale = Vector.fill(2 / 20);
-  ak47.setLayer(1, true);
-  ak47.visible = false;
-  // ak47.animationController.loop = true;
-  ak47.animationController.speed = 2.5;
+  // shotgun.animationController.speed = 2.5;
 
   /*
     Weapon settings
   */
   var weapons = {
-    ak47: () => new Weapon({weaponObject: ak47, ADSFOV: 30, ADSMouseSensitivity: 0.8, weaponModelOffset: new Vector(-0.2, 0.22, 0.5), weaponModelADSOffset: Vector.zero(), reloadTime: 2700, magSize: 30, fireMode: WEAPONENUMS.FIREMODES.AUTO, roundsPerSecond: 10, recoil: function() {
-      return {x: -1.2, y: (Math.random() - 0.5) * 1, z: 0};
-    }}),
-    // ar15: () => new Weapon({weaponObject: ar15, ADSFOV: 7, ADSMouseSensitivity: 0.2, weaponModelADSOffset: new Vector(0.0014, -0.062, -0.3), reloadTime: 1200, magSize: 30, fireMode: WEAPONENUMS.FIREMODES.AUTO, roundsPerSecond: 11.5, recoil: function() {
-    //   return {x: -0.9, y: (Math.random() - 0.5) * 0.3, z: 0};
-    // }}),
-    pistol: () => new Weapon({weaponObject: pistolGameObject, reloadTime: 1200, weaponModelOffset: new Vector(-0.15, 0.1, 0.25)}),
-    sks: () => new Weapon({weaponObject: sks, sniperScope: true, ADSFOV: 8.5, ADSMouseSensitivity: 0.2, roundsPerSecond: 1, magSize: 5, reloadTime: 350, sequentialReloading: true, fireMode: WEAPONENUMS.FIREMODES.SINGLE, fireSoundBufferSize: 40, recoil: function() {
-      return {x: -3, y: (Math.random() - 0.5) * 0.1, z: 0};
-    }}),
+    AK12: () => new Weapon({
+      weaponObject: weaponModels.AK12,
+      ADSFOV: 30,
+      ADSMouseSensitivity: 0.8,
+      weaponModelADSOffset: Vector.zero(),
+      reloadTime: 2700,
+      magSize: 30,
+      fireMode: WEAPONENUMS.FIREMODES.AUTO,
+      roundsPerSecond: 10,
+      recoil: function() {
+        return {x: -1.2, y: (Math.random() - 0.5) * 1, z: 0};
+      }
+    }),
+    pistol: () => new Weapon({
+      weaponObject: weaponModels.pistol,
+      reloadTime: 1200,
+      weaponModelOffset: new Vector(-0.15, 0.1, 0.25)
+    }),
+    sniper: () => new Weapon({
+      weaponObject: weaponModels.sniper,
+      sniperScope: true,
+      ADSFOV: 8.5,
+      ADSMouseSensitivity: 0.2,
+      roundsPerSecond: 1,
+      magSize: 5,
+      reloadTime: 1500,
+      fireMode: WEAPONENUMS.FIREMODES.SINGLE,
+      fireSoundBufferSize: 1,
+      recoil: function() {
+        return {x: -3, y: (Math.random() - 0.5) * 0.1, z: 0};
+      }
+    }),
+
+    // ak47: () => new Weapon({
+    //   weaponObject: weaponModels.ak47,
+    //   ADSFOV: 30,
+    //   ADSMouseSensitivity: 0.8,
+    //   weaponModelOffset: new Vector(-0.2, 0.22, 0.5),
+    //   weaponModelADSOffset: Vector.zero(),
+    //   reloadTime: 2700,
+    //   magSize: 30,
+    //   fireMode: WEAPONENUMS.FIREMODES.AUTO,
+    //   roundsPerSecond: 10,
+    //   recoil: function() {
+    //     return {x: -1.2, y: (Math.random() - 0.5) * 1, z: 0};
+    //   }
+    // }),
     // overpowered: () => new Weapon({weaponObject: pistolGameObject, roundsPerSecond: 1000, magSize: 5000, fireMode: WEAPONENUMS.FIREMODES.AUTO, recoil: function() {
     //   return Vector.zero();
     // }}),
-    shotgun: () => new Weapon({weaponObject: shotgun, reloadTime: 400, magSize: 6, roundsPerSecond: 2, bulletsPerShot: 10, ADSBulletSpread: 1, crosshairType: 1, sequentialReloading: true, recoil: function() {
-      return {x: -5, y: (Math.random() - 0.5) * 0.2, z: 0};
-    }, fireSound: "./assets/sound/shotgun/fire.wav", reloadSound: "./assets/sound/shotgun/insertShell.wav", doneReloadingSound: "./assets/sound/shotgun/reloadEnd.wav"}),
+    // shotgun: () => new Weapon({weaponObject: shotgun, reloadTime: 400, magSize: 6, roundsPerSecond: 2, bulletsPerShot: 10, ADSBulletSpread: 1, crosshairType: 1, sequentialReloading: true, recoil: function() {
+    //   return {x: -5, y: (Math.random() - 0.5) * 0.2, z: 0};
+    // }, fireSound: "./assets/sound/shotgun/fire.wav", reloadSound: "./assets/sound/shotgun/insertShell.wav", doneReloadingSound: "./assets/sound/shotgun/reloadEnd.wav"}),
   };
 
 
@@ -504,17 +553,11 @@ async function setup() {
     Player setup
   */
   player = new Player({x: 10, y: 3, z: 10});
-  player.weapons = [
-    // weapons.ar15(),
-    // weapons.ak47(),
+  player.setWeapons([
     weapons.pistol(),
-    weapons.sks(),
-    // weapons.overpowered(),
-    weapons.shotgun(),
-    weapons.ak47()
-  ];
-
-  player.getCurrentWeapon().weaponObject.visible = true;
+    weapons.sniper(),
+    weapons.AK12()
+  ]);
 
   scene.root.traverse(function(gameObject) {
     if (gameObject.meshRenderer && gameObject.meshRenderer.skin) {
@@ -916,25 +959,16 @@ function Player(pos = Vector.zero()) {
   //   return m;
   // }
 
+  this.setWeapons = function(weapons) {
+    this.weapons = weapons;
+
+    if (this.getCurrentWeapon()) {
+      this.getCurrentWeapon().weaponObject.visible = true;
+    }
+  }
+
   this.getCurrentWeapon = function() {
     return this.weapons[this.currentWeapon];
-  }
-
-  this.getHeadPos = function() {
-    return Vector.add(this.position, {x: 0, y: this.height - 0.1, z: 0});
-  }
-
-  this.getHeadRotation = function() {
-    if (this.getCurrentWeapon())
-      return Vector.add(this.rotation, this.getCurrentWeapon().recoilOffset);
-    
-    return this.rotation;
-  }
-
-  this.Fire = function() {
-    if (this.getCurrentWeapon()) {
-      this.weapons[this.currentWeapon].fire();
-    }
   }
 
   this.switchWeapon = function(index) {
@@ -966,6 +1000,23 @@ function Player(pos = Vector.zero()) {
       }
     
       this.currentWeapon = index;
+    }
+  }
+
+  this.getHeadPos = function() {
+    return Vector.add(this.position, {x: 0, y: this.height - 0.1, z: 0});
+  }
+
+  this.getHeadRotation = function() {
+    if (this.getCurrentWeapon())
+      return Vector.add(this.rotation, this.getCurrentWeapon().recoilOffset);
+    
+    return this.rotation;
+  }
+
+  this.Fire = function() {
+    if (this.getCurrentWeapon()) {
+      this.weapons[this.currentWeapon].fire();
     }
   }
 

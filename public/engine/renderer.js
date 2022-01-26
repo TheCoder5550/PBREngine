@@ -68,6 +68,7 @@ function Renderer() {
   this.currentScene = 0;
   this.scenes = [];
 
+  this.godrays = null;
   this.postprocessing = null;
   this.bloom = null;
   this.skybox = null;
@@ -136,6 +137,8 @@ function Renderer() {
     set loadTextures(val) { _settings.loadTextures = val },
   };
 
+  this.setupSettings = null;
+
   // Stats
   var drawCalls = 0;
 
@@ -146,18 +149,10 @@ function Renderer() {
   */
 
   this.setup = async function(settings = {}) {
+    this.setupSettings = settings;
     this.path = settings.path ?? "./";
 
     this.canvas = settings.canvas ?? document.body.appendChild(document.createElement("canvas"));
-
-    var setCanvasSize = () => {
-      var renderScale = settings.renderScale ?? 1;
-      var devicePixelRatio = renderScale * (window.devicePixelRatio || 1);
-      this.canvas.width = (settings.width ?? innerWidth) * devicePixelRatio;
-      this.canvas.height = (settings.height ?? innerHeight) * devicePixelRatio;
-      this.canvas.style.width = (settings.width ?? innerWidth) + "px";
-      this.canvas.style.height = (settings.height ?? innerHeight) + "px";
-    };
     setCanvasSize();
 
     this.version = settings.version ?? 2;
@@ -333,6 +328,11 @@ function Renderer() {
     this.bloom = new Bloom(bloomProgram);
     logGLError("Bloom");
 
+    if (settings.enableGodrays) {
+      var godrayProgram = new ProgramContainer(await this.createProgramFromFile(this.path + `assets/shaders/built-in/webgl${this.version}/godrays`));
+      this.godrays = new Godrays(godrayProgram);
+    }
+
     var skyboxProgram = await this.createProgramFromFile(this.path + `assets/shaders/built-in/webgl${this.version}/skybox`);
     this.skybox = new Skybox(skyboxProgram);
     logGLError("Skybox");
@@ -405,7 +405,7 @@ function Renderer() {
 
     renderer.eventHandler.fireEvent("renderloop", ft, time);
 
-    // console.log("Drawcalls: " + drawCalls);
+    document.querySelector("#debug_drawCalls").innerText = drawCalls;
 
     requestAnimationFrame(loop);
   }
@@ -416,6 +416,18 @@ function Renderer() {
     lastUpdate = now;
   
     return frameTime;
+  }
+
+  function setCanvasSize() {
+    var settings = renderer.setupSettings;
+    
+    var renderScale = settings.renderScale ?? 1;
+    var devicePixelRatio = renderScale * (window.devicePixelRatio || 1);
+
+    renderer.canvas.width = (settings.width ?? innerWidth) * devicePixelRatio;
+    renderer.canvas.height = (settings.height ?? innerHeight) * devicePixelRatio;
+    renderer.canvas.style.width = (settings.width ?? innerWidth) + "px";
+    renderer.canvas.style.height = (settings.height ?? innerHeight) + "px";
   }
 
   this.render = function(camera, secondaryCameras) {
@@ -519,6 +531,10 @@ function Renderer() {
     }
 
     gl.colorMask(true, true, true, true);
+
+    if (this.godrays) {
+      this.godrays.render(scene, camera);
+    }
 
     bindVertexArray(null);
 
@@ -1834,7 +1850,7 @@ function Renderer() {
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, this.colorBuffers[i], 0);
     }
 
-    // Low quality depth info
+    // // Low quality depth info
     // this.depthTexture = gl.createTexture();
     // gl.bindTexture(gl.TEXTURE_2D, this.depthTexture);
     // gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.DEPTH_COMPONENT : gl.DEPTH_COMPONENT16, targetTextureWidth, targetTextureHeight, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
@@ -1862,12 +1878,14 @@ function Renderer() {
   
     this.vertexLocation = gl.getAttribLocation(this.program, "position");
 
+    // bruh, use program container
     this.SIZELocation = gl.getUniformLocation(this.program, "SIZE");
     this.mainTextureLocation = gl.getUniformLocation(this.program, "mainTexture");
     this.bloomTextureLocation = gl.getUniformLocation(this.program, "bloomTexture");
     this.depthTextureLocation = gl.getUniformLocation(this.program, "depthTexture");
     this.exposureLocation = gl.getUniformLocation(this.program, "exposure");
     this.gammaLocation = gl.getUniformLocation(this.program, "gamma");
+    this.godraysLocation = gl.getUniformLocation(this.program, "enableGodrays");
   
     this.resizeFramebuffers = function() {
       gl.bindTexture(gl.TEXTURE_2D, this.colorBuffers[0]);
@@ -1905,9 +1923,23 @@ function Renderer() {
       gl.bindTexture(gl.TEXTURE_2D, renderer.bloom.upsampleFramebuffers[renderer.bloom.upsampleFramebuffers.length - 1].colorBuffer);
       gl.uniform1i(this.bloomTextureLocation, 1);
 
-      // gl.activeTexture(gl.TEXTURE2);
-      // gl.bindTexture(gl.TEXTURE_2D, this.depthTexture);
-      // gl.uniform1i(this.depthTextureLocation, 2);
+      if (this.depthTexture) {
+        gl.uniform1i(this.godraysLocation, 1);
+
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, this.depthTexture);
+        gl.uniform1i(this.depthTextureLocation, 2);
+      }
+      else if (renderer.godrays) {
+        gl.uniform1i(this.godraysLocation, 1);
+
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, renderer.godrays.framebufferData.colorBuffer);
+        gl.uniform1i(this.depthTextureLocation, 2);
+      }
+      else {
+        gl.uniform1i(this.godraysLocation, 0);
+      }
   
       gl.uniform2f(this.SIZELocation, gl.canvas.width, gl.canvas.height);
 
@@ -2043,6 +2075,32 @@ function Renderer() {
       clearColor(0, 0, 0, 1);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       clearColor(...lastClearColor);
+    }
+  }
+
+  function Godrays(programContainer) {
+    this.material = new Material(programContainer);
+
+    var scale = 0.2;
+    this.framebufferData = createFramebuffer(gl.canvas.width * scale, gl.canvas.height * scale);
+
+    // Required for z sorting (better quality than above)
+    var depthBuffer = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, gl.canvas.width * scale, gl.canvas.height * scale);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+
+    this.render = function(scene, camera) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebufferData.framebuffer);
+      gl.viewport(0, 0, this.framebufferData.width, this.framebufferData.height);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+      scene.render(camera, {
+        renderPass: ENUMS.RENDERPASS.OPAQUE,
+        materialOverride: this.material
+      });
+
+      renderer.skybox.render(camera, scene.skyboxCubemap);
     }
   }
 
@@ -2413,15 +2471,33 @@ function Renderer() {
     this.setUniform = function(name, values) {
       var uniform = this.getUniform(name);
       if (uniform) {
+        // bruh fix for texture
         uniform.arguments = Array.isArray(values) ? values : [values];
       }
       else if (this.programContainer.activeUniforms[name]) {
         var t = this.programContainer.activeUniforms[name].typeString;
+        var isTexture = t.indexOf("SAMPLER") !== -1;
+        
+        var args = null;
+        if (isTexture) {
+          var textureIndex = this.textures.indexOf(values); 
+          if (textureIndex === -1) {
+            this.textures.push(values);
+            args = [ this.textures.length - 1 ];
+          }
+          else {
+            args = [ textureIndex ];
+          }
+        }
+        else {
+          args = Array.isArray(values) ? values : [values];
+        }
+
         this.uniforms[name] = {
-          texture: t.indexOf("SAMPLER") !== -1,
+          texture: isTexture,
           type: getUniformSetType(t),
           name,
-          arguments: Array.isArray(values) ? values : [values]
+          arguments: args
         };
       }
       else {
@@ -3400,7 +3476,7 @@ function Renderer() {
         
               if (loadTangents) {
                 var tangents = getAccessorAndBuffer(currentPrimitive.attributes.TANGENT);
-                if (tangents && false) { // bruh (remove false)
+                if (tangents) { // bruh (remove false)
                   meshData.tangent = { bufferData: tangents.buffer, size: tangents.size, stride: tangents.stride };
                 }
                 else if (uvs) {

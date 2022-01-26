@@ -60,7 +60,7 @@ uniform samplerCube u_specularIBL;
 uniform sampler2D u_splitSum;
 
 // Shadows
-int shadowQuality = 2;
+int shadowQuality = 0;
 float shadowDarkness = 0.;
 // bruh
 vec2 shadowStepSize = 1. / vec2(1024);

@@ -221,6 +221,26 @@
       text-shadow: 0 0 5px black;
     }
 
+    .debugInfo {
+      background: rgba(0, 0, 0, 0.5);
+      color: white;
+
+      display: flex;
+      flex-direction: column;
+      width: 400px;
+      padding: 10px;
+
+      bottom: 0;
+      left: 0;
+      position: fixed;
+      z-index: 100;
+    }
+
+    .debugInfo > span {
+      font-size: 0.75em;
+      margin: 0.1em;
+    }
+
   </style>
 </head>
 <body>
@@ -252,6 +272,10 @@
       <span class="special">REVENGE</span>
       <span class="player">You killed PlayerName</span>
       <span class="kills">0 kills</span>
+    </div>
+
+    <div class="debugInfo">
+      <span>Drawcalls: <span id="debug_drawCalls">0</span></span>
     </div>
   </div>
 

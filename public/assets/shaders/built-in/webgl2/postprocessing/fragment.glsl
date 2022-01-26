@@ -9,36 +9,13 @@ uniform sampler2D depthTexture;
 uniform float exposure;
 uniform float gamma;
 
-vec3 godrays(
-    float density,
-    float weight,
-    float decay,
-    float exposure,
-    vec2 screenSpaceLightPos,
-    vec2 uv
-    );
+uniform bool enableGodrays;
+
+vec3 godrays(float density, float weight, float decay, float exposure, vec2 screenSpaceLightPos, vec2 uv);
 vec3 ACESFilm(vec3 x);
-
-float saturate(float x) {
-  return max(0., min(1., x));
-}
-
-float getHeight(vec2 uv) {
-  float y = 0.5 + 0.2 * sin(uv.x * 12.);
-  float d = abs(uv.y - y);
-  float falloff = 40.;
-  float thickness = 0.;
-  float height = 1. - clamp(d * falloff - thickness, 0., 1.);
-  return height;
-}
-
-vec3 adjustSaturation(vec3 color, float value) {
-  // https://www.w3.org/TR/WCAG21/#dfn-relative-luminance
-  const vec3 luminosityFactor = vec3(0.2126, 0.7152, 0.0722);
-  vec3 grayscale = vec3(dot(color, luminosityFactor));
-
-  return mix(grayscale, color, 1.0 + value);
-}
+float saturate(float x);
+float getHeight(vec2 uv);
+vec3 adjustSaturation(vec3 color, float value);
 
 void main() {
   vec2 uv = gl_FragCoord.xy / SIZE;
@@ -62,7 +39,13 @@ void main() {
 
   vec4 samp = texture2D(mainTexture, uv);
   vec4 bloom = texture2D(bloomTexture, uv);
-  vec3 col = samp.rgb + bloom.rgb * 0.05;// + godrays(1., 0.01, 1., 1., vec2(0.5, 0.5), uv);
+  vec3 col = vec3(0);
+  col += samp.rgb;
+  col += bloom.rgb * 0.05;
+
+  if (enableGodrays) {
+    col += godrays(1., 0.01, 0.97, 0.6, vec2(0.5, 0.5), uv);
+  }
 
   // col = col / (col + vec3(1.0));
   // col = col * pow(2., exposure);
@@ -84,26 +67,17 @@ vec3 ACESFilm(vec3 x) {
   return clamp((x*(a*x+b))/(x*(c*x+d)+e), vec3(0.), vec3(1.));
 }
 
-vec3 godrays(
-    float density,
-    float weight,
-    float decay,
-    float exposure,
-    vec2 screenSpaceLightPos,
-    vec2 uv
-    ) {
+vec3 godrays(float density, float weight, float decay, float exposure, vec2 screenSpaceLightPos, vec2 uv) {
+  vec3 fragColor = vec3(0);
 
-    vec3 fragColor = vec3(0.0,0.0,0.0);
-
-	vec2 deltaTextCoord = vec2( uv - screenSpaceLightPos.xy );
-
-	vec2 textCoo = uv.xy ;
+	vec2 deltaTextCoord = vec2(uv - screenSpaceLightPos.xy);
+	vec2 textCoo = uv.xy;
 	deltaTextCoord *= (1.0 /  float(100)) * density;
 	float illuminationDecay = 1.0;
 
-	for(int i=0; i < 100 ; i++){
+	for (int i = 0; i < 100; i++){
 		textCoo -= deltaTextCoord;
-		vec3 samp = (1. - saturate((/*0.03 - */length(textCoo - screenSpaceLightPos)) * 10.)) * vec3(texture2D(depthTexture, textCoo).x > 0.999 ? 1. : 0.) * 5.;
+    vec3 samp = clamp(texture2D(depthTexture, textCoo).xyz, vec3(0.3), vec3(10)) - vec3(0.3);
 		samp *= illuminationDecay * weight;
 		fragColor += samp;
 		illuminationDecay *= decay;
@@ -111,7 +85,26 @@ vec3 godrays(
 
 	fragColor *= exposure;
 
-    return fragColor;
+  return fragColor;
+}
 
+float saturate(float x) {
+  return max(0., min(1., x));
+}
 
+float getHeight(vec2 uv) {
+  float y = 0.5 + 0.2 * sin(uv.x * 12.);
+  float d = abs(uv.y - y);
+  float falloff = 40.;
+  float thickness = 0.;
+  float height = 1. - clamp(d * falloff - thickness, 0., 1.);
+  return height;
+}
+
+vec3 adjustSaturation(vec3 color, float value) {
+  // https://www.w3.org/TR/WCAG21/#dfn-relative-luminance
+  const vec3 luminosityFactor = vec3(0.2126, 0.7152, 0.0722);
+  vec3 grayscale = vec3(dot(color, luminosityFactor));
+
+  return mix(grayscale, color, 1.0 + value);
 }

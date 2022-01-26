@@ -82,12 +82,14 @@ function Weapon(settings = {}) {
   this.aimBulletSpread = def(settings.aimBulletSpread, 0.5);
   this.ADSBulletSpread = def(settings.ADSBulletSpread, 0);
 
+  this.adsDepth = def(settings.adsDepth, -0.2);
   this.ADSFOV = def(settings.ADSFOV, 25);
   this.ADSMouseSensitivity = def(settings.ADSMouseSensitivity, 0.75);
   var adsT = 0;
 
   this.crosshairType = def(settings.crosshairType, 0);
   this.sniperScope = def(settings.sniperScope, false);
+  this.scopeDelay = def(settings.scopeDelay, 0);
 
   this.weaponModelOffset = def(settings.weaponModelOffset, Vector.zero());
   // this.weaponModelOffset = def(settings.weaponModelOffset, {x: 0.11, y: -0.1, z: -0.2});
@@ -371,7 +373,7 @@ function Weapon(settings = {}) {
       var baseMatrix = Matrix.transform(ops);
 
       if (this.adsObject && adsT < 0.5) {
-        Matrix.transform([["translate", new Vector(0, 0, -0.15)]], baseMatrix);
+        Matrix.transform([["translate", new Vector(0, 0, this.adsDepth)]], baseMatrix);
         var localADSOffset = Matrix.inverse(this.adsObject.transform.getWorldMatrix(this.weaponObject));
         localADSOffset[12] *= this.weaponObject.transform.scale.x;
         localADSOffset[13] *= this.weaponObject.transform.scale.y;
