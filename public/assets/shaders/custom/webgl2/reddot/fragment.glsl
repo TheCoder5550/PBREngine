@@ -11,6 +11,7 @@ in vec3 vEyeTangent;
 
 uniform sampler2D albedoTexture;
 uniform float textureScale;
+uniform vec3 color;
 
 void main() {
   if (length(vUV - vec2(0.5)) > 0.5) {
@@ -31,5 +32,5 @@ void main() {
   offset = mat * offset;
 
   vec2 uv = offset.xy / textureScale;
-  fragColor = vec4(5, 0.1, 0.1, texture(albedoTexture, uv + vec2(0.5, 0.5)).a);
+  fragColor = vec4(color, texture(albedoTexture, uv + vec2(0.5, 0.5)).a);
 }

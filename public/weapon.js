@@ -1,6 +1,7 @@
-import Vector from "./engine/vector.js";
-import Matrix from "./engine/matrix.js";
-import { clamp } from "./engine/helper.js";
+import Quaternion from "./engine/quaternion.mjs";
+import Vector from "./engine/vector.mjs";
+import Matrix from "./engine/matrix.mjs";
+import { clamp, lerp } from "./engine/helper.mjs";
 
 var WEAPONENUMS = {
   FIREMODES: {SINGLE: 0, BURST: 1, AUTO: 2},
@@ -57,13 +58,14 @@ function Weapon(settings = {}) {
   //this.shellCasingModel = null;
   //this.muzzleFlashModel = null;
 
-  this.shellCasings = [];
+  // this.shellCasings = [];
 
-  this.muzzleFlashRotation = 0;
+  // this.muzzleFlashRotation = 0;
 
   this.GunModes = {DEFAULT: 0, ADS: 1, AIM: 2};
   this.mode = this.GunModes.DEFAULT;
 
+  // Recoil
   this.recoil = def(settings.recoil, () => {
     return {x: -1, y: (Math.random() - 0.5) * 0.2, z: 0};
   });
@@ -71,10 +73,20 @@ function Weapon(settings = {}) {
   this.recoilOffsetTarget = {x: 0, y: 0, z: 0};
   this.recoilOffsetVelocity = {x: 0, y: 0, z: 0};
 
-  this.modelRecoilTranslation = Vector.zero();
-  this.modelRecoilRotation = Vector.zero();
-  this.modelRecoilTranslationVelocity = Vector.zero();
-  this.modelRecoilRotationVelocity = Vector.zero();
+  this.modelRecoil = {
+    translation: Vector.zero(),
+    velocity: Vector.zero(),
+    rotation: Vector.zero(),
+    angularVelocity: Vector.zero(),
+
+    fireForce: new Vector(0, 0, 4),
+    fireTorque: new Vector(1, 0, 0),
+
+    translationReturn: -600,
+    translationDamping: -30,
+    rotationReturn: -600,
+    rotationDamping: -30
+  };
 
   this.bulletsPerShot = def(settings.bulletsPerShot, 1);
 
@@ -82,14 +94,10 @@ function Weapon(settings = {}) {
   this.aimBulletSpread = def(settings.aimBulletSpread, 0.5);
   this.ADSBulletSpread = def(settings.ADSBulletSpread, 0);
 
-  this.adsDepth = def(settings.adsDepth, -0.2);
-  this.ADSFOV = def(settings.ADSFOV, 25);
-  this.ADSMouseSensitivity = def(settings.ADSMouseSensitivity, 0.75);
+  this.scope = def(settings.scope, new Scope());
   var adsT = 0;
 
   this.crosshairType = def(settings.crosshairType, 0);
-  this.sniperScope = def(settings.sniperScope, false);
-  this.scopeDelay = def(settings.scopeDelay, 0);
 
   this.weaponModelOffset = def(settings.weaponModelOffset, Vector.zero());
   // this.weaponModelOffset = def(settings.weaponModelOffset, {x: 0.11, y: -0.1, z: -0.2});
@@ -105,7 +113,7 @@ function Weapon(settings = {}) {
   this.bulletDamage = def(settings.bulletDamage, 20);
   this.bulletDamageHeadMultiplier = def(settings.bulletDamageHeadMultiplier, 2);
 
-  this.bulletTrails = [];
+  // this.bulletTrails = [];
 
   var playDoneReloading = () => {
     if (this.doneReloadingSoundPlayer) {
@@ -119,7 +127,7 @@ function Weapon(settings = {}) {
   }
 
   this.getCurrentSensitivity = function() {
-    return (this.mode == this.GunModes.ADS ? this.ADSMouseSensitivity : 1);
+    return (this.mode == this.GunModes.ADS ? this.scope.ADSMouseSensitivity : 1);
   }
 
   this.fire = function() {
@@ -147,8 +155,8 @@ function Weapon(settings = {}) {
         var currentRecoil = this.recoil();
         this.recoilOffsetVelocity = Vector.add(this.recoilOffsetVelocity, currentRecoil);
 
-        this.modelRecoilTranslationVelocity = Vector.add(this.modelRecoilTranslationVelocity, new Vector(0, 0, 4));
-        this.modelRecoilRotationVelocity.x += 1;
+        Vector.addTo(this.modelRecoil.velocity, this.modelRecoil.fireForce);
+        Vector.addTo(this.modelRecoil.angularVelocity, this.modelRecoil.fireTorque);
 
         /*if (this.muzzleFlashModel) {
           this.muzzleFlashRotation = Math.random() * Math.PI * 2;
@@ -162,7 +170,7 @@ function Weapon(settings = {}) {
 
         var currentSpread = this.bulletSpread;
         if (this.mode == this.GunModes.AIM) currentSpread *= this.aimBulletSpread;
-        if (this.mode == this.GunModes.ADS) currentSpread *= this.ADSBulletSpread;
+        if (this.mode == this.GunModes.ADS) currentSpread *= lerp(this.ADSBulletSpread, 1, adsT);
 
         var rot = player.getHeadRotation();
         var origin = player.getHeadPos();
@@ -179,7 +187,7 @@ function Weapon(settings = {}) {
           // Create trail
           var trailPos = this.muzzleObject ? Matrix.getPosition(this.muzzleObject.transform.getWorldMatrix()) : player.position;
           var trail = new BulletTrail(trailPos, Vector.normalize(Vector.add(Vector.multiply(direction, 50), player.velocity)));
-          trail.position = Vector.add(trail.position, Vector.multiply(trail.direction, 1));
+          trail.position = Vector.add(trail.position, Vector.multiply(trail.direction, 0.5));
           trail.updateInstance();
           bulletTrails.push(trail);
 
@@ -297,9 +305,10 @@ function Weapon(settings = {}) {
   this.ADS = function() {
     if (this.mode != this.GunModes.ADS && !this.isReloading) {
       this.mode = this.GunModes.ADS;
-      targetFov = this.ADSFOV;
+      targetFov = this.scope.ADSFOV;
+      targetWeaponFov = this.scope.ADSWepaonFOV;
 
-      if (this.sniperScope && this.weaponObject) {
+      if (this.scope.sniperScope && this.weaponObject) {
         this.weaponObject.visible = false;
       }
     }
@@ -309,22 +318,23 @@ function Weapon(settings = {}) {
     if (this.mode == this.GunModes.ADS) {
       this.mode = this.GunModes.DEFAULT;
       targetFov = defaultFov;
+      targetWeaponFov = defaultWeaponFov;
 
-      if (this.sniperScope && this.weaponObject) {
+      if (this.scope.sniperScope && this.weaponObject) {
         this.weaponObject.visible = true;
       }
     }
   }
 
-  this.getWeaponOffset = function() {
-    if (this.mode == this.GunModes.ADS) {
-      if (this.weaponObject.getChild("ADSOffset")) {
-        return Vector.add(Vector.multiply(Matrix.getPosition(this.weaponObject.getChild("ADSOffset").matrix), -1), {x: 0, y: 0, z: -0.2});
-      }
-      return this.weaponModelADSOffset;
-    }
-    return Vector.add(this.weaponModelOffset, {x: Math.sin(this.swayTime * 2) * 0.01, y: Math.sin(this.swayTime * 4 % Math.PI) * 0.02 - clamp(currentPlayerVelYOffset * 0.005, -0.07, 0.07), z: 0});
-  }
+  // this.getWeaponOffset = function() {
+  //   if (this.mode == this.GunModes.ADS) {
+  //     if (this.weaponObject.getChild("ADSOffset")) {
+  //       return Vector.add(Vector.multiply(Matrix.getPosition(this.weaponObject.getChild("ADSOffset").matrix), -1), {x: 0, y: 0, z: -0.2});
+  //     }
+  //     return this.weaponModelADSOffset;
+  //   }
+  //   return Vector.add(this.weaponModelOffset, {x: Math.sin(this.swayTime * 2) * 0.01, y: Math.sin(this.swayTime * 4 % Math.PI) * 0.02 - clamp(currentPlayerVelYOffset * 0.005, -0.07, 0.07), z: 0});
+  // }
 
   this.update = function(dt) {
     this.fireAnimationTime += dt;
@@ -359,25 +369,27 @@ function Weapon(settings = {}) {
         ["rx", player.handRotOffset.x * adsT],
 
         ["translate", Vector.lerp(this.weaponModelADSOffset, this.weaponModelOffset, adsT)],
-        ["translate", this.modelRecoilTranslation],
-        ["rz", this.modelRecoilRotation.z * adsT],
-        ["ry", this.modelRecoilRotation.y * adsT],
-        ["rx", this.modelRecoilRotation.x * adsT],
+        ["translate", this.modelRecoil.translation],
+        ["rz", this.modelRecoil.rotation.z * adsT],
+        ["ry", this.modelRecoil.rotation.y * adsT],
+        ["rx", this.modelRecoil.rotation.x * adsT],
 
         ["translate", Vector.multiply({x: 0, y: -clamp(currentPlayerVelYOffset * 0.005, -0.08, 0.08), z: 0}, adsT)]
 
         // ["rx", this.swayRotation.x],
         // ["ry", this.swayRotation.y],
       ];
-
       var baseMatrix = Matrix.transform(ops);
 
-      if (this.adsObject && adsT < 0.5) {
-        Matrix.transform([["translate", new Vector(0, 0, this.adsDepth)]], baseMatrix);
+      if (this.adsObject) {
+        Matrix.transform([["translate", new Vector(0, 0, this.scope.adsDepth * (1 - adsT))]], baseMatrix);
+
         var localADSOffset = Matrix.inverse(this.adsObject.transform.getWorldMatrix(this.weaponObject));
         localADSOffset[12] *= this.weaponObject.transform.scale.x;
         localADSOffset[13] *= this.weaponObject.transform.scale.y;
         localADSOffset[14] *= this.weaponObject.transform.scale.z;
+        Matrix.lerp(localADSOffset, Matrix.identity(), adsT, localADSOffset);
+
         baseMatrix = Matrix.multiply(baseMatrix, localADSOffset);
       }
 
@@ -393,20 +405,23 @@ function Weapon(settings = {}) {
     this.swayTime += dt * Vector.length({x: player.velocity.x, y: player.velocity.z}) / 3;
     currentPlayerVelYOffset += (player.velocity.y - currentPlayerVelYOffset) * 0.2;
 
-    adsT += -(adsT - (this.mode == this.GunModes.ADS ? 0 : 1)) * 0.33;
+    adsT += -(adsT - (this.mode == this.GunModes.ADS ? 0 : 1)) * 0.3;
 
+    // Camera rotation
     this.recoilOffsetVelocity = Vector.add(this.recoilOffsetVelocity, Vector.multiply(Vector.subtract(this.recoilOffsetTarget, this.recoilOffset), 2 * dt * 60));
     this.recoilOffsetVelocity = Vector.add(this.recoilOffsetVelocity, Vector.multiply(this.recoilOffsetVelocity, -1 * 0.3 * dt * 60));
     this.recoilOffset = Vector.add(this.recoilOffset, Vector.multiply(this.recoilOffsetVelocity, dt));
 
-    this.modelRecoilTranslationVelocity = Vector.add(this.modelRecoilTranslationVelocity, Vector.multiply(this.modelRecoilTranslation, -10 * dt * 60)); // Return
-    this.modelRecoilTranslationVelocity = Vector.add(this.modelRecoilTranslationVelocity, Vector.multiply(this.modelRecoilTranslationVelocity, -1 * 0.5 * dt * 60)); // Damping
+    // Model translation
+    Vector.addTo(this.modelRecoil.velocity, Vector.multiply(this.modelRecoil.translation, this.modelRecoil.translationReturn * dt)); // Return
+    Vector.addTo(this.modelRecoil.velocity, Vector.multiply(this.modelRecoil.velocity, this.modelRecoil.translationDamping * dt)); // Damping
 
-    this.modelRecoilRotationVelocity = Vector.add(this.modelRecoilRotationVelocity, Vector.multiply(this.modelRecoilRotation, -10 * dt * 60)); // Return
-    this.modelRecoilRotationVelocity = Vector.add(this.modelRecoilRotationVelocity, Vector.multiply(this.modelRecoilRotationVelocity, -1 * 0.5 * dt * 60)); // Damping
+    // Model rotation
+    Vector.addTo(this.modelRecoil.angularVelocity, Vector.multiply(this.modelRecoil.rotation, this.modelRecoil.rotationReturn * dt)); // Return
+    Vector.addTo(this.modelRecoil.angularVelocity, Vector.multiply(this.modelRecoil.angularVelocity, this.modelRecoil.rotationDamping * dt)); // Damping
 
-    this.modelRecoilTranslation = Vector.add(this.modelRecoilTranslation, Vector.multiply(this.modelRecoilTranslationVelocity, dt));
-    this.modelRecoilRotation = Vector.add(this.modelRecoilRotation, Vector.multiply(this.modelRecoilRotationVelocity, dt));
+    Vector.addTo(this.modelRecoil.translation, Vector.multiply(this.modelRecoil.velocity, dt));
+    Vector.addTo(this.modelRecoil.rotation, Vector.multiply(this.modelRecoil.angularVelocity, dt));
   
     /*for (var casing of this.shellCasings) {
       casing.update(dt);
@@ -418,6 +433,16 @@ function Weapon(settings = {}) {
       }
     }*/
   }
+}
+
+function Scope(settings = {}) {
+  this.sniperScope = def(settings.sniperScope, false);
+  this.scopeDelay = def(settings.scopeDelay, 0);
+
+  this.adsDepth = def(settings.adsDepth, -0.2);
+  this.ADSWepaonFOV = def(settings.ADSWepaonFOV, 20);
+  this.ADSFOV = def(settings.ADSFOV, 25);
+  this.ADSMouseSensitivity = def(settings.ADSMouseSensitivity, 0.75);
 }
 
 function BulletTrail(pos, direction) {
@@ -543,6 +568,7 @@ export {
   bulletTrails,
   updateBulletTrails,
   Weapon,
+  Scope,
   BulletTrail,
   Bullet,
   Shellcasing

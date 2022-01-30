@@ -1,15 +1,15 @@
-import Vector from "./engine/vector.js";
-import Matrix from "./engine/matrix.js";
-import Quaternion from "./engine/quaternion.js";
+import Vector from "./engine/vector.mjs";
+import Matrix from "./engine/matrix.mjs";
+import Quaternion from "./engine/quaternion.mjs";
 import { FindMaterials } from "./engine/renderer.js";
 import { 
   SphereCollider,
   Rigidbody
-} from "./engine/physics.js";
+} from "./engine/physics.mjs";
 import {
   clamp,
   lerp
-} from "./engine/helper.js";
+} from "./engine/helper.mjs";
 
 function Car(scene, settings = {}) {
   var _this = this;

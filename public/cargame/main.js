@@ -1,11 +1,11 @@
 "use strict";
 
 import Renderer, { GameObject, Scene, Camera, AudioListener3D, FindMaterials } from "../engine/renderer.js";
-import { PhysicsEngine, Rigidbody, SphereCollider } from "../engine/physics.js";
-import Vector from "../engine/vector.js";
-import Matrix from "../engine/matrix.js";
-import Quaternion from "../engine/quaternion.js";
-import { clamp, lerp } from "../engine/helper.js";
+import { PhysicsEngine, Rigidbody, SphereCollider } from "../engine/physics.mjs";
+import Vector from "../engine/vector.mjs";
+import Matrix from "../engine/matrix.mjs";
+import Quaternion from "../engine/quaternion.mjs";
+import { clamp, lerp } from "../engine/helper.mjs";
 
 var loadingScreen = document.querySelector(".loadingScreen");
 var loadingStatus = loadingScreen.querySelector(".status");
@@ -54,17 +54,13 @@ setup();
 async function setup() {
   console.time("Setup");
 
-  renderer.on("resize", function() {
-    mainCamera.setAspect(renderer.aspect);
-  });
-
   renderer.on("error", function() {
     setError("Error!");
   });
 
   renderer.on("contextlost", function() {
     setError("Context lost!");
-  })
+  });
 
   setLoadingStatus("Setting up renderer");
   await renderer.setup({
@@ -83,6 +79,11 @@ async function setup() {
   renderer.canvas.classList.add("webglCanvas");
   if (renderer.postprocessing) renderer.postprocessing.exposure = -1.5;
   renderer.add(scene);
+
+  renderer.on("resize", function() {
+    mainCamera.setAspect(renderer.aspect);
+  });
+  mainCamera.setAspect(renderer.aspect);
 
   setLoadingStatus("Loading environment");
   await scene.loadEnvironment({
@@ -115,7 +116,8 @@ async function setup() {
   setLoadingStatus("Creating map collider");
   var mapCollider = await renderer.loadGLTF("./mapCollider.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
   mapCollider.transform.position = new Vector(0, -2.1, 0);
-  physicsEngine.addMeshToOctree(mapCollider);
+  physicsEngine.addMeshCollider(mapCollider);
+  physicsEngine.setupMeshCollider();
 
   // var grass = scene.add(await renderer.loadGLTF("./grass.glb"));
   // grass.children[0].meshRenderer = grass.children[0].meshRenderer.getInstanceMeshRenderer();

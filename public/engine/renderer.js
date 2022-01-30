@@ -1,8 +1,8 @@
-import Vector from "./vector.js";
-import Matrix from "./matrix.js";
-import Quaternion from "./quaternion.js";
+import Vector from "./vector.mjs";
+import Matrix from "./matrix.mjs";
+import Quaternion from "./quaternion.mjs";
 
-import { LoadHDR, CreateHDR } from "./HDRReader.js";
+import { LoadHDR, CreateHDR } from "./HDRReader.mjs";
 import {
   xor,
   clamp,
@@ -17,7 +17,7 @@ import {
   fadeOutElement,
   hideElement,
   showElement
-} from "./helper.js";
+} from "./helper.mjs";
 
 import {
   AABBToAABB,
@@ -32,7 +32,8 @@ import {
   sphereToTriangle,
   capsuleToTriangle,
   ClosestPointOnLineSegment
-} from "./algebra.js";
+} from "./algebra.mjs";
+import { AABB } from "./physics.mjs";
 
 var ENUMS = {
   RENDERPASS: { SHADOWS: 0b001, OPAQUE: 0b010, ALPHA: 0b100 },
@@ -405,7 +406,7 @@ function Renderer() {
 
     renderer.eventHandler.fireEvent("renderloop", ft, time);
 
-    document.querySelector("#debug_drawCalls").innerText = drawCalls;
+    // document.querySelector("#debug_drawCalls").innerText = drawCalls;
 
     requestAnimationFrame(loop);
   }
@@ -2105,6 +2106,8 @@ function Renderer() {
   }
 
   function ShadowCascades(program, levelSizes = [50, 8], levelBiases = [-0.0025, -0.0005], res = 1024) {
+    var _this = this;
+
     levelSizes.reverse();
     levelBiases.reverse();
 
@@ -2113,10 +2116,21 @@ function Renderer() {
     this.program = program;
     this.material = new Material(new ProgramContainer(this.program));
 
+    var textureMatrices = new Float32Array(this.levels * 16);
+
     this.shadowmaps = [];
     for (var i = 0; i < this.levels; i++) {
       var shadowmap = new Shadowmap(res, levelSizes[i], levelBiases[i], [gl["TEXTURE" + (30 - i * 2)], gl["TEXTURE" + (31 - i * 2)]]);
+      shadowmap.textureMatrix = new Float32Array(textureMatrices.buffer, Float32Array.BYTES_PER_ELEMENT * 16 * (1 - i), 16);
       this.shadowmaps.push(shadowmap);
+    }
+
+    var projectedTextures = new Array(this.levels);
+    var biases = new Array(this.levels);
+    for (var i = 0; i < this.levels; i++) {
+      var ind = this.levels - 1 - i;
+      projectedTextures[i] = 30 - ind * 2;
+      biases[i] = this.shadowmaps[ind].bias;
     }
 
     this.clearShadowmaps = function() {
@@ -2151,27 +2165,10 @@ function Renderer() {
 
     this.setUniforms = function(material) {
       if (material.getUniformLocation(`textureMatrices[0]`) != null) {
-        for (var i = 0; i < this.levels; i++) {
-          var textureMatrix = this.getTextureMatrix(1 - i);
-          if (textureMatrix) {
-            gl.uniformMatrix4fv(material.getUniformLocation(`textureMatrices[${i}]`), false, textureMatrix);
-          }
-          gl.uniform1i(material.getUniformLocation(`projectedTextures[${i}]`), this.getTextureNumber(1 - i));
-          gl.uniform1f(material.getUniformLocation(`biases[${i}]`), this.getShadowBias(1 - i));
-        }
+        gl.uniformMatrix4fv(material.getUniformLocation(`textureMatrices[0]`), false, textureMatrices);
+        gl.uniform1iv(material.getUniformLocation(`projectedTextures[0]`), projectedTextures);
+        gl.uniform1fv(material.getUniformLocation(`biases[0]`), biases);
       }
-    }
-
-    this.getTextureMatrix = function(index) {
-      return this.shadowmaps[index].textureMatrix;
-    }
-
-    this.getShadowBias = function(index) {
-      return this.shadowmaps[index].bias;
-    }
-
-    this.getTextureNumber = function(index) {
-      return 30 - index * 2;
     }
   }
 
@@ -2183,7 +2180,7 @@ function Renderer() {
     this.shadowModelMatrix = Matrix.identity();
     this.shadowViewMatrix = Matrix.identity();
     this.shadowInverseViewMatrix = Matrix.identity();
-    this.textureMatrix = Matrix.identity();
+    this.textureMatrix = null;
     this.textureMatrixBase = Matrix.transform([
       ["translate", {x: 0.5, y: 0.5, z: 0.5}],
       ["scale", Vector.fill(0.5)]
@@ -2501,7 +2498,7 @@ function Renderer() {
         };
       }
       else {
-        console.warn("Not a uniform: " + name);
+        console.warn("Not an uniform: " + name);
       }
     }
   
@@ -2527,20 +2524,21 @@ function Renderer() {
       // bruh, fixes un-used textures using same location
       var i = 0;
       for (var name in this.programContainer.activeUniforms) {
-        var uniform = this.programContainer.activeUniforms[name];
-
-        if (!this.getUniform(name) && uniform.typeString.indexOf("SAMPLER") !== -1) {
-          if (uniform.typeString == "SAMPLER_2D") {
-            gl.uniform1i(uniform.location, splitsumUnit);
+        if (!this.getUniform(name)) {
+          var uniform = this.programContainer.activeUniforms[name];
+          if (uniform.typeString.indexOf("SAMPLER") !== -1) {
+            if (uniform.typeString == "SAMPLER_2D") {
+              gl.uniform1i(uniform.location, splitsumUnit);
+            }
+            else if (uniform.typeString == "SAMPLER_CUBE") {
+              gl.uniform1i(uniform.location, diffuseCubemapUnit);
+            }
+            else {
+              gl.uniform1i(uniform.location, 20 + i);
+              i++;
+            }
           }
-          else if (uniform.typeString == "SAMPLER_CUBE") {
-            gl.uniform1i(uniform.location, diffuseCubemapUnit);
-          }
-          else {
-            gl.uniform1i(uniform.location, 20 + i);
-            i++;
-          }
-        }
+      }
       }
 
       for (var i = 0; i < this.textures.length; i++) {
@@ -2582,18 +2580,18 @@ function Renderer() {
       gl.uniform1f(getUniformLocation("environmentIntensity"), currentScene.environmentIntensity);
 
       // bruh
-      var lights = currentScene.getLights();
-      gl.uniform1i(getUniformLocation("nrLights"), lights.length);
+      // var lights = currentScene.getLights();
+      // gl.uniform1i(getUniformLocation("nrLights"), lights.length);
 
-      for (var i = 0; i < lights.length; i++) {
-        var light = lights[i];
+      // for (var i = 0; i < lights.length; i++) {
+      //   var light = lights[i];
 
-        gl.uniform1i(getUniformLocation(`lights[${i}].type`), light.type);
-        gl.uniform3f(getUniformLocation(`lights[${i}].position`), light.position.x, light.position.y, light.position.z);
-        if (light.direction) gl.uniform3f(getUniformLocation(`lights[${i}].direction`), light.direction.x, light.direction.y, light.direction.z);
-        if ("angle" in light) gl.uniform1f(getUniformLocation(`lights[${i}].angle`), light.angle);
-        gl.uniform3f(getUniformLocation(`lights[${i}].color`), light.color[0], light.color[1], light.color[2]);
-      }
+      //   gl.uniform1i(getUniformLocation(`lights[${i}].type`), light.type);
+      //   gl.uniform3f(getUniformLocation(`lights[${i}].position`), light.position.x, light.position.y, light.position.z);
+      //   if (light.direction) gl.uniform3f(getUniformLocation(`lights[${i}].direction`), light.direction.x, light.direction.y, light.direction.z);
+      //   if ("angle" in light) gl.uniform1f(getUniformLocation(`lights[${i}].angle`), light.angle);
+      //   gl.uniform3f(getUniformLocation(`lights[${i}].color`), light.color[0], light.color[1], light.color[2]);
+      // }
     }
   
     this.bindModelMatrixUniform = function(matrix) {
@@ -4457,6 +4455,9 @@ function Renderer() {
         }
       }
     });
+
+    var materials = [];
+    var meshData = [];
     
     for (var batch of batches) {
       for (var i = 0; i < batch.uv.length; i++) {
@@ -4475,8 +4476,8 @@ function Renderer() {
         }
       }
 
-      var g = new GameObject("Batch for " + batch.material.name);
-      g.meshRenderer = new MeshRenderer(batch.material, new MeshData({
+      materials.push(batch.material);
+      meshData.push(new MeshData({
         position: {
           bufferData: new Float32Array(batch.vertices),
           size: 3
@@ -4498,10 +4499,75 @@ function Renderer() {
           size: 2
         },
       }));
-      batchedGameobject.addChild(g);
+
+      // var g = new GameObject("Batch for " + batch.material.name);
+      // g.meshRenderer = new MeshRenderer(batch.material, new MeshData({
+      //   position: {
+      //     bufferData: new Float32Array(batch.vertices),
+      //     size: 3
+      //   },
+      //   indices: {
+      //     bufferData: new Uint32Array(batch.indices),
+      //     target: renderer.gl.ELEMENT_ARRAY_BUFFER
+      //   },
+      //   tangent: {
+      //     bufferData: new Float32Array(batch.tangent),
+      //     size: 3
+      //   },
+      //   normal: {
+      //     bufferData: new Float32Array(batch.normal),
+      //     size: 3
+      //   },
+      //   uv: {
+      //     bufferData: new Float32Array(batch.uv),
+      //     size: 2
+      //   },
+      // }));
+      // batchedGameobject.addChild(g);
     }
+
+    batchedGameobject.meshRenderer = new MeshRenderer(materials, meshData);
   
     return batchedGameobject;
+  }
+
+  // bruh generates garbage together with physics octree
+  this.GetMeshAABB = function(gameObject, padding) {
+    var aabb = new AABB();
+
+    gameObject.traverse(o => {
+      if (o.meshRenderer) {
+        var noTranslateWorldMatrix = Matrix.copy(o.transform.worldMatrix);
+        Matrix.removeTranslation(noTranslateWorldMatrix);
+
+        for (var i = 0; i < o.meshRenderer.meshData.length; i++) {
+          var md = o.meshRenderer.meshData[i];
+
+          if (md.data.position && md.data.indices) {
+            for (var j = 0; j < md.data.position.bufferData.length; j += 3) {
+              var v = {
+                x: md.data.position.bufferData[j],
+                y: md.data.position.bufferData[j + 1],
+                z: md.data.position.bufferData[j + 2]
+              };
+              v = Matrix.transformVector(o.transform.worldMatrix, v);
+              aabb.extend(v);
+            }
+          }
+        }
+      }
+    });
+
+    if (padding) {
+      aabb.bl.x -= padding;
+      aabb.bl.y -= padding;
+      aabb.bl.z -= padding;
+      aabb.tr.x += padding;
+      aabb.tr.y += padding;
+      aabb.tr.z += padding;
+    }
+
+    return aabb;
   }
 }
 
@@ -4572,7 +4638,22 @@ function GameObject(name = "Unnamed", options = {}) {
   this.visible = def(options.visible, true);
   this.castShadows = def(options.castShadows, true);
 
+  var oldMats;
+  var _meshRenderer;
+  Object.defineProperty(this, 'meshRenderer', {
+    get: function() {
+      return _meshRenderer;
+    },
+    set: function(val) {
+      _meshRenderer = val;
+
+      if (_meshRenderer) {
+        oldMats = new Array(_meshRenderer.materials.length);
+      }
+    }
+  });
   this.meshRenderer = def(options.meshRenderer, null);
+
   this.animationController = null;
 
   var _components = [];
@@ -4707,33 +4788,53 @@ function GameObject(name = "Unnamed", options = {}) {
   this.render = function(camera, settings = {}) {
   // this.render = function(camera, materialOverride, shadowPass = false, opaquePass = true) {
     if (this.visible) {
-      var currentMatrix = this.transform.worldMatrix;
-
       var shadowPass = settings.renderPass ? ENUMS.RENDERPASS.SHADOWS & settings.renderPass : false;
       var opaquePass = settings.renderPass ? ENUMS.RENDERPASS.ALPHA & settings.renderPass ? false : true : true;
 
       if ((camera.layer ?? 0) == this.layer) {
-        if (this.meshRenderer) {
-          if (!(shadowPass && !this.castShadows)) {
-            var oldMats = [];
-            if (settings.materialOverride) {
-              for (var i = 0; i < this.meshRenderer.materials.length; i++) {
-                oldMats[i] = this.meshRenderer.materials[i];
-                this.meshRenderer.materials[i] = settings.materialOverride;
-              }
+        var currentMatrix = this.transform.worldMatrix;
+
+        // if (this.meshRenderer) {
+        //   if (!(shadowPass && !this.castShadows)) {
+        //     var oldMats = [];
+        //     if (settings.materialOverride) {
+        //       for (var i = 0; i < this.meshRenderer.materials.length; i++) {
+        //         oldMats[i] = this.meshRenderer.materials[i];
+        //         this.meshRenderer.materials[i] = settings.materialOverride;
+        //       }
+        //     }
+
+        //     this.meshRenderer.render(camera, currentMatrix, shadowPass, opaquePass);
+
+        //     if (oldMats.length > 0) {
+        //       for (var i = 0; i < this.meshRenderer.materials.length; i++) {
+        //         this.meshRenderer.materials[i] = oldMats[i];
+        //       }
+        //     }
+        //   }
+        // }
+
+        if (this.meshRenderer && !(shadowPass && !this.castShadows)) {
+          if (settings.materialOverride) {
+            for (var i = 0; i < this.meshRenderer.materials.length; i++) {
+              oldMats[i] = this.meshRenderer.materials[i];
+              this.meshRenderer.materials[i] = settings.materialOverride;
             }
 
             this.meshRenderer.render(camera, currentMatrix, shadowPass, opaquePass);
 
-            if (oldMats.length > 0) {
-              for (var i = 0; i < this.meshRenderer.materials.length; i++) {
-                this.meshRenderer.materials[i] = oldMats[i];
-              }
+            for (var i = 0; i < this.meshRenderer.materials.length; i++) {
+              this.meshRenderer.materials[i] = oldMats[i];
             }
+          }
+          else {
+            this.meshRenderer.render(camera, currentMatrix, shadowPass, opaquePass);
           }
         }
 
         if (!shadowPass) {
+          // if (this.meshRenderer) this.meshRenderer.render(camera, currentMatrix, shadowPass, opaquePass);
+
           for (var component of _components) {
             component.render?.(camera, currentMatrix, shadowPass, opaquePass);
           }
@@ -4895,11 +4996,14 @@ function Transform(matrix, position, rotation, scale) {
     }
   });
 
+  // bruh update parent world matrix too
   Object.defineProperty(this, 'worldMatrix', {
     get: function() {
       if (_this._hasChanged.worldMatrix) {
         _this._hasChanged.worldMatrix = false;
-        _worldMatrix = _this.getWorldMatrix();
+        updateRealWorldMatrix();
+        // _worldMatrix = getRealWorldMatrix();
+        // _worldMatrix = _this.getWorldMatrix();
       }
 
       return _worldMatrix;
@@ -4995,6 +5099,15 @@ function Transform(matrix, position, rotation, scale) {
     }
 
     _this.onUpdateMatrix?.(_matrix);
+  }
+
+  function updateRealWorldMatrix() {
+    if (_this.gameObject && _this.gameObject.parent) {
+      Matrix.multiply(_this.gameObject.parent.transform.worldMatrix, _this.matrix, _worldMatrix);
+    }
+    else {
+      Matrix.copy(_this.matrix, _worldMatrix);
+    }
   }
 
   this.getWorldMatrix = function(stopParent) {

@@ -60,7 +60,7 @@ uniform samplerCube u_specularIBL;
 uniform sampler2D u_splitSum;
 
 // Shadows
-int shadowQuality = 0;
+int shadowQuality = 1;
 float shadowDarkness = 0.;
 // bruh
 vec2 shadowStepSize = 1. / vec2(1024);
@@ -114,6 +114,9 @@ void main() {
   vec4 currentAlbedo = useTexture ? sampleTexture(albedoTexture, vUV) : vec4(1);
   currentAlbedo *= albedo;
   currentAlbedo.xyz *= vec3(1) - vColor;
+
+  // fragColor = vec4(currentAlbedo.rgb * clamp(dot(sunDirection, vNormal), 0., 1.), currentAlbedo.a);
+  // return;
 
   if (doNoTiling) {
     currentAlbedo.rgb = mix(vec3(0.2), currentAlbedo.rgb, noise(vUV / 5.));
@@ -309,30 +312,6 @@ float getShadowAmount() {
   }
 
   return 1.;
-
-
-
-
-  // if (!inside) {
-  //   const int i = 1;
-  //   proj = projectedTexcoords[i].xyz / projectedTexcoords[i].w;
-  //   currentDepth = proj.z + biases[i];
-  //   inside = inRange(proj);
-
-  //   if (inside) {
-  //     float sum = 0.0;
-  //     for (int j = -shadowKernalSize / 2; j <= shadowKernalSize / 2; j++) {
-  //       for (int k = -shadowKernalSize / 2; k <= shadowKernalSize / 2; k++) {
-  //         float projectedDepth = texture(projectedTextures[i], proj.xy + shadowStepSize * vec2(j, k)).r;
-  //         sum += (projectedDepth <= currentDepth ? shadowDarkness : 1.) * shadowKernel[j + 1][k + 1];
-  //       }
-  //     }
-
-  //     shadowAmount = sum / 16.;
-  //   }
-  // }
-
-  // return shadowAmount;
 }
 
 // PBR

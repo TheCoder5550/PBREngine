@@ -6,7 +6,9 @@ in vec3 tangent;
 in vec3 color;
 in vec2 uv;
 
+uniform float iTime;
 uniform mat4 projectionMatrix;
+uniform mat4 inverseViewMatrix;
 uniform mat4 viewMatrix;
 uniform mat4 modelMatrix;
 
@@ -24,7 +26,7 @@ void main() {
   vUV = uv;
   vColor = color;
 
-  vec3 offset = mat3(inverse(viewMatrix)) * vec3((vUV - 0.5) * 2. * billboardSize, 0);
+  vec3 offset = mat3(inverseViewMatrix) * vec3((vUV - 0.5) * 2. * billboardSize, 0.2 * sin(iTime * 0.7 + position.x * position.y * position.z));
   vec4 worldPosition = modelMatrix * vec4(position + offset, 1.0);
 
   vPosition = vec3(worldPosition);

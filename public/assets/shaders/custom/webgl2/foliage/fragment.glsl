@@ -30,6 +30,6 @@ void main() {
 
   float diffuse = clamp(dot(sunDirection, vNormal), 0., 1.);
 
-  vec3 outColor = mix(shadowColor, color, diffuse);// * min(baseColor.xyz * 2., 1.);
+  vec3 outColor = mix(shadowColor, color, diffuse) * min(baseColor.xyz * 2., 1.);
   fragColor = vec4(outColor, 1);
 }
