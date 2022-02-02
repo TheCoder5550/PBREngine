@@ -1222,7 +1222,12 @@ function Renderer() {
   }
 
   this.loadTextFile = async function(path) {
-    return await (await fetch(path)).text();
+    return await (await fetch(path, {
+      mode: 'cors',
+      headers: {
+        'Access-Control-Allow-Origin': '*'
+      }
+    })).text();
   }
 
   this.createProgramFromFile = async function(shaderPath, fragmentPathOpt) {
