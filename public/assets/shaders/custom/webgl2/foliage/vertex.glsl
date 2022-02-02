@@ -26,8 +26,9 @@ void main() {
   vUV = uv;
   vColor = color;
 
-  vec3 offset = mat3(inverseViewMatrix) * vec3((vUV - 0.5) * 2. * billboardSize, 0.2 * sin(iTime * 0.7 + position.x * position.y * position.z));
-  vec4 worldPosition = modelMatrix * vec4(position + offset, 1.0);
+  vec3 offset = mat3(inverseViewMatrix) * vec3((vUV - 0.5) * 2. * billboardSize, 0);
+  vec3 wind = vec3(0.05 * sin(iTime * 0.9 + position.x * position.y * position.z * 1.5), 0, 0);
+  vec4 worldPosition = modelMatrix * vec4(position + offset + wind, 1.0);
 
   vPosition = vec3(worldPosition);
   

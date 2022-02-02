@@ -82,6 +82,7 @@ function Renderer() {
 
   // var blankTexture;
 
+  var UBOLocationCounter = 0;
   this.litContainer = null;
   this.litInstancedContainer = null;
   this.particleContainer = null;
@@ -192,10 +193,10 @@ function Renderer() {
       drawCalls++;
     }
 
-    extendFunction(gl, "drawElements", logDrawCall);
-    extendFunction(gl, "drawArrays", logDrawCall);
-    extendFunction(gl, "drawElementsInstanced", logDrawCall);
-    extendFunction(gl, "drawArraysInstanced", logDrawCall);
+    // extendFunction(gl, "drawElements", logDrawCall);
+    // extendFunction(gl, "drawArrays", logDrawCall);
+    // extendFunction(gl, "drawElementsInstanced", logDrawCall);
+    // extendFunction(gl, "drawArraysInstanced", logDrawCall);
 
     function extendFunction(parent, func, extFunc) {
       var oldF = parent[func];
@@ -481,6 +482,12 @@ function Renderer() {
 
     var scene = this.scenes[this.currentScene];
 
+    scene.updateUniformBuffers(
+      camera.projectionMatrix,
+      camera.viewMatrix,
+      camera.inverseViewMatrix
+    );
+
     if (this.shadowCascades && _settings.enableShadows && (scene.sunIntensity.x != 0 || scene.sunIntensity.y != 0 || scene.sunIntensity.z != 0)) {
       this.shadowCascades.renderShadowmaps(camera.transform.position);
     }
@@ -525,6 +532,12 @@ function Renderer() {
 
     if (secondaryCameras) {
       for (var cam of secondaryCameras) {
+        scene.updateUniformBuffers(
+          cam.projectionMatrix,
+          cam.viewMatrix,
+          cam.inverseViewMatrix
+        );
+
         gl.clear(gl.DEPTH_BUFFER_BIT);
         // bruh args
         scene.render(cam);
@@ -552,6 +565,7 @@ function Renderer() {
   this.add = function(scene) {
     this.scenes.push(scene);
     scene.renderer = this;
+    scene.setupUBO();
     return scene;
   }
 
@@ -1628,7 +1642,7 @@ function Renderer() {
 
     this.particles = new Array(this.maxParticles);
     for (var i = 0; i < this.particles.length; i++) {
-      this.particles[i] = new Particle(Vector.zero());
+      this.particles[i] = new Particle(new Vector(0, -1000, 0));
     }
     var pool = [];
 
@@ -2237,16 +2251,22 @@ function Renderer() {
       // Bruh
       var scene = renderer.scenes[renderer.currentScene];
 
-      // var n = shadowRange / res * 50;
-      // pos = new Vector(
-      //   roundNearest(pos.x, n),
-      //   roundNearest(pos.y, n),
-      //   roundNearest(pos.z, n)
-      // );
+      var n = shadowRange / res * 2;
 
-      Matrix.lookAt(pos, Vector.subtract(pos, scene.sunDirection), {x: 0, y: 1, z: 0}, this.shadowModelMatrix);
+      // Matrix.lookAt(pos, Vector.subtract(pos, scene.sunDirection), {x: 0, y: 1, z: 0}, this.shadowModelMatrix);
+      // Matrix.transform([
+      //   ["translate", {z: 100}]
+      // ], this.shadowModelMatrix);
+
+      Matrix.lookAt(Vector.zero(), Vector.negate(scene.sunDirection), Vector.up(), this.shadowModelMatrix);
+      var localPos = Matrix.transformVector(Matrix.inverse(this.shadowModelMatrix), pos);
+
       Matrix.transform([
-        ["translate", {z: 100}]
+        ["translate", new Vector(
+          roundNearest(localPos.x, n),
+          roundNearest(localPos.y, n),
+          localPos.z + 100
+        )]
       ], this.shadowModelMatrix);
       
       Matrix.inverse(this.shadowModelMatrix, this.shadowViewMatrix);
@@ -2339,11 +2359,35 @@ function Renderer() {
   
   */
 
+  this.UniformBuffer = UniformBuffer;
+  function UniformBuffer(location, size) {
+    this.data = new Float32Array();
+    this.location = location;
+
+    this.buffer = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, this.buffer);
+    gl.bufferData(gl.UNIFORM_BUFFER, size, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, this.location, this.buffer);
+
+    this.update = function(data, offset = 0) {
+      this.data = data;
+      // this.data.set(data, offset);
+
+      gl.bindBuffer(gl.UNIFORM_BUFFER, this.buffer);
+      gl.bufferData(gl.UNIFORM_BUFFER, this.data, gl.DYNAMIC_DRAW);
+      // gl.bufferSubData(gl.UNIFORM_BUFFER, 0, this.data, 0, null);
+      gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, this.location, this.buffer); // bruh, unecsi?
+    }
+  }
+
   this.ProgramContainer = ProgramContainer;
   function ProgramContainer(program) {
     var _this = this;
     var _program;
     this.activeUniforms = {};
+    this.uniformBuffers = {};
 
     Object.defineProperty(this, "program", {
       get: function() {
@@ -2352,7 +2396,7 @@ function Renderer() {
       set: function(program) {
         _this.setProgram(program);
       }
-    })
+    });
 
     this.setProgram = function(program) {
       assertProgram(program);
@@ -2373,6 +2417,49 @@ function Renderer() {
           type: uniform.type,
           typeString: glEnumToString(uniform.type)
         };
+      }
+
+      const indices = [...Array(nrUniforms).keys()];
+      var nrUniformBlocks = Math.max(...gl.getActiveUniforms(_program, indices, gl.UNIFORM_BLOCK_INDEX)) + 1;
+
+      if (nrUniformBlocks != -1) {
+        for (var blockIndex = 0; blockIndex < nrUniformBlocks; blockIndex++) {
+          var name = gl.getActiveUniformBlockName(_program, blockIndex);
+          if (name != null) {
+            var blockSize = gl.getActiveUniformBlockParameter(
+              _program,
+              blockIndex,
+              gl.UNIFORM_BLOCK_DATA_SIZE
+            );
+
+            var subindices = gl.getActiveUniformBlockParameter(_program, blockIndex, gl.UNIFORM_BLOCK_ACTIVE_UNIFORM_INDICES);
+            var uboVariableNames = new Array(subindices.length);
+            for (var i = 0; i < uboVariableNames.length; i++) {
+              uboVariableNames[i] = gl.getActiveUniform(_program, subindices[i]).name;
+            }
+            
+            var uboVariableIndices = gl.getUniformIndices(
+              _program,
+              uboVariableNames
+            );
+            var uboVariableOffsets = gl.getActiveUniforms(
+              _program,
+              uboVariableIndices,
+              gl.UNIFORM_OFFSET
+            );
+
+            this.uniformBuffers[name] = {
+              name,
+              blockIndex,
+              blockSize,
+              subnames: uboVariableNames,
+              offsets: uboVariableOffsets,
+              // ubo: new UniformBuffer(UBOLocationCounter, blockSize)
+            };
+
+            // UBOLocationCounter++;
+          }
+        }
       }
     }
 
@@ -2522,24 +2609,24 @@ function Renderer() {
   
     this.bindUniforms = function(camera) {
       // bruh, fixes un-used textures using same location
-      var i = 0;
-      for (var name in this.programContainer.activeUniforms) {
-        if (!this.getUniform(name)) {
-          var uniform = this.programContainer.activeUniforms[name];
-          if (uniform.typeString.indexOf("SAMPLER") !== -1) {
-            if (uniform.typeString == "SAMPLER_2D") {
-              gl.uniform1i(uniform.location, splitsumUnit);
-            }
-            else if (uniform.typeString == "SAMPLER_CUBE") {
-              gl.uniform1i(uniform.location, diffuseCubemapUnit);
-            }
-            else {
-              gl.uniform1i(uniform.location, 20 + i);
-              i++;
-            }
-          }
-      }
-      }
+      // var i = 0;
+      // for (var name in this.programContainer.activeUniforms) {
+      //   if (!this.getUniform(name)) {
+      //     var uniform = this.programContainer.activeUniforms[name];
+      //     if (uniform.typeString.indexOf("SAMPLER") !== -1) {
+      //       if (uniform.typeString == "SAMPLER_2D") {
+      //         gl.uniform1i(uniform.location, splitsumUnit);
+      //       }
+      //       else if (uniform.typeString == "SAMPLER_CUBE") {
+      //         gl.uniform1i(uniform.location, diffuseCubemapUnit);
+      //       }
+      //       else {
+      //         gl.uniform1i(uniform.location, 20 + i);
+      //         i++;
+      //       }
+      //     }
+      //   }
+      // }
 
       for (var i = 0; i < this.textures.length; i++) {
         var currentTexture = this.textures[i];
@@ -2569,29 +2656,35 @@ function Renderer() {
       // bruh
       var currentScene = renderer.scenes[renderer.currentScene];
       if (getUniformLocation("iTime") != null && typeof time != "undefined") gl.uniform1f(getUniformLocation("iTime"), time); // bruh
-      if (getUniformLocation("sunDirection") != null)      gl.uniform3fv(getUniformLocation("sunDirection"), Vector.toArray(currentScene.sunDirection)); // bruh gc
-      if (getUniformLocation("sunIntensity") != null)      gl.uniform3fv(getUniformLocation("sunIntensity"), Vector.toArray(currentScene.sunIntensity)); // ^
-
-      if (getUniformLocation("projectionMatrix") != null)  gl.uniformMatrix4fv(getUniformLocation("projectionMatrix"), false, camera.projectionMatrix);
-      if (getUniformLocation("inverseViewMatrix") != null) gl.uniformMatrix4fv(getUniformLocation("inverseViewMatrix"), false, camera.inverseViewMatrix);
-      if (getUniformLocation("viewMatrix") != null)        gl.uniformMatrix4fv(getUniformLocation("viewMatrix"), false, camera.viewMatrix);
-      // bruh ^^^ order matters
-
-      gl.uniform1f(getUniformLocation("environmentIntensity"), currentScene.environmentIntensity);
 
       // bruh
-      // var lights = currentScene.getLights();
-      // gl.uniform1i(getUniformLocation("nrLights"), lights.length);
+      var lights = currentScene.getLights();
+      gl.uniform1i(getUniformLocation("nrLights"), lights.length);
 
-      // for (var i = 0; i < lights.length; i++) {
-      //   var light = lights[i];
+      for (var i = 0; i < lights.length; i++) {
+        var light = lights[i];
 
-      //   gl.uniform1i(getUniformLocation(`lights[${i}].type`), light.type);
-      //   gl.uniform3f(getUniformLocation(`lights[${i}].position`), light.position.x, light.position.y, light.position.z);
-      //   if (light.direction) gl.uniform3f(getUniformLocation(`lights[${i}].direction`), light.direction.x, light.direction.y, light.direction.z);
-      //   if ("angle" in light) gl.uniform1f(getUniformLocation(`lights[${i}].angle`), light.angle);
-      //   gl.uniform3f(getUniformLocation(`lights[${i}].color`), light.color[0], light.color[1], light.color[2]);
-      // }
+        gl.uniform1i(getUniformLocation(`lights[${i}].type`), light.type);
+        gl.uniform3f(getUniformLocation(`lights[${i}].position`), light.position.x, light.position.y, light.position.z);
+        if (light.direction) gl.uniform3f(getUniformLocation(`lights[${i}].direction`), light.direction.x, light.direction.y, light.direction.z);
+        if ("angle" in light) gl.uniform1f(getUniformLocation(`lights[${i}].angle`), light.angle);
+        gl.uniform3f(getUniformLocation(`lights[${i}].color`), light.color[0], light.color[1], light.color[2]);
+      }
+
+      if (getUniformLocation("sunDirection") != null)         gl.uniform3fv(getUniformLocation("sunDirection"), Vector.toArray(currentScene.sunDirection)); // bruh gc
+      if (getUniformLocation("sunIntensity") != null)         gl.uniform3fv(getUniformLocation("sunIntensity"), Vector.toArray(currentScene.sunIntensity)); // ^
+      if (getUniformLocation("environmentIntensity") != null) gl.uniform1f(getUniformLocation("environmentIntensity"), currentScene.environmentIntensity);
+
+      var sps = this.programContainer.uniformBuffers["sharedPerScene"];
+      if (sps) {
+        gl.uniformBlockBinding(this.programContainer.program, sps.blockIndex, currentScene.sharedUBO.location);
+      }
+      else {
+        if (getUniformLocation("projectionMatrix") != null)  gl.uniformMatrix4fv(getUniformLocation("projectionMatrix"), false, camera.projectionMatrix);
+        if (getUniformLocation("inverseViewMatrix") != null) gl.uniformMatrix4fv(getUniformLocation("inverseViewMatrix"), false, camera.inverseViewMatrix);
+        if (getUniformLocation("viewMatrix") != null)        gl.uniformMatrix4fv(getUniformLocation("viewMatrix"), false, camera.viewMatrix);
+        // bruh ^^^ order matters
+      }
     }
   
     this.bindModelMatrixUniform = function(matrix) {
@@ -2858,7 +2951,7 @@ function Renderer() {
         md.bindBuffers(mat.program, this.attribLocations[i]);
         
         mat.bindModelMatrixUniform(matrix);
-        mat.bindUniforms(camera);
+        mat.bindUniforms(camera, matrix);
         if (!shadowPass && renderer.shadowCascades) {
           renderer.shadowCascades.setUniforms(mat);
         }
@@ -5164,6 +5257,27 @@ function Scene(name) {
 
   var lights = [];
 
+  this.setupUBO = function() {
+    var uboData = this.renderer.litContainer.uniformBuffers["sharedPerScene"];
+    this.sharedUBO = new this.renderer.UniformBuffer(0, uboData.blockSize);
+
+    var gl = this.renderer.gl;
+    gl.bindBuffer(gl.UNIFORM_BUFFER, this.sharedUBO.buffer);
+
+    gl.bufferSubData(gl.UNIFORM_BUFFER, uboData.offsets[3], new Float32Array([ this.renderer.shadowCascades.shadowmaps[1].bias ]), 0);
+    gl.bufferSubData(gl.UNIFORM_BUFFER, uboData.offsets[3] + 16, new Float32Array([ this.renderer.shadowCascades.shadowmaps[0].bias ]), 0);
+  }
+
+  this.updateUniformBuffers = function(projectionMatrix, viewMatrix, inverseViewMatrix) {
+    var uboData = this.renderer.litContainer.uniformBuffers["sharedPerScene"];
+    var gl = this.renderer.gl;
+    gl.bindBuffer(gl.UNIFORM_BUFFER, this.sharedUBO.buffer);
+
+    gl.bufferSubData(gl.UNIFORM_BUFFER, uboData.offsets[0], projectionMatrix, 0);
+    gl.bufferSubData(gl.UNIFORM_BUFFER, uboData.offsets[1], viewMatrix, 0);
+    gl.bufferSubData(gl.UNIFORM_BUFFER, uboData.offsets[2], inverseViewMatrix, 0);
+  }
+
   this.loadEnvironment = async function(settings = {}) {
     if (this.renderer) {
       var res = settings.res ?? 1024;
@@ -5244,6 +5358,12 @@ function Scene(name) {
     });
 
     lights = allLights;
+
+    // var uboData = this.renderer.litContainer.uniformBuffers["sharedPerScene"];
+    // var gl = this.renderer.gl;
+    // gl.bindBuffer(gl.UNIFORM_BUFFER, uboData.ubo.buffer);
+    // gl.bufferSubData(gl.UNIFORM_BUFFER, uboData.offsets[6], new Float32Array([lights.length]), 0);
+
     return true;
 
     // return [
@@ -5317,22 +5437,22 @@ function flyCamera(renderer, camera, eulerAngles, dt = 1) {
   if (renderer.getKey([87])) {
     var c = Math.cos(eulerAngles.x);
     camera.transform.position.x += Math.cos(eulerAngles.y + Math.PI / 2) * speed * dt * c;
-    camera.transform.position.z += -1 * Math.sin(eulerAngles.y + Math.PI / 2) * speed * dt * c;
+    camera.transform.position.z += -Math.sin(eulerAngles.y + Math.PI / 2) * speed * dt * c;
     camera.transform.position.y += Math.sin(eulerAngles.x) * speed * dt;
   }
   if (renderer.getKey([83])) {
     var c = Math.cos(eulerAngles.x);
     camera.transform.position.x -= Math.cos(eulerAngles.y + Math.PI / 2) * speed * dt * c;
-    camera.transform.position.z -= -1 * Math.sin(eulerAngles.y + Math.PI / 2) * speed * dt * c;
+    camera.transform.position.z -= -Math.sin(eulerAngles.y + Math.PI / 2) * speed * dt * c;
     camera.transform.position.y -= Math.sin(eulerAngles.x) * speed * dt;
   }
   if (renderer.getKey([65])) {
     camera.transform.position.x -= Math.cos(eulerAngles.y) * speed * dt;
-    camera.transform.position.z -= -1 * Math.sin(eulerAngles.y) * speed * dt;
+    camera.transform.position.z -= -Math.sin(eulerAngles.y) * speed * dt;
   }
   if (renderer.getKey([68])) {
     camera.transform.position.x += Math.cos(eulerAngles.y) * speed * dt;
-    camera.transform.position.z += -1 * Math.sin(eulerAngles.y) * speed * dt;
+    camera.transform.position.z += -Math.sin(eulerAngles.y) * speed * dt;
   }
 
   var rotSpeed = 3;
@@ -5774,6 +5894,7 @@ export {
   Scene,
   Light,
   Camera,
+  flyCamera,
   AnimationController,
   AnimationData,
   AudioListener3D,

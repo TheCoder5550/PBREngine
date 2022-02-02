@@ -196,13 +196,46 @@ function AABBTriangleToAABB(a, b, c, aabb) {
          Math.max(a.z, b.z, c.z) >= aabb.bl.z && Math.min(a.z, b.z, c.z) <= aabb.tr.z;
 }
 
+function pointInsideAABB(aabb, point) {
+  return point.x >= aabb.bl.x && point.y >= aabb.bl.y && point.z >= aabb.bl.z &&
+         point.x <= aabb.tr.x && point.y <= aabb.tr.y && point.z <= aabb.tr.z;
+}
+
+function getAABBVertices(aabb) {
+  return [
+    {x: aabb.bl.x, y: aabb.bl.y, z: aabb.bl.z},
+    {x: aabb.tr.x, y: aabb.bl.y, z: aabb.bl.z},
+    {x: aabb.tr.x, y: aabb.bl.y, z: aabb.tr.z},
+    {x: aabb.bl.x, y: aabb.bl.y, z: aabb.tr.z},
+    {x: aabb.bl.x, y: aabb.tr.y, z: aabb.bl.z},
+    {x: aabb.tr.x, y: aabb.tr.y, z: aabb.bl.z},
+    {x: aabb.tr.x, y: aabb.tr.y, z: aabb.tr.z},
+    {x: aabb.bl.x, y: aabb.tr.y, z: aabb.tr.z},
+  ];
+}
+
+var aabbEdges = [
+  [0, 1],
+  [1, 2],
+  [2, 3],
+  [3, 0],
+  [4, 5],
+  [5, 6],
+  [6, 7],
+  [7, 4],
+  [0, 4],
+  [1, 5],
+  [2, 6],
+  [3, 7]
+];
+
 /* Bruh - Slow? Prolly */
 function AABBToTriangle(box, triangle) {
   window.AABBToTriangleCalls++;
 
   // Triangle vertices
   for (var i = 0; i < 3; i++) {
-    if (box.pointInside(triangle[i])) {
+    if (pointInsideAABB(box, triangle[i])) {
       return true;
     }
   }
@@ -221,8 +254,8 @@ function AABBToTriangle(box, triangle) {
   }
 
   // AABB edges
-  var vertices = box.getVertices();
-  var edges = box.getEdges();
+  var vertices = getAABBVertices(box);
+  var edges = aabbEdges;
 
   for (var i = 0; i < edges.length; i++) {
     var v1 = vertices[edges[i][0]];

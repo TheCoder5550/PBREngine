@@ -234,7 +234,7 @@ function MeshCollider(data, matrix = Matrix.identity()) {
   }
 }
 
-function Octree(aabb, maxDepth = 7) {
+function Octree(aabb, maxDepth = 5) {
   this.aabb = aabb;
   this.children = [];
   this.items = [];
@@ -333,6 +333,8 @@ function Octree(aabb, maxDepth = 7) {
   // }
 
   this.addTriangles = function(arr) {
+    console.log(arr);
+    window.aabbcalls = 0;
     this.trianglesArray = arr;
     for (var i = 0; i < this.trianglesArray.length; i += 9) {
       var v1 = {x: this.trianglesArray[i + 0], y: this.trianglesArray[i + 1], z: this.trianglesArray[i + 2]};
@@ -340,6 +342,7 @@ function Octree(aabb, maxDepth = 7) {
       var v3 = {x: this.trianglesArray[i + 6], y: this.trianglesArray[i + 7], z: this.trianglesArray[i + 8]};
       this.addTriangle(i, [v1, v2, v3]);
     }
+    console.log(window.aabbcalls);
   }
 
   this.addTriangle = function(index, triangle, depth = 0) {
@@ -376,15 +379,15 @@ function Octree(aabb, maxDepth = 7) {
 
   this.subdivide = function() {
     this.children.push(
-      new Octree(new AABB(this.aabb.bl, Vector.average(this.aabb.bl, this.aabb.tr))),
-      new Octree(new AABB({x: (this.aabb.bl.x + this.aabb.tr.x) / 2, y: this.aabb.bl.y, z: this.aabb.bl.z}, {x: this.aabb.tr.x, y: (this.aabb.bl.y + this.aabb.tr.y) / 2, z: (this.aabb.bl.z + this.aabb.tr.z) / 2})),
-      new Octree(new AABB({x: this.aabb.bl.x, y: this.aabb.bl.y, z: (this.aabb.bl.z + this.aabb.tr.z) / 2}, {x: (this.aabb.bl.x + this.aabb.tr.x) / 2, y: (this.aabb.bl.y + this.aabb.tr.y) / 2, z: this.aabb.tr.z})),
-      new Octree(new AABB({x: (this.aabb.bl.x + this.aabb.tr.x) / 2, y: this.aabb.bl.y, z: (this.aabb.bl.z + this.aabb.tr.z) / 2}, {x: this.aabb.tr.x, y: (this.aabb.bl.y + this.aabb.tr.y) / 2, z: this.aabb.tr.z})),
+      new Octree(new SimpleAABB(this.aabb.bl, Vector.average(this.aabb.bl, this.aabb.tr)), this.maxDepth),
+      new Octree(new SimpleAABB({x: (this.aabb.bl.x + this.aabb.tr.x) / 2, y: this.aabb.bl.y, z: this.aabb.bl.z}, {x: this.aabb.tr.x, y: (this.aabb.bl.y + this.aabb.tr.y) / 2, z: (this.aabb.bl.z + this.aabb.tr.z) / 2}), this.maxDepth),
+      new Octree(new SimpleAABB({x: this.aabb.bl.x, y: this.aabb.bl.y, z: (this.aabb.bl.z + this.aabb.tr.z) / 2}, {x: (this.aabb.bl.x + this.aabb.tr.x) / 2, y: (this.aabb.bl.y + this.aabb.tr.y) / 2, z: this.aabb.tr.z}), this.maxDepth),
+      new Octree(new SimpleAABB({x: (this.aabb.bl.x + this.aabb.tr.x) / 2, y: this.aabb.bl.y, z: (this.aabb.bl.z + this.aabb.tr.z) / 2}, {x: this.aabb.tr.x, y: (this.aabb.bl.y + this.aabb.tr.y) / 2, z: this.aabb.tr.z}), this.maxDepth),
 
-      new Octree(new AABB({x: this.aabb.bl.x, y: (this.aabb.bl.y + this.aabb.tr.y) / 2, z: this.aabb.bl.z}, {x: (this.aabb.bl.x + this.aabb.tr.x) / 2, y: this.aabb.tr.y, z: (this.aabb.bl.z + this.aabb.tr.z) / 2})),
-      new Octree(new AABB({x: (this.aabb.bl.x + this.aabb.tr.x) / 2, y: (this.aabb.bl.y + this.aabb.tr.y) / 2, z: this.aabb.bl.z}, {x: this.aabb.tr.x, y: this.aabb.tr.y, z: (this.aabb.bl.z + this.aabb.tr.z) / 2})),
-      new Octree(new AABB({x: this.aabb.bl.x, y: (this.aabb.bl.y + this.aabb.tr.y) / 2, z: (this.aabb.bl.z + this.aabb.tr.z) / 2}, {x: (this.aabb.bl.x + this.aabb.tr.x) / 2, y: this.aabb.tr.y, z: this.aabb.tr.z})),
-      new Octree(new AABB(Vector.average(this.aabb.bl, this.aabb.tr), this.aabb.tr))
+      new Octree(new SimpleAABB({x: this.aabb.bl.x, y: (this.aabb.bl.y + this.aabb.tr.y) / 2, z: this.aabb.bl.z}, {x: (this.aabb.bl.x + this.aabb.tr.x) / 2, y: this.aabb.tr.y, z: (this.aabb.bl.z + this.aabb.tr.z) / 2}), this.maxDepth),
+      new Octree(new SimpleAABB({x: (this.aabb.bl.x + this.aabb.tr.x) / 2, y: (this.aabb.bl.y + this.aabb.tr.y) / 2, z: this.aabb.bl.z}, {x: this.aabb.tr.x, y: this.aabb.tr.y, z: (this.aabb.bl.z + this.aabb.tr.z) / 2}), this.maxDepth),
+      new Octree(new SimpleAABB({x: this.aabb.bl.x, y: (this.aabb.bl.y + this.aabb.tr.y) / 2, z: (this.aabb.bl.z + this.aabb.tr.z) / 2}, {x: (this.aabb.bl.x + this.aabb.tr.x) / 2, y: this.aabb.tr.y, z: this.aabb.tr.z}), this.maxDepth),
+      new Octree(new SimpleAABB(Vector.average(this.aabb.bl, this.aabb.tr), this.aabb.tr), this.maxDepth)
     );
   }
 
@@ -408,6 +411,12 @@ function Octree(aabb, maxDepth = 7) {
       scene.root.getChild("AABB").meshRenderer.updateMatrixData();
     }
   }
+}
+
+function SimpleAABB(bl, tr) {
+  window.aabbcalls++;
+  this.bl = bl;
+  this.tr = tr;
 }
 
 function AABB(bl = Vector.zero(), tr = Vector.zero()) {
@@ -502,7 +511,8 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
 
   // bruh make dynamicly resize when adding mesh
   var meshCollidersToAdd = [];
-  this.octree = null;
+  var aabb = new AABB(new Vector(-30.33, -35.33, -40.33), new Vector(30, 3.6, 40));
+  this.octree = new Octree(aabb, 4);
 
   this.Raycast = function(origin, direction) {
     var outArray = [];
@@ -566,22 +576,24 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
   }
 
   this.addMeshCollider = function(gameObject) {
-    meshCollidersToAdd.push(gameObject);
+    this._addMeshToOctree(gameObject);
+    // meshCollidersToAdd.push(gameObject);
   }
 
   this.setupMeshCollider = function() {
-    var aabb = new AABB();
-    for (var c of meshCollidersToAdd) {
-      aabb.extend(this.scene.renderer.GetMeshAABB(c, 0.1));
-    }
+    // var aabb = new AABB();
+    // for (var c of meshCollidersToAdd) {
+    //   aabb.extend(this.scene.renderer.GetMeshAABB(c, 0.1));
+    // }
 
-    this.octree = new Octree(aabb, 4);
+    // var aabb = new AABB(new Vector(-30.33, -35.33, -40.33), new Vector(30, 3.6, 40));
+    // this.octree = new Octree(aabb, 4);
 
-    for (var c of meshCollidersToAdd) {
-      this._addMeshToOctree(c);
-    }
+    // for (var c of meshCollidersToAdd) {
+    //   this._addMeshToOctree(c);
+    // }
 
-    meshCollidersToAdd = [];
+    // meshCollidersToAdd = [];
   }
 
   // bruh make private

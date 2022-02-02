@@ -1,4 +1,4 @@
-import Renderer, { Scene, GameObject, Transform, AudioListener3D, Camera, Light, FindMaterials } from "./engine/renderer.js";
+import Renderer, { Scene, GameObject, Transform, AudioListener3D, Camera, Light, FindMaterials, flyCamera } from "./engine/renderer.js";
 import { 
   AABB,
   PhysicsEngine,
@@ -247,12 +247,16 @@ async function setup() {
   console.time("renderer.setup");
   await renderer.setup({
     version: 2,
-    shadowSizes: [4, 45],
-    renderScale: 0.5
+    shadowSizes: [8, 47],
+    renderScale: 1,
+
+    // disableLitInstanced: true,
+    disableLitSkinned: true,
+    disableLitBillboard: true
   });
   renderer.postprocessing.exposure = -0.5;
   // renderer.settings.enableShadows = false;
-  renderer.add(scene);
+  // renderer.add(scene);
   console.timeEnd("renderer.setup");
 
   loadingStatus.innerText = "Loading environment";
@@ -261,6 +265,7 @@ async function setup() {
   // scene.smoothSkybox = true;
   scene.environmentIntensity = 0.4;
   scene.sunIntensity = Vector.fill(4);
+  renderer.add(scene);
   await scene.loadEnvironment({ hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed" });
   console.timeEnd("loadEnvironment");
 
@@ -346,6 +351,7 @@ async function setup() {
   physicsEngine = new PhysicsEngine(scene);
   physicsEngine.addMeshCollider(mapCollider);
   physicsEngine.setupMeshCollider();
+  // physicsEngine.octree.render(scene);
 
   physicsEngine.fixedUpdate = function(dt) {
     player.fixedUpdate(dt);
@@ -391,13 +397,17 @@ async function setup() {
 
   // Vegetation
   var bush = scene.add(await renderer.loadGLTF("./assets/models/bush.glb"));
-  bush.transform.position.x = 6;
+  bush.transform.position.x = 10;
   bush.transform.scale = Vector.fill(1.3);
   bush.children[0].meshRenderer.materials[0] = foliageMat;
 
   var tree = scene.add(await renderer.loadGLTF("./assets/models/tree.glb"));
-  // tree.transform.position = {x: 22, y: 0.2, z: 14};
+  tree.transform.position = new Vector(-13, 0, 0);
   tree.children[0].children[0].meshRenderer.materials[0] = tree.children[0].children[1].meshRenderer.materials[0] = foliageMat;
+
+  var hedge = scene.add(await renderer.loadGLTF("./assets/models/hedge.glb"));
+  hedge.transform.position = {x: -5, y: 0, z: 14};
+  hedge.children[0].meshRenderer.materials[0] = foliageMat;
 
   // Metal plane
   // var albedo = renderer.loadTexture("./assets/textures/MetalPanelRectangular001/METALNESS/1K/MetalPanelRectangular001_COL_1K_METALNESS.jpg", {internalFormat: renderer.gl.SRGB8_ALPHA8});
@@ -433,10 +443,10 @@ async function setup() {
   // cube.position = new Vector(0, 4, 0);
   // scene.add(cube);
   
-  // Skinning
-  swat = await renderer.loadGLTF("./assets/models/swatOptimizedRunning.glb");
-  swat.transform.scale = Vector.fill(1.25);
-  swat.animationController.loop = true;
+  // // Skinning
+  // swat = await renderer.loadGLTF("./assets/models/swatOptimizedRunning.glb");
+  // swat.transform.scale = Vector.fill(1.25);
+  // swat.animationController.loop = true;
 
   // var dancingMonster = scene.add(await renderer.loadGLTF("./assets/models/dancingMonster.glb"));
   // dancingMonster.animationController.loop = true;
@@ -678,10 +688,6 @@ async function setup() {
     // player.rotation.x += Math.abs(y) * y * 0.07 * weaponSens;
     // player.rotation.y += Math.abs(x) * x * 0.07 * weaponSens;
   
-    // Fly camera
-    // flyCamera(renderer, mainCamera, dt);
-    // player.position = Vector.add(Vector.compMultiply(mainCamera.position, {x: 1, y: 1, z: -1}), {x: 0, y: -1.6, z: 0});
-  
     physicsEngine.update();
 
     for (var key in multiplayerCharacters) {
@@ -689,6 +695,10 @@ async function setup() {
     }
 
     player.update(frameTime);
+    // flyCamera(renderer, mainCamera, player.rotation, physicsEngine.dt);
+    // mainCamera.transform.rotation = Quaternion.eulerVector(player.rotation);
+    // player.position = Vector.add(Vector.compMultiply(mainCamera.transform.position, {x: 1, y: 1, z: 1}), {x: 0, y: -(player.height - 0.1), z: 0});
+
     scene.update(frameTime);
     captureZoneManager.update(frameTime);
     updateBulletTrails(physicsEngine.dt);

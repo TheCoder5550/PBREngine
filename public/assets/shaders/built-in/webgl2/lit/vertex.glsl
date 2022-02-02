@@ -1,14 +1,12 @@
 #version 300 es
+precision highp float;
+precision mediump int;
 
 in vec3 position;
 in vec3 normal;
 in vec3 tangent;
 in vec3 color;
 in vec2 uv;
-
-uniform mat4 projectionMatrix;
-uniform mat4 viewMatrix;
-uniform mat4 modelMatrix;
 
 out vec3 vPosition;
 out vec3 vNormal;
@@ -17,8 +15,20 @@ out vec3 vColor;
 out vec2 vUV;
 out mat3 vTBN;
 
-//Shadows
 const int levels = 2;
+
+uniform sharedPerScene {
+  mat4 projectionMatrix;
+  mat4 viewMatrix;
+  mat4 inverseViewMatrix;
+  float biases[levels];
+};
+
+// uniform mat4 projectionMatrix;
+// uniform mat4 viewMatrix;
+uniform mat4 modelMatrix;
+
+//Shadows
 uniform mat4 textureMatrices[levels];
 out vec4 projectedTexcoords[levels];
 

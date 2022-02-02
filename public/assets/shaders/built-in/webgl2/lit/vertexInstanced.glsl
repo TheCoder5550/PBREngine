@@ -7,9 +7,6 @@ in vec3 color;
 in vec2 uv;
 in mat4 modelMatrix;
 
-uniform mat4 projectionMatrix;
-uniform mat4 viewMatrix;
-
 out vec3 vPosition;
 out vec3 vNormal;
 out vec3 vTangent;
@@ -18,8 +15,16 @@ out vec2 vUV;
 out mat4 vModelMatrix;
 out mat3 vTBN;
 
-//Shadows
 const int levels = 2;
+
+uniform sharedPerScene {
+  mat4 projectionMatrix;
+  mat4 viewMatrix;
+  mat4 inverseViewMatrix;
+  float biases[levels];
+};
+
+//Shadows
 uniform mat4 textureMatrices[levels];
 out vec4 projectedTexcoords[levels];
 

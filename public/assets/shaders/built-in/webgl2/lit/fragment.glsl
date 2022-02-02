@@ -1,5 +1,6 @@
 #version 300 es
 precision highp float;
+precision mediump int;
 
 const float PI = 3.141592;
 
@@ -12,9 +13,6 @@ in vec3 vTangent;
 in vec3 vColor;
 in vec2 vUV;
 in mat3 vTBN;
-
-uniform mat4 inverseViewMatrix;
-uniform mat4 modelMatrix;
 
 // Material properties
 uniform sampler2D albedoTexture;
@@ -60,10 +58,14 @@ uniform samplerCube u_specularIBL;
 uniform sampler2D u_splitSum;
 
 // Shadows
-int shadowQuality = 1;
+const int levels = 2;
+in vec4 projectedTexcoords[levels];
+// uniform float biases[levels];
+uniform sampler2D projectedTextures[levels];
+
+int shadowQuality = 2;
 float shadowDarkness = 0.;
-// bruh
-vec2 shadowStepSize = 1. / vec2(1024);
+// vec2 shadowStepSize = 1. / vec2(1024) * 10.; // bruh
 const int shadowKernalSize = 3;
 mat3 shadowKernel = mat3(
   1, 2, 1,
@@ -71,10 +73,23 @@ mat3 shadowKernel = mat3(
   1, 2, 1
 );
 
-const int levels = 2;
-in vec4 projectedTexcoords[levels];
-uniform float biases[levels];
-uniform sampler2D projectedTextures[levels];
+// uniform mat4 inverseViewMatrix;
+uniform mat4 modelMatrix;
+
+uniform sharedPerScene {
+  mat4 projectionMatrix;
+  mat4 viewMatrix;
+  mat4 inverseViewMatrix;
+  float biases[levels];
+};
+
+// layout(std140) uniform testUBO {
+//   vec3 c;
+//   vec2 d;
+//   float e;
+//   float f;
+//   // float arr[2];
+// } tname;
 
 // No tiling
 vec4 hash4(vec2 p);
@@ -105,6 +120,9 @@ vec3 Spotlight (vec3 worldPos, vec3 N, vec3 V, vec3 lightPos, vec3 dir, float an
 vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, float _metallic, float _roughness, float _ao);
 
 void main() {
+  // fragColor = vec4(vec3(tname.e + tname.f, 0, 0) + tname.c.rgb + vec3(tname.d.rg, 1), 1);
+  // return;
+
   // fragColor = vec4(mod(abs(vUV), vec2(1.)), 0, 1);
   // return;
 
@@ -267,6 +285,8 @@ float getShadowAmount() {
     return 1.;
   }
 
+  vec2 shadowStepSize = vec2(1) / vec2(textureSize(projectedTextures[0], 0));
+
   if (shadowQuality >= 2) {
     vec3 proj = projectedTexcoords[0].xyz / projectedTexcoords[0].w;
     float currentDepth = proj.z + biases[0];
@@ -276,12 +296,14 @@ float getShadowAmount() {
       float sum = 0.0;
       for (int j = -shadowKernalSize / 2; j <= shadowKernalSize / 2; j++) {
         for (int k = -shadowKernalSize / 2; k <= shadowKernalSize / 2; k++) {
+          // float projectedDepth = texture(projectedTextures[0], proj.xy + shadowStepSize * hash(vec2(j, k) / 1000.)).r;
           float projectedDepth = texture(projectedTextures[0], proj.xy + shadowStepSize * vec2(j, k)).r;
-          sum += (projectedDepth <= currentDepth ? shadowDarkness : 1.) * shadowKernel[j + 1][k + 1];
+          sum += (projectedDepth <= currentDepth ? shadowDarkness : 1.);// * shadowKernel[j + 1][k + 1];
         }
       }
 
-      return sum / 16.;
+      return sum / float(shadowKernalSize * shadowKernalSize);
+      // return sum / 16.;
     }
 
     proj = projectedTexcoords[1].xyz / projectedTexcoords[1].w;
@@ -477,11 +499,11 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
   vec3 col = vec3(0);
   col += IBL(N, V, R, _albedo.rgb, _metallic, _roughness, f0) * _ao * environmentIntensity;
   
-  if (sunIntensity != vec3(0)) {
-    col += DirectionalLight(vPosition, N, V, sunDirection, sunIntensity, _albedo.rgb, _metallic, _roughness, f0) * _ao * getShadowAmount();
+  if (sunIntensity.xyz != vec3(0)) {
+    col += DirectionalLight(vPosition, N, V, sunDirection.xyz, sunIntensity.xyz, _albedo.rgb, _metallic, _roughness, f0) * _ao * getShadowAmount();
   }
 
-  for (int i = 0; i < nrLights; i++) {
+  for (int i = 0; i < int(nrLights); i++) {
     LightInfo light = lights[i];
     if (light.type == 0) {
       col += PositionalLight(vPosition, N, V, light.position, light.color, _albedo.rgb, _metallic, _roughness, f0);
