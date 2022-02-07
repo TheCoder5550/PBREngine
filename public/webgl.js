@@ -247,7 +247,8 @@ async function setup() {
   console.time("renderer.setup");
   await renderer.setup({
     version: 2,
-    shadowSizes: [8, 47],
+    shadowSizes: [4, 30],
+    shadowBiases: [-0.0003, -0.001],
     renderScale: 1,
 
     // disableLitInstanced: true,
@@ -266,6 +267,8 @@ async function setup() {
   scene.environmentIntensity = 0.4;
   scene.sunIntensity = Vector.fill(4);
   renderer.add(scene);
+  // await scene.loadEnvironment();
+  // await scene.loadEnvironment({ hdrFolder: "./assets/hdri/sky_only" });
   await scene.loadEnvironment({ hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed" });
   console.timeEnd("loadEnvironment");
 
@@ -455,6 +458,13 @@ async function setup() {
   // ], dancingMonster.transform.matrix);
 
   //colliders.push(new AABBCollider({x: -50, y: 0, z: -50}, {x: 50, y: 50, z: 50}, Matrix.identity(), true))
+
+  // // Reflection probe
+  // var oldSkybox = scene.skyboxCubemap;
+  // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 6, 0));
+  // await scene.loadEnvironment({ cubemap });
+  // // scene.skyboxCubemap = oldSkybox;
+  // scene.environmentIntensity = 1;
 
   /*
     Weapons models
@@ -861,8 +871,11 @@ function Player(pos = Vector.zero()) {
   this.walkAcceleration = 150 * 0.3;
   this.runningAcceleration = 225 * 0.3;
   this.friction = 10;
+
   this.coyoteTime = 0.11;
+  this.jumpBuffering = 0.08;
   var groundCounter = 0;
+  var jumpCounter = 0;
 
   this.collisionIterations = 3;
   this.grounded = false;
@@ -969,7 +982,7 @@ function Player(pos = Vector.zero()) {
   }
 
   this.getHeadPos = function() {
-    return Vector.add(this.position, {x: 0, y: this.height - 0.1, z: 0});
+    return Vector.add(this.position, {x: 0, y: this.standHeight / 2 + this.height / 2 - 0.1, z: 0});
   }
 
   this.getHeadRotation = function() {
@@ -987,7 +1000,7 @@ function Player(pos = Vector.zero()) {
   }
 
   this.update = function(dt) {
-    this.crouching = renderer.getKey(67);
+    this.crouching = renderer.getKey(16);
 
     targetHeight = this.crouching ? this.crouchHeight : this.standHeight;
     this.height += (targetHeight - this.height) * 0.6;
@@ -1021,7 +1034,10 @@ function Player(pos = Vector.zero()) {
 
   // bruh 200kb memory
   this.fixedUpdate = function(dt) {
-    // this.handRotation = Vector.add(this.handRotation, Vector.multiply(Vector.subtract(this.getHeadRotation(), this.handRotation), 0.8));
+    // this.handRotation.x += Math.sign(this.handRotation.x - this.getHeadRotation().x) * 0.01;
+    // this.handRotation.y += Math.sign(this.handRotation.y - this.getHeadRotation().y) * 0.01;
+    // this.handRotation = Vector.lerp(this.handRotation, this.getHeadRotation(), 0.8);
+    // this.handRotation = Vector.add(this.handRotation, Vector.multiply(Vector.subtract(this.getHeadRotation(), this.handRotation), 0.9));
     this.handRotation = this.getHeadRotation();
 
     // Gravity
@@ -1041,7 +1057,7 @@ function Player(pos = Vector.zero()) {
         direction = Vector.normalize(Vector.projectOnPlane(direction, this.realGroundNormal));
       }
 
-      var currentAcceleration = renderer.getKey(16) ? this.runningAcceleration : this.walkAcceleration;
+      var currentAcceleration = this.runningAcceleration;//renderer.getKey(16) ? this.runningAcceleration : this.walkAcceleration;
       currentAcceleration *= (this.grounded ? 1 : 0.1);
 
       actionQueue.push({type: "movement", time: new Date(), direction: direction, speed: this.walkSpeed, dt: dt});
@@ -1057,17 +1073,35 @@ function Player(pos = Vector.zero()) {
     //   actionQueue.push({type: "jump", time: new Date()});
     // }
 
+    // if (this.grounded) {
+    //   groundCounter = this.coyoteTime;
+    // }
+
+    // if (renderer.getKey(32) && groundCounter > 0) {
+    //   this.velocity.y = 6;
+    //   groundCounter = 0;
+    //   actionQueue.push({type: "jump", time: new Date()});
+    // }
+
+    // groundCounter -= dt;
+
+    // Jumping
     if (this.grounded) {
       groundCounter = this.coyoteTime;
     }
 
-    if (renderer.getKey(32) && groundCounter > 0) {
+    if (renderer.getKeyDown(32)) {
+      jumpCounter = this.jumpBuffering;
+    }
+
+    if (renderer.getKey(32) && jumpCounter > 0 && groundCounter > 0) {
       this.velocity.y = 6;
+      jumpCounter = 0;
       groundCounter = 0;
-      actionQueue.push({type: "jump", time: new Date()});
     }
 
     groundCounter -= dt;
+    jumpCounter -= dt;
 
     // Ground friction/drag
     if (this.grounded) {
@@ -1076,7 +1110,7 @@ function Player(pos = Vector.zero()) {
       this.velocity = Vector.add(this.velocity, Vector.multiply(Vector.normalize(projectedVelocity), -speed * dt * this.friction));
 
       // Sliding / turning
-      if (this.crouching) {
+      if (this.crouching && speed > 10) {
         var v = Vector.rotateAround({
           x: Vector.length(Vector.projectOnPlane(this.velocity, this.fakeGroundNormal)),
           y: 0,
@@ -1103,15 +1137,16 @@ function Player(pos = Vector.zero()) {
     for (var iter = 0; iter < this.collisionIterations; iter++) {
       if (q) {
         for (var k = 0; k < q.length; k++) {
-          if (!AABBTriangleToAABB(q[k][0], q[k][1], q[k][2], playerAABB)) {
+          if (!AABBTriangleToAABB(q[k][0], q[k][1], q[k][2], playerAABB)) { // bruh redundant?
             continue;
           }
 
-          var col = capsuleToTriangle(Vector.add(this.position, radiusOffset), Vector.subtract(Vector.add(this.position, new Vector(0, this.height, 0)), radiusOffset), this.colliderRadius, q[k][0], q[k][1], q[k][2], true);
+          var col = capsuleToTriangle(Vector.add(this.position, new Vector(0, this.standHeight / 2 - this.height * 0.5 + this.colliderRadius, 0)), Vector.subtract(Vector.add(this.position, new Vector(0, this.standHeight / 2 + this.height / 2, 0)), radiusOffset), this.colliderRadius, q[k][0], q[k][1], q[k][2], true);
+          // var col = capsuleToTriangle(Vector.add(this.position, radiusOffset), Vector.subtract(Vector.add(this.position, new Vector(0, this.height, 0)), radiusOffset), this.colliderRadius, q[k][0], q[k][1], q[k][2], true);
           
           if (col && !Vector.equal(col.normal, Vector.zero(), 0.001)) {
             var dp = Vector.dot(Vector.up(), col.normal);
-            var normal = dp > 0.8 ? Vector.up() : col.normal;
+            var normal = dp > 0.85 ? Vector.up() : col.normal;
             var depth = col.depth / Vector.dot(normal, col.normal);
 
             this.position = Vector.add(this.position, Vector.multiply(normal, depth));

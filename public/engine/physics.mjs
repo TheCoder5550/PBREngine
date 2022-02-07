@@ -511,7 +511,8 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
 
   // bruh make dynamicly resize when adding mesh
   var meshCollidersToAdd = [];
-  var aabb = new AABB(new Vector(-30.33, -35.33, -40.33), new Vector(30, 3.6, 40));
+  var aabb = new AABB(new Vector(-250, -35.33, -250), new Vector(250, 30, 250));
+  // var aabb = new AABB(new Vector(-30.33, -35.33, -40.33), new Vector(30, 3.6, 40));
   this.octree = new Octree(aabb, 4);
 
   this.Raycast = function(origin, direction) {

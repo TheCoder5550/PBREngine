@@ -1008,11 +1008,14 @@ function Renderer() {
         cameraMatrix: Matrix.inverse(views[i])
       };
 
+      // bruh start
       var scene = this.scenes[this.currentScene];
 
       if (scene.skyboxVisible) {
         this.skybox.render(camera, scene.skyboxCubemap);
       }
+
+      scene.updateUniformBuffers(camera.projectionMatrix, camera.viewMatrix, camera.inverseViewMatrix);
 
       gl.activeTexture(gl.TEXTURE0 + diffuseCubemapUnit);
       gl.bindTexture(gl.TEXTURE_CUBE_MAP, scene.diffuseCubemap);
@@ -1036,6 +1039,7 @@ function Renderer() {
       gl.colorMask(true, true, true, true);
 
       bindVertexArray(null);
+      // bruh end
     }
   
     return newCubemap;

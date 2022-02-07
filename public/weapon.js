@@ -186,9 +186,8 @@ function Weapon(settings = {}) {
 
           // Create trail
           var trailPos = this.muzzleObject ? Matrix.getPosition(this.muzzleObject.transform.getWorldMatrix()) : player.position;
-          var trail = new BulletTrail(trailPos, Vector.normalize(Vector.add(Vector.multiply(direction, 50), player.velocity)));
-          trail.position = Vector.add(trail.position, Vector.multiply(trail.direction, 0.5));
-          trail.updateInstance();
+          var trailVel = Vector.add(Vector.multiply(direction, 50), player.velocity);
+          var trail = new BulletTrail(trailPos, trailVel, direction);
           bulletTrails.push(trail);
 
           var hit = physicsEngine.Raycast(origin, direction).firstHit;
@@ -445,10 +444,13 @@ function Scope(settings = {}) {
   this.ADSMouseSensitivity = def(settings.ADSMouseSensitivity, 0.75);
 }
 
-function BulletTrail(pos, direction) {
+function BulletTrail(pos, velocity, lookDirection) {
   this.position = pos;
-  this.direction = direction;
-  this.speed = 50;
+  this.velocity = velocity;
+  this.direction = lookDirection;
+
+  Vector.addTo(this.position, Vector.multiply(this.velocity, 0.005));
+
   this.health = 1;
 
   var matrix = Matrix.identity();
@@ -461,7 +463,7 @@ function BulletTrail(pos, direction) {
   }
 
   this.update = function(dt) {
-    Vector.addTo(this.position, Vector.multiply(this.direction, dt * this.speed));
+    Vector.addTo(this.position, Vector.multiply(this.velocity, dt));
     this.health -= dt;
 
     this.updateInstance();

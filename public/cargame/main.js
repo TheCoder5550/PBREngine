@@ -2,6 +2,7 @@
 
 import Renderer, { GameObject, Scene, Camera, AudioListener3D, FindMaterials } from "../engine/renderer.js";
 import { PhysicsEngine, Rigidbody, SphereCollider } from "../engine/physics.mjs";
+import FlyCamera from "../engine/flyCamera.mjs";
 import Vector from "../engine/vector.mjs";
 import Matrix from "../engine/matrix.mjs";
 import Quaternion from "../engine/quaternion.mjs";
@@ -30,6 +31,7 @@ var renderer = new Renderer();
 var scene = new Scene("Main scene");
 
 var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 20});
+var flyCamera;
 var cameraEulerAngles = Vector.zero();
 var cameraCarForward = Vector.zero();
 
@@ -79,6 +81,8 @@ async function setup() {
   renderer.canvas.classList.add("webglCanvas");
   if (renderer.postprocessing) renderer.postprocessing.exposure = -1.5;
   renderer.add(scene);
+
+  flyCamera = new FlyCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 20});
 
   renderer.on("resize", function() {
     mainCamera.setAspect(renderer.aspect);
@@ -220,9 +224,12 @@ function loop() {
   if (car) car.update(frameTime);
   scene.update(physicsEngine.dt);
 
+  if (!renderer.getKey("81")) flyCamera.update(frameTime);
+
   cameraControls(frameTime);
 
-  renderer.render(mainCamera);
+  renderer.render(flyCamera.camera);
+  // renderer.render(mainCamera);
   // debugLines.render(mainCamera);
   renderUI(frameTime);
 
@@ -269,7 +276,7 @@ function cameraControls(dt) {
   if (car) {
     if (car.cameraMode == 0) {
       var followDistance = 5;
-      var followHeight = 0.35;
+      var followHeight = 0.3;
       var followSpeed = 0.05;
 
       var planeVelocity = Vector.projectOnPlane(car.rb.velocity, Vector.up());
@@ -278,7 +285,7 @@ function cameraControls(dt) {
 
       var finalCameraDir = null;
 
-      var origin = car.gameObject.transform.position;
+      var origin = Vector.add(car.gameObject.transform.position, new Vector(0, 0.15, 0));
       var dirNorm = Vector.normalize(Vector.add(cameraCarForward, new Vector(0, followHeight, 0)));
 
       var hit = physicsEngine.Raycast(origin, dirNorm);
@@ -720,6 +727,8 @@ function Car(settings = {}) {
       }
     }
 
+    return;
+
     var highestSkidVolume = 0;
 
     var iters = 20;
@@ -993,9 +1002,9 @@ function Car(settings = {}) {
     this.camberAngleCoeff = 1;
 
     this.stopLength = 0.01;
-    this.suspensionTravel = 0.2;
-    this.suspensionDamping = 3500;
-    this.suspensionForce = 80000;
+    this.suspensionTravel = 1.5;
+    this.suspensionDamping = 1500;
+    this.suspensionForce = 10000;
 
     this.angle = 0;
     this.angularVelocity = 0;

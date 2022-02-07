@@ -66,11 +66,29 @@ uniform sampler2D projectedTextures[levels];
 int shadowQuality = 2;
 float shadowDarkness = 0.;
 // vec2 shadowStepSize = 1. / vec2(1024) * 10.; // bruh
-const int shadowKernalSize = 3;
+const float shadowKernalSize = 2.;
 mat3 shadowKernel = mat3(
   1, 2, 1,
   2, 4, 2,
   1, 2, 1
+);
+vec2 poissonDisk[16] = vec2[]( 
+   vec2( -0.94201624, -0.39906216 ), 
+   vec2( 0.94558609, -0.76890725 ), 
+   vec2( -0.094184101, -0.92938870 ), 
+   vec2( 0.34495938, 0.29387760 ), 
+   vec2( -0.91588581, 0.45771432 ), 
+   vec2( -0.81544232, -0.87912464 ), 
+   vec2( -0.38277543, 0.27676845 ), 
+   vec2( 0.97484398, 0.75648379 ), 
+   vec2( 0.44323325, -0.97511554 ), 
+   vec2( 0.53742981, -0.47373420 ), 
+   vec2( -0.26496911, -0.41893023 ), 
+   vec2( 0.79197514, 0.19090188 ), 
+   vec2( -0.24188840, 0.99706507 ), 
+   vec2( -0.81409955, 0.91437590 ), 
+   vec2( 0.19984126, 0.78641367 ), 
+   vec2( 0.14383161, -0.14100790 ) 
 );
 
 // uniform mat4 inverseViewMatrix;
@@ -105,6 +123,7 @@ vec3 setNormalStrength(vec3 normal, float strength);
 
 // Shadow functions
 bool inRange(vec3 projCoord);
+float fadeOutShadow(float visibility, vec3 proj);
 float getShadowAmount();
 
 // PBR
@@ -258,7 +277,21 @@ bool inRange(vec3 projCoord) {
       projCoord.y <= 1.0;
 }
 
-float getShadowAmount() {
+float fadeOutShadow(float visibility, vec3 proj) {
+  return mix(visibility, 1., clamp(pow(length(proj.xy - vec2(0.5, 0.5)) * 2., 5.), 0., 1.));
+}
+
+float fadeToNextShadowMap(float v1, float v2, vec3 proj) {
+  return mix(v1, v2, clamp(pow(length(proj.xy - vec2(0.5, 0.5)) * 2., 30.), 0., 1.));
+}
+
+float random(vec3 seed, int i){
+      vec4 seed4 = vec4(seed,i);
+      float dot_product = dot(seed4, vec4(12.9898,78.233,45.164,94.673));
+      return fract(sin(dot_product) * 43758.5453);
+    }
+
+float getShadowAmount(float cosTheta) {
   if (shadowQuality == 0) {
     return 1.;
   }
@@ -288,21 +321,42 @@ float getShadowAmount() {
   vec2 shadowStepSize = vec2(1) / vec2(textureSize(projectedTextures[0], 0));
 
   if (shadowQuality >= 2) {
-    vec3 proj = projectedTexcoords[0].xyz / projectedTexcoords[0].w;
-    float currentDepth = proj.z + biases[0];
+    vec4 ShadowCoord = projectedTexcoords[0];
+    vec3 proj = ShadowCoord.xyz / ShadowCoord.w;
+    float bias = -biases[0];//0.00005 * tan(acos(cosTheta));
+    // bias = clamp(bias, 0., 0.01);
+    float currentDepth = proj.z - bias;
     bool inside = inRange(proj);
 
     if (inside) {
+      // float visibility = 1.;
+      // for (int i=0;i<16;i++){
+      //   int index = int(16.0*random(floor(vPosition.xyz*1000.0), i))%16;
+        
+      //   if (texture(projectedTextures[0], proj.xy + poissonDisk[index] * shadowStepSize * 2.).r < currentDepth) {
+      //     visibility -= 1. / 16.;
+      //   }
+
+      //   // visibility -= 0.2*(1.0-textureProj(projectedTextures[0], vec3(ShadowCoord.xy + poissonDisk[index]/700.0, (ShadowCoord.z-bias) / ShadowCoord.w)).r);
+      // }
+      // return visibility;
+
       float sum = 0.0;
-      for (int j = -shadowKernalSize / 2; j <= shadowKernalSize / 2; j++) {
-        for (int k = -shadowKernalSize / 2; k <= shadowKernalSize / 2; k++) {
+      for (float j = -shadowKernalSize / 2. + 0.5; j <= shadowKernalSize / 2. - 0.5; j++) {
+        for (float k = -shadowKernalSize / 2. + 0.5; k <= shadowKernalSize / 2. - 0.5; k++) {
           // float projectedDepth = texture(projectedTextures[0], proj.xy + shadowStepSize * hash(vec2(j, k) / 1000.)).r;
           float projectedDepth = texture(projectedTextures[0], proj.xy + shadowStepSize * vec2(j, k)).r;
-          sum += (projectedDepth <= currentDepth ? shadowDarkness : 1.);// * shadowKernel[j + 1][k + 1];
+          sum += 1. - step(projectedDepth, currentDepth);//(projectedDepth <= currentDepth ? shadowDarkness : 1.);// * shadowKernel[j + 1][k + 1];
         }
       }
 
-      return sum / float(shadowKernalSize * shadowKernalSize);
+      // bruh double calc
+      vec3 projNext = projectedTexcoords[1].xyz / projectedTexcoords[1].w;
+      float depthNext = projNext.z + biases[1];
+      float projectedDepthNext = texture(projectedTextures[1], projNext.xy).r;
+      float nextVis = (projectedDepthNext <= depthNext ? shadowDarkness : 1.);
+
+      return fadeToNextShadowMap(sum / float(shadowKernalSize * shadowKernalSize), nextVis, proj);
       // return sum / 16.;
     }
 
@@ -314,19 +368,19 @@ float getShadowAmount() {
       
       if (shadowQuality == 2) {
         float projectedDepth = texture(projectedTextures[1], proj.xy).r;
-        return (projectedDepth <= currentDepth ? shadowDarkness : 1.);
+        return fadeOutShadow((projectedDepth <= currentDepth ? shadowDarkness : 1.), proj);
       }
 
       if (shadowQuality == 3) {
         float sum = 0.0;
-        for (int j = -shadowKernalSize / 2; j <= shadowKernalSize / 2; j++) {
-          for (int k = -shadowKernalSize / 2; k <= shadowKernalSize / 2; k++) {
+        for (float j = -shadowKernalSize / 2. + 0.5; j <= shadowKernalSize / 2. - 0.5; j++) {
+          for (float k = -shadowKernalSize / 2. + 0.5; k <= shadowKernalSize / 2. - 0.5; k++) {
             float projectedDepth = texture(projectedTextures[1], proj.xy + shadowStepSize * vec2(j, k)).r;
-            sum += (projectedDepth <= currentDepth ? shadowDarkness : 1.) * shadowKernel[j + 1][k + 1];
+            sum += (projectedDepth <= currentDepth ? shadowDarkness : 1.);
           }
         }
 
-        return sum / 16.;
+        return fadeOutShadow(sum / 16., proj);
       }
     }
 
@@ -500,7 +554,7 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
   col += IBL(N, V, R, _albedo.rgb, _metallic, _roughness, f0) * _ao * environmentIntensity;
   
   if (sunIntensity.xyz != vec3(0)) {
-    col += DirectionalLight(vPosition, N, V, sunDirection.xyz, sunIntensity.xyz, _albedo.rgb, _metallic, _roughness, f0) * _ao * getShadowAmount();
+    col += DirectionalLight(vPosition, N, V, sunDirection.xyz, sunIntensity.xyz, _albedo.rgb, _metallic, _roughness, f0) * _ao * getShadowAmount(dot(sunDirection.xyz, N));
   }
 
   for (int i = 0; i < int(nrLights); i++) {

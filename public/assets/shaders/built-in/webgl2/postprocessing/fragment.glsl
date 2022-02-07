@@ -52,7 +52,7 @@ void main() {
   col = ACESFilm(col * pow(2., exposure));
 
   col = pow(col, vec3(1. / gamma));
-  col = adjustSaturation(col, 0.3);
+  // col = adjustSaturation(col, 0.3);
 
   gl_FragColor = vec4(col, samp.a);
   return;
