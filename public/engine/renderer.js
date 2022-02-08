@@ -1910,6 +1910,18 @@ function Renderer() {
     this.exposureLocation = gl.getUniformLocation(this.program, "exposure");
     this.gammaLocation = gl.getUniformLocation(this.program, "gamma");
     this.godraysLocation = gl.getUniformLocation(this.program, "enableGodrays");
+
+    useProgram(this.program);
+    gl.uniform1i(this.mainTextureLocation, 0);
+    gl.uniform1i(this.bloomTextureLocation, 1);
+
+    if (this.depthTexture || renderer.godrays) {
+      gl.uniform1i(this.godraysLocation, 1);
+      gl.uniform1i(this.depthTextureLocation, 2);
+    }
+    else {
+      gl.uniform1i(this.godraysLocation, 0);
+    }
   
     this.resizeFramebuffers = function() {
       gl.bindTexture(gl.TEXTURE_2D, this.colorBuffers[0]);
@@ -1941,28 +1953,28 @@ function Renderer() {
   
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.colorBuffers[0]);
-      gl.uniform1i(this.mainTextureLocation, 0);
+      // gl.uniform1i(this.mainTextureLocation, 0);
 
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, renderer.bloom.upsampleFramebuffers[renderer.bloom.upsampleFramebuffers.length - 1].colorBuffer);
-      gl.uniform1i(this.bloomTextureLocation, 1);
+      // gl.uniform1i(this.bloomTextureLocation, 1);
 
       if (this.depthTexture) {
-        gl.uniform1i(this.godraysLocation, 1);
+        // gl.uniform1i(this.godraysLocation, 1);
 
         gl.activeTexture(gl.TEXTURE2);
         gl.bindTexture(gl.TEXTURE_2D, this.depthTexture);
-        gl.uniform1i(this.depthTextureLocation, 2);
+        // gl.uniform1i(this.depthTextureLocation, 2);
       }
       else if (renderer.godrays) {
-        gl.uniform1i(this.godraysLocation, 1);
+        // gl.uniform1i(this.godraysLocation, 1);
 
         gl.activeTexture(gl.TEXTURE2);
         gl.bindTexture(gl.TEXTURE_2D, renderer.godrays.framebufferData.colorBuffer);
-        gl.uniform1i(this.depthTextureLocation, 2);
+        // gl.uniform1i(this.depthTextureLocation, 2);
       }
       else {
-        gl.uniform1i(this.godraysLocation, 0);
+        // gl.uniform1i(this.godraysLocation, 0);
       }
   
       gl.uniform2f(this.SIZELocation, gl.canvas.width, gl.canvas.height);
@@ -2013,6 +2025,12 @@ function Renderer() {
       this.upsampleFramebuffers.push(createFramebuffer(Math.floor(gl.canvas.width * scale), Math.floor(gl.canvas.height * scale)));
     }
 
+    useProgram(this.program);
+    gl.uniform1i(locations["mainTexture"], 0);
+    gl.uniform1i(locations["secondTexture"], 1);
+    gl.uniform1f(locations["_SampleScale"], this.sampleScale);
+    gl.uniform1f(locations["threshold"], this.threshold);
+
     this.resizeFramebuffers = function() {
       for (var i = 0; i < this.downsampleFramebuffers.length; i++) {
         gl.deleteFramebuffer(this.downsampleFramebuffers[i].framebuffer);
@@ -2042,11 +2060,7 @@ function Renderer() {
       gl.enableVertexAttribArray(positionLocation);
       gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 8, 0);
 
-      gl.uniform1i(locations["mainTexture"], 0);
-      gl.uniform1i(locations["secondTexture"], 1);
-      
-      gl.uniform1f(locations["_SampleScale"], this.sampleScale);
-      gl.uniform1f(locations["threshold"], this.threshold);
+      gl.activeTexture(gl.TEXTURE0);
 
       for (var i = 0; i < this.downsampleFramebuffers.length; i++) {
         var framebuffer = this.downsampleFramebuffers[i];
@@ -2055,7 +2069,6 @@ function Renderer() {
         gl.viewport(0, 0, framebuffer.width, framebuffer.height);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, i < 1 ? renderer.postprocessing.colorBuffers[0] : this.downsampleFramebuffers[i - 1].colorBuffer);
 
         if (locations["mainTextureSize"]) {
@@ -2544,6 +2557,16 @@ function Renderer() {
     if (Array.isArray(this.uniforms)) {
       throw new Error("Uniforms is array!");
     }
+
+    // Add texture unit offset
+    for (var name in this.uniforms) {
+      var uniform = this.uniforms[name];
+      if (uniform.texture) {
+        for (var i = 0; i < uniform.arguments.length; i++) {
+          uniform.arguments[i] += materialTextureUnitOffset;
+        }
+      }
+    }
   
     this.copy = function() {
       // bruh not copy
@@ -2562,10 +2585,12 @@ function Renderer() {
     }
 
     this.setUniform = function(name, values) {
+      var valuesArray = Array.isArray(values) ? values : [values];
       var uniform = this.getUniform(name);
+
       if (uniform) {
         // bruh fix for texture
-        uniform.arguments = Array.isArray(values) ? values : [values];
+        uniform.arguments = valuesArray;
       }
       else if (this.programContainer.activeUniforms[name]) {
         var t = this.programContainer.activeUniforms[name].typeString;
@@ -2573,17 +2598,22 @@ function Renderer() {
         
         var args = null;
         if (isTexture) {
-          var textureIndex = this.textures.indexOf(values); 
-          if (textureIndex === -1) {
-            this.textures.push(values);
-            args = [ this.textures.length - 1 ];
-          }
-          else {
-            args = [ textureIndex ];
+          args = new Array(valuesArray.length);
+          for (var i = 0; i < args.length; i++) {
+            var textureIndex = this.textures.indexOf(valuesArray[i]); 
+            if (textureIndex === -1) {
+              this.textures.push(valuesArray[i]);
+              args[i] = this.textures.length - 1;
+            }
+            else {
+              args[i] = textureIndex;
+            }
+
+            args[i] += materialTextureUnitOffset;
           }
         }
         else {
-          args = Array.isArray(values) ? values : [values];
+          args = valuesArray;
         }
 
         this.uniforms[name] = {
@@ -2611,7 +2641,6 @@ function Renderer() {
       return false;
     }
   
-    // bruh getUniform gc
     this.getUniform = function(name) {
       return this.uniforms[name];
     }
@@ -2653,12 +2682,26 @@ function Renderer() {
 
         if (location != null) {
           // Bruh (check if texture call)
-          if (uniform.texture) {
-            (gl["uniform" + uniform.type]).call(gl, location, uniform.arguments[0] + materialTextureUnitOffset);
-          }
-          else {
-            (gl["uniform" + uniform.type]).call(gl, location, ...uniform.arguments);
-          }
+          // if (uniform.texture) {
+          //   (gl["uniform" + uniform.type]).call(gl, location, uniform.arguments[0] + materialTextureUnitOffset);
+          // }
+          // else {
+          //   (gl["uniform" + uniform.type]).call(gl, location, ...uniform.arguments);
+          // }
+
+          gl["uniform" + uniform.type + "v"](location, uniform.arguments);
+
+          // if (uniform.texture) {
+          //   var n = new Array(uniform.arguments.length);
+          //   for (var i = 0; i < n.length; i++) {
+          //     n[i] = uniform.arguments[i] + materialTextureUnitOffset;
+          //   }
+          //   // console.log(name, n);
+          //   gl["uniform" + uniform.type + "v"](location, n);
+          // }
+          // else {
+          //   gl["uniform" + uniform.type + "v"](location, uniform.arguments);
+          // }
         }
       }
   
@@ -2668,7 +2711,7 @@ function Renderer() {
 
       // bruh
       var lights = currentScene.getLights();
-      gl.uniform1i(getUniformLocation("nrLights"), lights.length);
+      if (getUniformLocation("nrLights")) gl.uniform1i(getUniformLocation("nrLights"), lights.length);
 
       for (var i = 0; i < lights.length; i++) {
         var light = lights[i];

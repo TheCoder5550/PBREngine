@@ -274,7 +274,8 @@ bool inRange(vec3 projCoord) {
   return projCoord.x >= 0.0 &&
       projCoord.x <= 1.0 &&
       projCoord.y >= 0.0 &&
-      projCoord.y <= 1.0;
+      projCoord.y <= 1.0 &&
+      projCoord.z < 1.0;
 }
 
 float fadeOutShadow(float visibility, vec3 proj) {

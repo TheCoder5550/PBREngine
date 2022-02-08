@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+  <title>PBR demo</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;400&display=swap" rel="stylesheet">
+
+  <script src="https://aaserver.net/libraries/gameCanvas/gameCanvasPerlin.js"></script>
+  <script src="Stats.js"></script>
+
+  <style>
+
+    :root {
+      font-family: 'Oswald', sans-serif;
+    }
+
+    body {
+      background: white;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+    }
+
+  </style>
+</head>
+<body>
+  <script type="module">
+
+    import Renderer, { Scene, GameObject } from "./engine/renderer.js";
+    import OrbitCamera from "./engine/orbitCamera.mjs";
+    import Vector from "./engine/vector.mjs";
+    import { clamp, mapValue } from "./engine/helper.mjs";
+    import { getTriangleNormal } from "./engine/algebra.mjs";
+
+    var stats = new Stats();
+    document.body.appendChild(stats.dom);
+
+    var perlin = typeof Perlin == "undefined" ? {noise: _ => 0} : new Perlin();
+
+    var renderer;
+    var scene;
+    var camera;
+
+    (async function() {
+      renderer = new Renderer();
+      await renderer.setup({
+        disableLitInstanced: true,
+        disableUnlitInstanced: true,
+        disableLitSkinned: true,
+        disableLitBillboard: true,
+        disableTrailLit: true,
+        disableParticleProgram: true
+      });
+
+      scene = new Scene();
+      scene.environmentIntensity = 0;
+      scene.sunIntensity = Vector.fill(1);
+      // scene.smoothSkybox = true;
+      renderer.add(scene);
+
+      await scene.loadEnvironment({
+        hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed", 
+        res: 512
+      });
+
+      camera = new OrbitCamera(renderer, {near: 0.1, far: 5000, layer: 0, fov: 20});
+      camera.distance = 4;
+
+      var model = await renderer.loadGLTF("./assets/models/DamagedHelmet.glb");
+      model.transform.position.y += 2;
+      scene.add(model);
+
+      var litTerrain = new renderer.ProgramContainer(await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/litTerrain"));
+      console.log(litTerrain);
+
+      var gl = renderer.gl;
+      var sRGBInternalFormat = renderer.version == 1 ? (renderer.sRGBExt && (renderer.floatTextures || renderer.textureHalfFloatExt) ? renderer.sRGBExt.SRGB_ALPHA_EXT : gl.RGBA) : gl.SRGB8_ALPHA8;
+      var sRGBFormat = renderer.version == 1 ? (renderer.sRGBExt && (renderer.floatTextures || renderer.textureHalfFloatExt) ? renderer.sRGBExt.SRGB_ALPHA_EXT : gl.RGBA) : gl.RGBA;
+      var grassAlbedo = await renderer.loadTextureAsync("./assets/textures/Ground037_4K-JPG/Ground037_4K_Color.jpg", {internalFormat: sRGBInternalFormat, format: sRGBFormat});
+      var grassNormal = await renderer.loadTextureAsync("./assets/textures/Ground037_4K-JPG/Ground037_4K_Normal.jpg");
+
+      var stoneAlbedo = await renderer.loadTextureAsync("./assets/textures/Snow/albedo.jpg");
+      var stoneNormal = await renderer.loadTextureAsync("./assets/textures/Snow/normal.jpg");
+
+      var snowAlbedo = await renderer.loadTextureAsync("./assets/textures/Snow/albedo.jpg");
+      var snowNormal = await renderer.loadTextureAsync("./assets/textures/Snow/normal.jpg");
+
+      var terrainMat = renderer.CreateLitMaterial({}, litTerrain);
+      terrainMat.setUniform("albedoTextures[0]", [ grassAlbedo, stoneAlbedo, snowAlbedo ]);
+      terrainMat.setUniform("normalTextures[0]", [ grassNormal, stoneNormal, snowNormal ]);
+
+      var rootChunks = 15;
+      var chunkSize = 40;
+      var chunkRes = 50;
+
+      lodTerrain(1000, chunkRes);
+
+      function lodTerrain(chunkSize = 40, chunkRes = 40, level = 0) {
+        for (var z = -1; z <= 1; z++) {
+          for (var x = -1; x <= 1; x++) {
+            if (level > 2 || x !== 0 || z !== 0) {
+              var terrain = scene.add(new GameObject("Terrain " + x + "," + z));
+              terrain.transform.position = new Vector(x * chunkSize, 0, z * chunkSize);
+              terrain.meshRenderer = new renderer.MeshRenderer(terrainMat, createTerrainData(chunkSize, chunkSize, chunkRes, 200, new Vector(chunkSize * x, chunkSize * z, 0), 0.001, 600 * (1 / 3) ** level));
+            }
+          }
+        }
+
+        if (level <= 2) {
+          lodTerrain(chunkSize / 3, chunkRes, level + 1);
+        }
+      }
+
+      // for (var z = -Math.floor(rootChunks / 2); z <= Math.floor(rootChunks / 2); z++) {
+      //   for (var x = -Math.floor(rootChunks / 2); x <= Math.floor(rootChunks / 2); x++) {
+      //     var terrain = scene.add(new GameObject("Terrain " + x + "," + z));
+      //     terrain.transform.position = new Vector(x * chunkSize, 0, z * chunkSize);
+      //     terrain.meshRenderer = new renderer.MeshRenderer(terrainMat, createTerrainData(chunkSize, chunkSize, chunkRes, 20, new Vector(chunkSize * x, chunkSize * z, 0), 0.01, 50));
+
+      //     // physicsEngine.addMeshToOctree(terrain);
+      //   }
+      // }
+
+      renderer.on("renderloop", function(frameTime) {
+        scene.update(frameTime);
+        renderer.render(camera.camera);
+
+        stats.update();
+      });
+
+      window.renderer = renderer;
+      window.scene = scene;
+      // window.physicsEngine = physicsEngine;
+      window.camera = camera;
+    })();
+
+    function createTerrainData(w = 20, h = 20, res = 5, heightFactor = 2, noiseOffset = Vector.zero(), noiseScale = 0.01, uvScale = 20) {
+      function getHeight(i, j) {
+        return Math.pow(LayeredNoise(i * noiseScale, j * noiseScale, 6), 2) * heightFactor;// * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
+        // return perlin.noise(i * noiseScale, j * noiseScale) * scale * heightFactor * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
+      }
+
+      var uvs = [];
+      var vertices = [];
+      var triangles = [];
+      var tangents = [];
+
+      for (var i = 0; i < res; i++) {
+        for (var j = 0; j < res; j++) {
+          var x = mapValue(i, 0, res - 1, -w / 2, w / 2);
+          var z = mapValue(j, 0, res - 1, -h / 2, h / 2);
+
+          var vertex = new Vector(
+            x,
+            getHeight(x + noiseOffset.x, z + noiseOffset.y),
+            z
+          );
+          vertices.push(vertex.x, vertex.y, vertex.z);
+          uvs.push(i / (res - 1) * uvScale, j / (res - 1) * uvScale);
+        }
+      }
+
+      var normals = new Array(vertices.length / 3);
+      for (var i = 0; i < normals.length; i++) {
+        normals[i] = [];
+      }
+
+      for (var i = 0; i < res - 1; i++) {
+        for (var j = 0; j < res - 1; j++) {
+          var ind = j + i * res;
+          var indices = [
+            ind,
+            ind + 1,
+            ind + res,
+
+            ind + 1,
+            ind + res + 1,
+            ind + res
+          ];
+          triangles.push(...indices);
+
+          var t1Normal = getTriangleNormal([Vector.fromArray(vertices, indices[0] * 3), Vector.fromArray(vertices, indices[1] * 3), Vector.fromArray(vertices, indices[2] * 3)]);
+          var t2Normal = getTriangleNormal([Vector.fromArray(vertices, indices[3] * 3), Vector.fromArray(vertices, indices[4] * 3), Vector.fromArray(vertices, indices[5] * 3)]);
+
+          normals[indices[0]].push(t1Normal);
+          normals[indices[1]].push(t1Normal);
+          normals[indices[2]].push(t1Normal);
+          normals[indices[3]].push(t2Normal);
+          normals[indices[4]].push(t2Normal);
+          normals[indices[5]].push(t2Normal);
+        }
+      }
+
+      var outNormals = [];
+      for (var i = 0; i < normals.length; i++) {
+        var normal = Vector.divide(normals[i].reduce((a, b) => {
+          return Vector.add(a, b);
+        }, Vector.zero()), normals[i].length);
+
+        outNormals.push(normal.x, normal.y, normal.z);
+
+        tangents.push(normal.y, normal.x, normal.z);
+      }
+
+      var meshData = new renderer.MeshData({
+        indices: {
+          bufferData: new Uint32Array(triangles),
+          target: renderer.gl.ELEMENT_ARRAY_BUFFER
+        },
+        position: {
+          bufferData: new Float32Array(vertices),
+          size: 3
+        },
+        normal: {
+          bufferData: new Float32Array(outNormals),
+          size: 3
+        },
+        tangent: {
+          bufferData: new Float32Array(tangents),
+          size: 3
+        },
+        uv: {
+          bufferData: new Float32Array(uvs),
+          size: 2
+        }
+      });
+      
+      return meshData;
+    }
+
+    function LayeredNoise(x, y, octaves = 4) {
+      var noise = 0;
+      var frequency = 1;
+      var factor = 1;
+
+      var persistance = 0.4;
+      var roughness = 3;
+
+      for (var i = 0; i < octaves; i++) {
+        noise += perlin.noise(x * frequency + i * 0.72354, y * frequency + i * 0.72354) * factor;
+        factor *= persistance;
+        frequency *= roughness;
+      }
+
+      return noise;
+    }
+
+  </script>
+</body>
+</html>

@@ -23,6 +23,10 @@ function roundNearest(value, nearest)  {
   return Math.round(value / nearest) * nearest;
 }
 
+function mapValue(x, in_min, in_max, out_min, out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
 // Other
 
 function Float32ToFloat16(arr) {
@@ -144,6 +148,7 @@ export {
   lerp,
   inverseLerp,
   roundNearest,
+  mapValue,
   Float32ToFloat16,
   Uint8ToUint32,
   Float32Concat,

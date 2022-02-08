@@ -113,7 +113,7 @@ async function setup() {
   // cube.transform.scale = Vector.fill(0.1);
 
   setLoadingStatus("Loading map");
-  var map = await renderer.loadGLTF("./map2.glb");
+  var map = await renderer.loadGLTF("./map.glb");
   map.transform.position = new Vector(0, -2.1, 0);
   scene.add(renderer.BatchGameObject(map));
 
@@ -149,7 +149,8 @@ async function setup() {
     gearRatios: [2],
     friction: 1,
     forwardFricton: 2,
-    sidewaysFriction: 1.5
+    sidewaysFriction: 1.5,
+    torque: 600
   });
   await car.setup("./porsche.glb");
   FindMaterials("paint", car.gameObject)?.[0]?.setUniform("metallic", 0.2);
@@ -228,8 +229,8 @@ function loop() {
 
   cameraControls(frameTime);
 
-  renderer.render(flyCamera.camera);
-  // renderer.render(mainCamera);
+  // renderer.render(flyCamera.camera);
+  renderer.render(mainCamera);
   // debugLines.render(mainCamera);
   renderUI(frameTime);
 
@@ -523,8 +524,8 @@ function Car(settings = {}) {
     this.wheels[2].camberAngle = camber * -this.wheels[2].side;
     this.wheels[3].camberAngle = camber * -this.wheels[3].side;
 
-    // this.wheels[0].friction *= 1.2;
-    // this.wheels[1].friction *= 1.2;
+    this.wheels[2].friction *= 1.03;
+    this.wheels[3].friction *= 1.03;
 
     brakeMat = FindMaterials("tex_shiny", this.gameObject)[0];
   }
@@ -649,7 +650,7 @@ function Car(settings = {}) {
       // Change model transform
       var modelTransform = wheel.model.children[0].transform;
       modelTransform.position = new Vector(wheel.camberAngle / 100 * -wheel.side, -(wheel.isGrounded ? hit.distance - wheel.radius : wheel.suspensionTravel), 0);
-      modelTransform.rotation = Quaternion.euler(wheel.angle, wheel.side == 1 ? Math.PI : 0, wheel.camberAngle * Math.PI / 180);
+      modelTransform.rotation = Quaternion.euler(wheel.angle * -wheel.side, wheel.side == 1 ? Math.PI : 0, wheel.camberAngle * Math.PI / 180);
 
       if (wheel.isGrounded) {
         var rayDist = hit.distance;
@@ -727,8 +728,6 @@ function Car(settings = {}) {
       }
     }
 
-    return;
-
     var highestSkidVolume = 0;
 
     var iters = 20;
@@ -743,6 +742,11 @@ function Car(settings = {}) {
         if (this.drivetrain == "FWD" || this.drivetrain == "AWD") {
           differentialConstraint(this.engine, this.wheels[2], this.wheels[3], dt, (this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio);
         }
+
+        // gearConstraint(this.engine, this.wheels[0], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
+        // gearConstraint(this.engine, this.wheels[1], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
+        // gearConstraint(this.engine, this.wheels[2], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
+        // gearConstraint(this.engine, this.wheels[36], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
       }
 
       for (var wheel of this.wheels) {
@@ -760,7 +764,7 @@ function Car(settings = {}) {
 
         if (wheel.isGrounded) {
           // Friction
-          wheelVelocity = this.rb.GetPointVelocity(worldPos);
+          wheelVelocity = this.rb.GetPointVelocity(wheel.contactPoint);
 
           forwardVelocity = Vector.dot(wheelVelocity, forward);
           var sidewaysVelocity = Vector.dot(wheelVelocity, sideways);
@@ -870,14 +874,14 @@ function Car(settings = {}) {
   }
 
   function Engine(settings = {}) {
-    this.torque = settings.torque ?? 350 * 3;
+    this.torque = settings.torque ?? 300;
     this.minRPM = 0;
     this.maxRPM = 8000;
     this.rpmLimiterDelay = 50;
 
     this.angularVelocity = 0;
-    this.inertia = 0.15 * 3;
-    this.friction = 200;
+    this.inertia = 0.15 * 3 / 3;
+    this.friction = 200 / 10;
 
     this.canThrottle = true;
     var throttleTimeout = null;
@@ -1002,9 +1006,9 @@ function Car(settings = {}) {
     this.camberAngleCoeff = 1;
 
     this.stopLength = 0.01;
-    this.suspensionTravel = 1.5;
-    this.suspensionDamping = 1500;
-    this.suspensionForce = 10000;
+    this.suspensionTravel = 0.15;
+    this.suspensionDamping = 3000;
+    this.suspensionForce = 70000;
 
     this.angle = 0;
     this.angularVelocity = 0;
@@ -1028,6 +1032,20 @@ function Car(settings = {}) {
 
     this.isGrounded = false;
     this.normalForce = 0;
+  }
+
+  function gearConstraint(a, b, dt, ra, rb) {
+    var biasFactor = 0;
+    var maxImpulse = Infinity;
+    var C = a.angle / ra - b.angle / rb;
+    var jacobian = [1 / ra, -1 / rb];
+    var velocities = [a.angularVelocity, b.angularVelocity];
+    var inertias = [a.inertia, b.inertia];
+
+    var { impulses } = physicsEngine.getConstraintImpulse(jacobian, velocities, inertias, C, dt, biasFactor);
+
+    a.angularVelocity += impulses[0] / a.inertia;
+    b.angularVelocity += impulses[1] / b.inertia;
   }
 
   function differentialConstraint(m, a, b, dt, radius) {

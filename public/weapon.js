@@ -445,9 +445,9 @@ function Scope(settings = {}) {
 }
 
 function BulletTrail(pos, velocity, lookDirection) {
-  this.position = pos;
-  this.velocity = velocity;
-  this.direction = lookDirection;
+  this.position = Vector.copy(pos);
+  this.velocity = Vector.copy(velocity);
+  this.direction = Vector.copy(lookDirection);
 
   Vector.addTo(this.position, Vector.multiply(this.velocity, 0.005));
 

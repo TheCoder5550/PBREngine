@@ -1190,22 +1190,22 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
   }
 
   this.update = function() {
-    // var newTime = performance.now();
-    // var frameTime = (newTime - lastTime) / 1000;
-    // if (frameTime > 0.25)
-    //   frameTime = 0.25;
-    // lastTime = newTime;
+    var newTime = performance.now();
+    var frameTime = (newTime - lastTime) / 1000;
+    if (frameTime > 0.25)
+      frameTime = 0.25;
+    lastTime = newTime;
 
-    // accumulator += frameTime;
+    accumulator += frameTime;
 
-    // while (accumulator >= this.dt) {
-    //   updatePhysics();
-    //   accumulator -= this.dt;
-    //   this.time += this.dt;
-    // }
+    while (accumulator >= this.dt) {
+      updatePhysics();
+      accumulator -= this.dt;
+      this.time += this.dt;
+    }
 
-    updatePhysics();
-    this.time += this.dt;
+    // updatePhysics();
+    // this.time += this.dt;
   }
 
   this.getConstraintImpulse = getConstraintImpulse;
