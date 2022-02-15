@@ -61,6 +61,10 @@ export default class Matrix {
     return dst;
   }
 
+  static set(matrix, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) {
+    return _fillFloat32Array(matrix, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p);
+  }
+
   static copy(m, dst) {
     dst = dst || new Float32Array(16);
     _fillFloat32Array(dst,

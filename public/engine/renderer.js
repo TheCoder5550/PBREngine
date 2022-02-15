@@ -3028,6 +3028,8 @@ function Renderer() {
     }
 
     this.copy = function() {
+      return this; // bruh
+
       var mats = [];
       for (var mat of this.materials) {
         mats.push(mat.copy());
@@ -3263,7 +3265,7 @@ function Renderer() {
   }
 
   function setupTexture(texture, image, settings) {
-    if (!settings.hasOwnProperty("generateMipmap")) settings.generateMipmap = true;
+    // if (!settings.hasOwnProperty("generateMipmap")) settings.generateMipmap = true;
     // if (!settings.hasOwnProperty("flipY")) settings.flipY = true;
 
     if (settings.hasOwnProperty("maxTextureSize") && image.width > settings.maxTextureSize) {

@@ -425,6 +425,10 @@ class GameCanvas {
     this.ctx.fillRect(0, 0, this.width, this.height);
   }
 
+  arc(x, y, radius, startAngle, endAngle, counterclockwise) {
+    this.ctx.arc(x, y, radius, startAngle, endAngle, counterclockwise)
+  }
+
   circle(x, y, radius, color, strokeColor, lineWidth) {
     this.ctx.beginPath();
     this.ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -769,6 +773,10 @@ class GameCanvas {
 
   resetTextAlignY() {
     this.ctx.textBaseline = "alphabetic";
+  }
+
+  clip() {
+    this.ctx.clip();
   }
 
   /*

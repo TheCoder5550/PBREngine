@@ -511,9 +511,9 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
 
   // bruh make dynamicly resize when adding mesh
   var meshCollidersToAdd = [];
-  var aabb = new AABB(new Vector(-250, -35.33, -250), new Vector(250, 30, 250));
+  // var aabb = new AABB(new Vector(-250, -35.33, -250), new Vector(250, 30, 250));
   // var aabb = new AABB(new Vector(-30.33, -35.33, -40.33), new Vector(30, 3.6, 40));
-  this.octree = new Octree(aabb, 4);
+  // this.octree = new Octree(aabb, 4);
 
   this.Raycast = function(origin, direction) {
     var outArray = [];
@@ -577,24 +577,24 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
   }
 
   this.addMeshCollider = function(gameObject) {
-    this._addMeshToOctree(gameObject);
-    // meshCollidersToAdd.push(gameObject);
+    // this._addMeshToOctree(gameObject);
+    meshCollidersToAdd.push(gameObject);
   }
 
   this.setupMeshCollider = function() {
-    // var aabb = new AABB();
-    // for (var c of meshCollidersToAdd) {
-    //   aabb.extend(this.scene.renderer.GetMeshAABB(c, 0.1));
-    // }
+    var aabb = new AABB();
+    for (var c of meshCollidersToAdd) {
+      aabb.extend(this.scene.renderer.GetMeshAABB(c, 0.1));
+    }
 
     // var aabb = new AABB(new Vector(-30.33, -35.33, -40.33), new Vector(30, 3.6, 40));
-    // this.octree = new Octree(aabb, 4);
+    this.octree = new Octree(aabb, 4);
 
-    // for (var c of meshCollidersToAdd) {
-    //   this._addMeshToOctree(c);
-    // }
+    for (var c of meshCollidersToAdd) {
+      this._addMeshToOctree(c);
+    }
 
-    // meshCollidersToAdd = [];
+    meshCollidersToAdd = [];
   }
 
   // bruh make private
@@ -937,13 +937,18 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
                 body.body.angularVelocity.z
               );
 
+              var it = body.body.inverseWorldInertia;
+
               masses.push(
                 body.body.mass,
                 body.body.mass,
                 body.body.mass,
-                body.body.inertia.x,
-                body.body.inertia.y,
-                body.body.inertia.z
+                1 / it[0],
+                1 / it[5],
+                1 / it[10]
+                // body.body.inertia.x,
+                // body.body.inertia.y,
+                // body.body.inertia.z
               );
             }
 
@@ -1190,22 +1195,22 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
   }
 
   this.update = function() {
-    var newTime = performance.now();
-    var frameTime = (newTime - lastTime) / 1000;
-    if (frameTime > 0.25)
-      frameTime = 0.25;
-    lastTime = newTime;
+    // var newTime = performance.now();
+    // var frameTime = (newTime - lastTime) / 1000;
+    // if (frameTime > 0.25)
+    //   frameTime = 0.25;
+    // lastTime = newTime;
 
-    accumulator += frameTime;
+    // accumulator += frameTime;
 
-    while (accumulator >= this.dt) {
-      updatePhysics();
-      accumulator -= this.dt;
-      this.time += this.dt;
-    }
+    // while (accumulator >= this.dt) {
+    //   updatePhysics();
+    //   accumulator -= this.dt;
+    //   this.time += this.dt;
+    // }
 
-    // updatePhysics();
-    // this.time += this.dt;
+    updatePhysics();
+    this.time += this.dt;
   }
 
   this.getConstraintImpulse = getConstraintImpulse;
@@ -1303,8 +1308,12 @@ class Rigidbody {
     this.velocity = Vector.zero();
     this.force = Vector.zero();
 
-    this.inertia = Vector.one(); // Bruh
+    this._inertia = Vector.one(); // Bruh
+    this._inverseLocalInertiaMatrix = Matrix.identity();
+    this.inverseWorldInertia = Matrix.identity();
+
     this.rotation = Quaternion.identity();
+    // this.angularMomentum = Vector.zero();
     this.angularVelocity = Vector.zero();
     this.torque = Vector.zero();
 
@@ -1314,7 +1323,43 @@ class Rigidbody {
     this.gravityScale = 1;
   }
 
+  set inertia(inertia) {
+    Vector.set(this._inertia, inertia);
+    Matrix.set(this._inverseLocalInertiaMatrix,
+      1 / this.inertia.x, 0, 0, 0,
+      0, 1 / this.inertia.y, 0, 0,
+      0, 0, 1 / this.inertia.z, 0,
+      0, 0, 0, 1
+    );
+  }
+
+  get inertia() {
+    return this._inertia;
+  }
+
+  // set angularVelocity(vel) {
+  //   this.angularMomentum = Vector.compMultiply(vel, this.getWorldInertiaTensor());
+  // }
+
+  // get angularVelocity() {
+  //   return Vector.compDivide(this.angularMomentum, this.getWorldInertiaTensor());
+  // }
+
+  _updateInverseWorldInertiaMatrix() {
+    // bruh
+    if (this.gameObject) {
+      var R = Matrix.removeTranslation(Matrix.copy(this.gameObject.transform.worldMatrix));
+
+      Matrix.identity(this.inverseWorldInertia);
+      Matrix.multiply(R, this._inverseLocalInertiaMatrix, this.inverseWorldInertia);
+      Matrix.multiply(this.inverseWorldInertia, Matrix.transpose(R), this.inverseWorldInertia);
+
+      // Matrix.copy(this._inverseLocalInertiaMatrix, this.inverseWorldInertia);
+    }
+  }
+
   getWorldCOMOffset() {
+    // bruh
     if (this.gameObject) {
       var mat = Matrix.removeTranslation(Matrix.copy(this.gameObject.transform.worldMatrix));
       return Matrix.transformVector(mat, this.COMOffset);
@@ -1338,7 +1383,9 @@ class Rigidbody {
     this.velocity = Vector.add(this.velocity, Vector.multiply(force, 1 / this.mass));
     var r = Vector.subtract(position, Vector.add(this.position, this.getWorldCOMOffset()));
     var torque = Vector.cross(r, force);
-    this.angularVelocity = Vector.add(this.angularVelocity, Vector.compDivide(torque, this.inertia));
+    this._updateInverseWorldInertiaMatrix(); // bruh
+    this.angularVelocity = Vector.add(this.angularVelocity, Matrix.transformVector(this.inverseWorldInertia, torque));
+    // this.angularVelocity = Vector.add(this.angularVelocity, Vector.compMultiply(torque, this.getInverseWorldInertiaMatrix()));
   }
 
   AddForce(force) {
@@ -1359,7 +1406,9 @@ class Rigidbody {
 
     // Apply torque
     if (!this.lockRotation) {
-      this.angularVelocity = Vector.add(this.angularVelocity, Vector.multiply(Vector.compDivide(this.torque, this.inertia), dt));
+      this._updateInverseWorldInertiaMatrix(); // bruh
+      this.angularVelocity = Vector.add(this.angularVelocity, Matrix.transformVector(this.inverseWorldInertia, this.torque));
+      // this.angularVelocity = Vector.add(this.angularVelocity, Vector.multiply(Vector.compDivide(this.torque, this.getWorldInertiaTensor()), dt));
     }
     this.torque = Vector.zero();
   }
@@ -1386,6 +1435,8 @@ class Rigidbody {
       this.gameObject.transform.position = this.position;
       this.gameObject.transform.rotation = this.rotation;
     }
+
+    this._updateInverseWorldInertiaMatrix();
   }
 }
 

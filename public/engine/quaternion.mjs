@@ -1,4 +1,5 @@
 import Matrix from "./matrix.mjs";
+import Vector from "./vector.mjs";
 
 export default class Quaternion {
   constructor(x = 0, y = 0, z = 0, w = 0) {
@@ -80,6 +81,31 @@ export default class Quaternion {
     );
   }
 
+  static QxV(q, v) {
+    var target = new Vector();
+    
+    var x = v.x,
+        y = v.y,
+        z = v.z;
+
+    var qx = q.x,
+        qy = q.y,
+        qz = q.z,
+        qw = q.w;
+
+    // q*v
+    var ix =  qw * x + qy * z - qz * y,
+    iy =  qw * y + qz * x - qx * z,
+    iz =  qw * z + qx * y - qy * x,
+    iw = -qx * x - qy * y - qz * z;
+
+    target.x = ix * qw + iw * -qx + iy * -qz - iz * -qy;
+    target.y = iy * qw + iw * -qy + iz * -qx - ix * -qz;
+    target.z = iz * qw + iw * -qz + ix * -qy - iy * -qx;
+
+    return target;
+};
+
   static slerp(a, b, t) {
     var d = Quaternion.dot(a, b);
     if (Math.abs(1 - d) < 1e-5) {
@@ -140,7 +166,7 @@ export default class Quaternion {
       axis.x * Math.sin(angle / 2),
       axis.y * Math.sin(angle / 2),
       axis.z * Math.sin(angle / 2),
-      Math.sin(angle / 2)
+      Math.cos(angle / 2)
     );
   }
 

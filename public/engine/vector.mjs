@@ -29,6 +29,12 @@ export default class Vector {
     };
   }
 
+  static set(to, from) {
+    to.x = from.x;
+    to.y = from.y;
+    to.z = from.z;
+  }
+
   static copy(v) {
     return {x: v.x, y: v.y, z: v.z};
   }
