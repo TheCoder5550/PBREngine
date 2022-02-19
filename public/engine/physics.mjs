@@ -333,7 +333,6 @@ function Octree(aabb, maxDepth = 5) {
   // }
 
   this.addTriangles = function(arr) {
-    console.log(arr);
     window.aabbcalls = 0;
     this.trianglesArray = arr;
     for (var i = 0; i < this.trianglesArray.length; i += 9) {
@@ -342,7 +341,6 @@ function Octree(aabb, maxDepth = 5) {
       var v3 = {x: this.trianglesArray[i + 6], y: this.trianglesArray[i + 7], z: this.trianglesArray[i + 8]};
       this.addTriangle(i, [v1, v2, v3]);
     }
-    console.log(window.aabbcalls);
   }
 
   this.addTriangle = function(index, triangle, depth = 0) {
@@ -1195,22 +1193,22 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
   }
 
   this.update = function() {
-    // var newTime = performance.now();
-    // var frameTime = (newTime - lastTime) / 1000;
-    // if (frameTime > 0.25)
-    //   frameTime = 0.25;
-    // lastTime = newTime;
+    var newTime = performance.now();
+    var frameTime = (newTime - lastTime) / 1000;
+    if (frameTime > 0.5)
+      frameTime = 0.5;
+    lastTime = newTime;
 
-    // accumulator += frameTime;
+    accumulator += frameTime;
 
-    // while (accumulator >= this.dt) {
-    //   updatePhysics();
-    //   accumulator -= this.dt;
-    //   this.time += this.dt;
-    // }
+    while (accumulator >= this.dt) {
+      updatePhysics();
+      accumulator -= this.dt;
+      this.time += this.dt;
+    }
 
-    updatePhysics();
-    this.time += this.dt;
+    // updatePhysics();
+    // this.time += this.dt;
   }
 
   this.getConstraintImpulse = getConstraintImpulse;
@@ -1428,9 +1426,11 @@ class Rigidbody {
       );
       this.rotation = Quaternion.add(this.rotation, Quaternion.multiply(Quaternion.QxQ(w, this.rotation), dt / 2));
     }
+
+    this.updateGameObject();
   }
 
-  update() {
+  updateGameObject() {
     if (this.gameObject != null) {
       this.gameObject.transform.position = this.position;
       this.gameObject.transform.rotation = this.rotation;

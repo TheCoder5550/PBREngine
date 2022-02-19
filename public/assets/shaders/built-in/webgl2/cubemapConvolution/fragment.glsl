@@ -18,6 +18,9 @@ void main() {
     vec3 right = normalize(cross(up, normal));
     up = normalize(cross(normal, right));
 
+    // FragColor = vec4(texture(environmentMap, normal).rgb, 1.0);
+    // return;
+
     float sampleDelta = 0.025 / 3.;
     float nrSamples = 0.0; 
     for(float phi = 0.0; phi < 2.0 * PI; phi += sampleDelta) {
@@ -27,14 +30,16 @@ void main() {
             // tangent space to world
             vec3 sampleVec = tangentSample.x * right + tangentSample.y * up + tangentSample.z * normal; 
 
-            irradiance += min(texture(environmentMap, sampleVec).rgb, vec3(3000)) * cos(theta) * sin(theta);
+            vec3 sampleColor = texture(environmentMap, sampleVec).rgb;
+            // sampleColor = pow(sampleColor, vec3(2.2));
+
+            irradiance += min(sampleColor, vec3(3000000)) * cos(theta) * sin(theta);
             nrSamples++;
         }
     }
 
     irradiance = PI * irradiance * (1.0 / float(nrSamples));
+    // irradiance = pow(irradiance, vec3(1. / 2.2));
   
     FragColor = vec4(irradiance, 1.0);
-
-    // FragColor = vec4(texture(environmentMap, normal).rgb, 1.0);
 }

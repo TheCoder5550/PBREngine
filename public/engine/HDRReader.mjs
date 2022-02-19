@@ -224,7 +224,7 @@ async function LoadHDR(path, exposure = 1, gamma = 1) {
         
         console.timeEnd("Load hdr");
 
-        console.log("HDR loaded!", highestBrightness, highestPixel);
+        // console.log("HDR loaded!", highestBrightness, highestPixel);
 
         resolve({
           data: pixelData,

@@ -5,13 +5,14 @@ out vec4 FragColor;
 in vec2 vUV;
 
 uniform samplerCube cubemap;
+uniform float mipmapLevel;
 
-float PI = 3.14159;
+const float PI = 3.14159;
 
 void main()
 {
     float a = vUV.x * 2. * PI + PI * 0.5; 
-	float b = vUV.y * PI - PI * 0.5; 
+	float b = vUV.y * PI - PI * 0.5;
         
 	vec3 rd = vec3(
         -cos(b) * cos(a),
@@ -19,5 +20,5 @@ void main()
     	cos(b) * sin(a)
     );
     
-    FragColor = vec4(texture(cubemap, rd).rgb, 1);
+    FragColor = vec4(textureLod(cubemap, rd, mipmapLevel).rgb, 1);
 }

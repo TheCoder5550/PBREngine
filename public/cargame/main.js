@@ -1,6 +1,6 @@
 "use strict";
 
-import Renderer, { GameObject, Scene, Camera, AudioListener3D, FindMaterials } from "../engine/renderer.js";
+import Renderer, { GameObject, Scene, Camera, AudioListener3D, FindMaterials, flyCamera, Light } from "../engine/renderer.js";
 import { PhysicsEngine, Rigidbody, SphereCollider } from "../engine/physics.mjs";
 import FlyCamera from "../engine/flyCamera.mjs";
 import Vector from "../engine/vector.mjs";
@@ -31,8 +31,9 @@ ui.canvas.classList.add("ingameUICanvas");
 var renderer = new Renderer();
 var scene = new Scene("Main scene");
 
-var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 1000, layer: 0, fov: 20});
-var flyCamera;
+var fov = 25;
+var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 1000, layer: 0, fov: fov});
+// var flyCamera;
 var cameraEulerAngles = Vector.zero();
 var cameraCarForward = Vector.zero();
 
@@ -68,7 +69,7 @@ async function setup() {
   setLoadingStatus("Setting up renderer");
   await renderer.setup({
     path: "../",
-    clearColor: [0, 0, 1, 1],
+    clearColor: [0, 0, 0, 1],
     shadowSizes: [8, 56],
     shadowBiases: [-0.0005, -0.001],
 
@@ -80,10 +81,10 @@ async function setup() {
     disableLitBillboard: true
   });
   renderer.canvas.classList.add("webglCanvas");
-  // if (renderer.postprocessing) renderer.postprocessing.exposure = -1.5;
+  renderer.postprocessing.exposure = -0.5;
   renderer.add(scene);
 
-  flyCamera = new FlyCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 20});
+  // flyCamera = new FlyCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 20});
 
   renderer.on("resize", function() {
     mainCamera.setAspect(renderer.aspect);
@@ -93,10 +94,12 @@ async function setup() {
   setLoadingStatus("Loading environment");
   await scene.loadEnvironment({
     hdrFolder: "../assets/hdri/wide_street_01_1k_precomputed",
-    res: 256
+    res: 512
   });
-  scene.sunIntensity = Vector.fill(5);
-  scene.environmentIntensity = 0.5;
+  scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(6000, 25)); //Vector.multiply(new Vector(1, 0.85, 0.55), 25);
+  scene.environmentIntensity = 1;//1.75;
+  // scene.skyboxVisible = false;
+  // scene.skyboxCubemap = scene.diffuseCubemap;
 
   var solidColorInstanceProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/solidColor"));
 
@@ -118,7 +121,7 @@ async function setup() {
   // scene.add(await renderer.loadGLTF("../assets/models/toyota_ae86.glb"), { maxTextureSize: 256 }).transform.position.y -= 2.3;
 
   // setLoadingStatus("Loading map");
-  // var map = await renderer.loadGLTF("./map.glb", { maxTextureSize: 128 });
+  // var map = await renderer.loadGLTF("./map.glb", { maxTextureSize: 1024 });
   // // map.transform.position = new Vector(0, -2.1, 0);
   // scene.add(renderer.BatchGameObject(map));
 
@@ -129,13 +132,16 @@ async function setup() {
   // physicsEngine.setupMeshCollider();
 
   var map = await renderer.loadGLTF("../assets/models/kajaman.glb");
-
-  // var map = renderer.CreateShape("plane");
-  // map.transform.rotation = Quaternion.euler(-Math.PI / 2, 0, 0);
-  // map.transform.scale = Vector.fill(100);
   scene.add(map);
   physicsEngine.addMeshCollider(map);
   physicsEngine.setupMeshCollider();
+
+  var cube = scene.add(renderer.CreateShape("cube"));
+  cube.transform.position.x = 3;
+  FindMaterials("", cube)[0].setUniform("albedo", [0, 0.5, 0, 1]);
+  
+  // await renderer.CreatePBRGrid(scene, 10, 10, "sphere");
+  scene.add(await renderer.loadGLTF("../assets/models/test/environmentTest.glb"));
 
   // var grass = scene.add(await renderer.loadGLTF("./grass.glb"));
   // grass.children[0].meshRenderer = grass.children[0].meshRenderer.getInstanceMeshRenderer();
@@ -157,6 +163,13 @@ async function setup() {
   // Matrix.pprint(porsche.transform.matrix);
   // window.porsche = porsche;
 
+  // // Reflection probe
+  // var oldSkybox = scene.skyboxCubemap;
+  // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 1, 0));
+  // await scene.loadEnvironment({ cubemap });
+  // scene.skyboxCubemap = oldSkybox;
+  // scene.environmentIntensity = 1;
+
   // setLoadingStatus("Creating car");
   // car = new Car({
   //   drivetrain: "RWD",
@@ -174,18 +187,42 @@ async function setup() {
     drivetrain: "RWD",
     friction: 1,
     forwardFriction: 1.3,
-    sidewaysFriction: 1.7,
+    sidewaysFriction: 1,
+    frontCamber: 4,
+    maxSteerAngle: 55,
     torque: 700,
+    differential: Car.ENUMS.DIFFERENTIAL.LOCKED,
 
     suspensionForce: 90_000,
     suspensionDamping: 3500,
     suspensionTravel: 0.15
   });
-  car.camera.followDistance = 6;
-  car.camera.followHeight = 0.3;
+  // car = new Car({
+  //   drivetrain: "RWD",
+  //   friction: 1,
+  //   forwardFriction: 1.3,
+  //   sidewaysFriction: 1.7,
+  //   torque: 700,
+
+  //   suspensionForce: 90_000,
+  //   suspensionDamping: 3500,
+  //   suspensionTravel: 0.15
+  // });
+  // await car.setup("../assets/models/americanMuscle.glb");
   await car.setup("./porsche.glb");
-  car.rb.COMOffset.y += 0.15;
-  // FindMaterials("paint", car.gameObject)?.[0]?.setUniform("metallic", 0.2);
+
+  car.camera.followDistance = 5;
+  car.camera.followHeight = 0.35;
+  car.camera.pitch = 0.2;
+
+  car.rb.COMOffset.y += 0.2;//0.15;
+
+  // car.wheels[0].friction *= 1.3;
+  // car.wheels[1].friction *= 1.3;
+
+  FindMaterials("paint", car.gameObject)?.[0]?.setUniform("albedo", [0, 0, 0, 1]);
+  FindMaterials("paint", car.gameObject)?.[0]?.setUniform("roughness", 0.05);
+  FindMaterials("paint", car.gameObject)?.[0]?.setUniform("metallic", 1);
   // FindMaterials("window", car.gameObject)?.[0]?.setUniform("albedo", [0, 0, 0, 0.99]);
 
   function updateCarColor() {
@@ -208,6 +245,7 @@ async function setup() {
 
   physicsEngine.fixedUpdate = function(dt) {
     car.fixedUpdate(dt);
+    cameraControls(dt);
   }
 
   // physicsEngine.octree.render();
@@ -231,43 +269,50 @@ async function setup() {
     document.body.appendChild(stats.dom);
 
     loadingScreen.style.display = "none";
-    loop();
+    // loop();
+
+    window.renderer = renderer;
+    window.scene = scene;
+    window.camera = mainCamera;
+    window.FindMaterials = FindMaterials;
+
+    renderer.on("renderloop", function(frameTime, time) {
+      // var frameTime = getFrameTime();
+      debugLines.clear();
+    
+      if (renderer.getKey(81)) {
+        var x = 0;
+        for (var i = 0; i < 3e7; i++) {
+          x += i * i;
+        }
+      }
+    
+      if (keybindings.getInputDown("resetGame")) {
+        car.rb.velocity = Vector.zero();
+        car.rb.angularVelocity = Vector.zero();
+        car.rb.rotation = Quaternion.euler(0, Math.PI / 2, 0);
+    
+        car.rb.position = Vector.zero();
+        car.gameObject.transform.position = Vector.zero();
+      }
+    
+      physicsEngine.update();
+      if (car) car.update(frameTime);
+      scene.update(physicsEngine.dt);
+    
+      // if (!renderer.getKey("81")) flyCamera.update(frameTime);
+    
+      // cameraControls(frameTime);
+    
+      // renderer.render(flyCamera.camera);
+      renderer.render(mainCamera);
+      // debugLines.render(mainCamera);
+      renderUI(frameTime);
+    
+      stats.update();
+      // rafID = requestAnimationFrame(loop);
+    });
   }
-
-  window.renderer = renderer;
-  window.scene = scene;
-  window.camera = mainCamera;
-  window.FindMaterials = FindMaterials;
-}
-
-function loop() {
-  var frameTime = getFrameTime();
-  debugLines.clear();
-
-  if (keybindings.getInputDown("resetGame")) {
-    car.rb.velocity = Vector.zero();
-    car.rb.angularVelocity = Vector.zero();
-    car.rb.rotation = Quaternion.euler(0, Math.PI / 2, 0);
-
-    car.rb.position = Vector.zero();
-    car.gameObject.transform.position = Vector.zero();
-  }
-
-  physicsEngine.update();
-  if (car) car.update(frameTime);
-  scene.update(physicsEngine.dt);
-
-  if (!renderer.getKey("81")) flyCamera.update(frameTime);
-
-  cameraControls(frameTime);
-
-  // renderer.render(flyCamera.camera);
-  renderer.render(mainCamera);
-  // debugLines.render(mainCamera);
-  renderUI(frameTime);
-
-  stats.update();
-  rafID = requestAnimationFrame(loop);
 }
 
 function renderUI(dt) {
@@ -394,15 +439,33 @@ function cameraControls(dt) {
       }
     }
   }
-  else {
-    var x = gamepadManager.getAxis("RSHorizontal");
-    var y = gamepadManager.getAxis("RSVertical");
-    x = (Math.abs(x) > 0.08 ? x : 0);
-    y = (Math.abs(y) > 0.08 ? y : 0);
-    cameraEulerAngles.x -= Math.abs(y) * y * 0.07;
-    cameraEulerAngles.y -= Math.abs(x) * x * 0.07;
+
+  if (!car || car.cameraMode == 2) {
+    var oldFov = mainCamera.getFOV();
+
+    var x = quadraticCurve(deadZone(gamepadManager.getAxis("RSHorizontal"), 0.08));
+    var y = quadraticCurve(deadZone(gamepadManager.getAxis("RSVertical"), 0.08));
+    cameraEulerAngles.x -= y * 0.07 * clamp(oldFov / 45, 0, 1);
+    cameraEulerAngles.y -= x * 0.07 * clamp(oldFov / 45, 0, 1);
+
+    var vertical = quadraticCurve(deadZone(gamepadManager.getAxis("LSVertical")));
+    var horizontal = quadraticCurve(deadZone(gamepadManager.getAxis("LSHorizontal")));
+
+    var speed = 15;
+    var c = Math.cos(cameraEulerAngles.x);
+    camera.transform.position.x -= vertical * Math.cos(cameraEulerAngles.y + Math.PI / 2) * speed * dt * c;
+    camera.transform.position.z -= vertical * -Math.sin(cameraEulerAngles.y + Math.PI / 2) * speed * dt * c;
+    camera.transform.position.y -= vertical * Math.sin(cameraEulerAngles.x) * speed * dt;
+
+    camera.transform.position.x += horizontal * Math.cos(cameraEulerAngles.y) * speed * dt;
+    camera.transform.position.z += horizontal * -Math.sin(cameraEulerAngles.y) * speed * dt;
 
     flyCamera(renderer, mainCamera, cameraEulerAngles, dt);
+
+    var fovInc = 1 + 0.03 * (gamepadManager.getButton("LS") - gamepadManager.getButton("RS"));
+    var newFov = oldFov * fovInc;
+    newFov = clamp(newFov, 0.1, 89);
+    mainCamera.setFOV(newFov);
 
     mainCamera.transform.rotation = Quaternion.euler(cameraEulerAngles.x, cameraEulerAngles.y, cameraEulerAngles.z);
   }
@@ -519,11 +582,12 @@ function Car(settings = {}) {
 
   var activateAutoCountersteer = true;
   var autoCountersteerMinVel = 2;
-  var autoCountersteer = 0.4;
+  var autoCountersteer = 0.6;
   var autoCountersteerVelocityMultiplier = 0.2;
 
   var maxSteerAngle = settings.maxSteerAngle ?? 35;
 
+  this.ABS = true;
   this.TCS = false;
 
   var steerInput = 0;
@@ -605,16 +669,34 @@ function Car(settings = {}) {
     this.wheels[1].side = -1;
     this.wheels[3].side = -1;
 
-    var camber = 0;
+    var camber = settings.rearCamber ?? 0;
     this.wheels[0].camberAngle = camber * -this.wheels[0].side;
     this.wheels[1].camberAngle = camber * -this.wheels[1].side;
+    var camber = settings.frontCamber ?? 0;
     this.wheels[2].camberAngle = camber * -this.wheels[2].side;
     this.wheels[3].camberAngle = camber * -this.wheels[3].side;
 
-    this.wheels[0].friction *= 1.05;
-    this.wheels[1].friction *= 1.05;
-
     brakeMat = FindMaterials("tex_shiny", this.gameObject)[0];
+
+    var smokeObject = new GameObject("Smoke");
+    this.gameObject.addChild(smokeObject);
+    var smoke = smokeObject.addComponent(new renderer.ParticleSystem(undefined, 500));
+
+    smoke.material = renderer.CreateLitMaterial({
+      albedoTexture: renderer.loadTexture("../assets/textures/smoke.png"),
+      albedoColor: [2, 2, 2, 1],
+    }, renderer.particleContainer);
+    smoke.material.doubleSided = true;
+
+    smoke.emitPosition = () => new Vector(0, 2, 0);
+    smoke.emitVelocity = () => new Vector((Math.random() - 0.5), (Math.random() - 0.5) + 0.5, -2);
+    smoke.startSize = () => Vector.fill(Math.random() * 0.4 + 0.2);
+    smoke.endSize = () => Vector.fill(3);
+    smoke.emitHealth = 5;
+    smoke.gravityScale = 0;
+    smoke.wind = () => Vector.zero();
+    smoke.drag = 0.1;
+    this.smoke = smoke;
   }
 
   this.reset = function() {
@@ -647,12 +729,12 @@ function Car(settings = {}) {
   this.update = function(dt) {
     if (keybindings.getInputDown("cameraMode")) {
       this.cameraMode++;
-      if (this.cameraMode >= 2) {
+      if (this.cameraMode >= 3) {
         this.cameraMode = 0;
       }
 
       if (this.cameraMode == 0) {
-        mainCamera.setFOV(20);
+        mainCamera.setFOV(fov);
       }
       else if (this.cameraMode == 1) {
         mainCamera.setFOV(30);
@@ -704,11 +786,11 @@ function Car(settings = {}) {
     var slipAngle = -Math.atan2(sidewaysVelocity, Math.abs(forwardVelocity));
     if (isNaN(slipAngle) || !isFinite(slipAngle)) slipAngle = 0;
 
-    var userInput = clamp(-deadZone(keybindings.getInput("steer"), 0.1) + tiltAngle / 45, -1, 1) * Math.exp(-Math.abs(forwardVelocity) / 40);
+    var userInput = clamp(-deadZone(keybindings.getInput("steer"), 0.1) + tiltAngle / 45, -1, 1) * Math.exp(-Math.abs(forwardVelocity) / 80);
     // steerInput += -Math.sign(steerInput - userInput) * Math.min(Math.abs(steerInput - userInput), 0.05);
     steerInput += (userInput - steerInput) * 0.08;
 
-    var acs = activateAutoCountersteer && (Math.abs(sidewaysVelocity) > 0.5 || Math.abs(forwardVelocity) > autoCountersteerMinVel) ?
+    var acs = activateAutoCountersteer && (Math.abs(sidewaysVelocity) > 0.5 || forwardVelocity > autoCountersteerMinVel) ?
       -slipAngle / (maxSteerAngle / 180 * Math.PI) * autoCountersteer
       - localAngularVelocity.y * autoCountersteerVelocityMultiplier * Math.sign(forwardVelocity)
       : 0;
@@ -819,23 +901,24 @@ function Car(settings = {}) {
       // Change model transform
       if (wheel.wheelModel) {
         var modelTransform = wheel.wheelModel.transform;
-        modelTransform.position = new Vector(wheel.camberAngle / 100 * -wheel.side, -(wheel.isGrounded ? hit.distance - wheel.radius : wheel.suspensionTravel), 0);
+        modelTransform.position = new Vector(wheel.camberAngle / 100, -(wheel.isGrounded ? hit.distance - wheel.radius : wheel.suspensionTravel), 0);
         modelTransform.rotation = Quaternion.euler(wheel.angle * -wheel.side, wheel.side == 1 ? Math.PI : 0, wheel.camberAngle * Math.PI / 180);
       }
       if (wheel.staticWheelModel) {
         var modelTransform = wheel.staticWheelModel.transform;
-        modelTransform.position = new Vector(wheel.camberAngle / 100 * -wheel.side, -(wheel.isGrounded ? hit.distance - wheel.radius : wheel.suspensionTravel), 0);
+        modelTransform.position = new Vector(wheel.camberAngle / 100, -(wheel.isGrounded ? hit.distance - wheel.radius : wheel.suspensionTravel), 0);
         modelTransform.rotation = Quaternion.euler(0, wheel.side == 1 ? Math.PI : 0, wheel.camberAngle * Math.PI / 180);
       }
 
       if (wheel.isGrounded) {
         var rayDist = hit.distance;
         var contactPoint = hit.point;
+        wheel.groundHit = hit;
         wheel.contactPoint = contactPoint;
 
         // Set skidmarks
         if (wheel.skidmarks) {
-          wheel.skidmarks.emitPosition = Vector.add(contactPoint, new Vector(0, 0.01, 0));
+          wheel.skidmarks.emitPosition = Vector.add(Vector.add(contactPoint, new Vector(0, 0.01, 0)), Vector.multiply(wheelVelocity, fixedDeltaTime));
         }
 
         // Suspension
@@ -859,20 +942,23 @@ function Car(settings = {}) {
       this.engine.fixedUpdate(dt);
 
       if (ebrakeInput < 0.5) {
-        // if (this.drivetrain == "RWD" || this.drivetrain == "AWD") {
-        //   differentialConstraint(this.engine, this.wheels[0], this.wheels[1], dt, (this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio);
-        // }
-        // if (this.drivetrain == "FWD" || this.drivetrain == "AWD") {
-        //   differentialConstraint(this.engine, this.wheels[2], this.wheels[3], dt, (this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio);
-        // }
-
-        if (this.drivetrain == "RWD" || this.drivetrain == "AWD") {
-          gearConstraint(this.engine, this.wheels[0], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
-          gearConstraint(this.engine, this.wheels[1], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
+        if (settings.differential == Car.ENUMS.DIFFERENTIAL.OPEN) {
+          if (this.drivetrain == "RWD" || this.drivetrain == "AWD") {
+            differentialConstraint(this.engine, this.wheels[0], this.wheels[1], dt, (this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio);
+          }
+          if (this.drivetrain == "FWD" || this.drivetrain == "AWD") {
+            differentialConstraint(this.engine, this.wheels[2], this.wheels[3], dt, (this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio);
+          }
         }
-        if (this.drivetrain == "FWD" || this.drivetrain == "AWD") {
-          gearConstraint(this.engine, this.wheels[2], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
-          gearConstraint(this.engine, this.wheels[3], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
+        else if (settings.differential == Car.ENUMS.DIFFERENTIAL.LOCKED) {
+          if (this.drivetrain == "RWD" || this.drivetrain == "AWD") {
+            gearConstraint(this.engine, this.wheels[0], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
+            gearConstraint(this.engine, this.wheels[1], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
+          }
+          if (this.drivetrain == "FWD" || this.drivetrain == "AWD") {
+            gearConstraint(this.engine, this.wheels[2], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
+            gearConstraint(this.engine, this.wheels[3], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
+          }
         }
       }
 
@@ -912,8 +998,6 @@ function Car(settings = {}) {
           //   wheel.angularVelocity = clamp(wheel.angularVelocity, -Math.abs(targetAngularVelocity), Math.abs(targetAngularVelocity));
           // }
 
-          var driveForwardVector = forward;//Quaternion.AngleAxis(-90, sideways) * groundHit.normal;
-
           var slipRatio = -(wheel.angularVelocity * wheel.radius + forwardVelocity) / Math.abs(forwardVelocity) * Math.min(Math.abs(forwardVelocity) / 4, 1);
           if (isNaN(slipRatio)) slipRatio = 0;
           if (!isFinite(slipRatio)) slipRatio = Math.sign(slipRatio);
@@ -937,8 +1021,12 @@ function Car(settings = {}) {
             var maxFriction = Math.abs(finalForceX);
             var frictionForce = Math.min(maxFriction, maxForceToResolveFriction) * -Math.sign(finalForceX);
             wheel.angularVelocity -= (frictionForce * wheel.radius) / wheel.inertia * dt;
+
+            // wheel.angularVelocity -= (-finalForceX * wheel.radius) / wheel.inertia * dt;
           }
           
+          var driveForwardVector = Quaternion.QxV(Quaternion.angleAxis(-Math.PI / 2, sideways), wheel.groundHit.normal);
+          // var driveForwardVector = forward;//Quaternion.AngleAxis(-90, sideways) * groundHit.normal;
           if (!isNaN(finalForceX)) this.rb.AddImpulseAtPosition(Vector.multiply(driveForwardVector, finalForceX * dt), wheel.contactPoint);
           if (!isNaN(finalForceY)) this.rb.AddImpulseAtPosition(Vector.multiply(sideways, finalForceY * dt), wheel.contactPoint);
 
@@ -950,15 +1038,17 @@ function Car(settings = {}) {
           }
 
           if (brakeInput != 0) {
-            var brakeTorque = 2000;
-            wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(brakeInput * brakeTorque, Math.abs(wheel.angularVelocity) / dt) * dt;
-            // wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - brakeInput);
+            if (this.ABS) {
+              var targetSlip = wheel.slipRatioPeak * Math.sqrt(Math.max(0.01, 1 - a * a)) * Math.sign(forwardVelocity);
+              var w = lerp(-forwardVelocity / wheel.radius, (targetSlip * Math.abs(forwardVelocity) - forwardVelocity) / wheel.radius, brakeInput);
 
-            // // ABS
-            // var targetSlip = wheel.slipRatioPeak * Math.sqrt(Math.max(0.01, 1 - a * a)) * Math.sign(forwardVelocity);
-            // var w = lerp(-forwardVelocity / wheel.radius, (targetSlip * Math.abs(forwardVelocity) - forwardVelocity) / wheel.radius, brakeInput);
-
-            // wheel.angularVelocity = Math.abs(forwardVelocity) < 1 ? 0 : w;
+              wheel.angularVelocity = Math.abs(forwardVelocity) < 1 ? 0 : w;
+            }
+            else {
+              var brakeTorque = 2000;
+              wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(brakeInput * brakeTorque, Math.abs(wheel.angularVelocity) / dt) * dt;
+              // wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - brakeInput);
+            }
           }
         }
 
@@ -970,11 +1060,34 @@ function Car(settings = {}) {
         if (wheel.skidmarks) {
           wheel.skidmarks.emit = clamp(skidVolume * 20 * (wheel.isGrounded ? 1 : 0.01), 0, 0.7);
         }
+
+        wheel.slipRatio = slipRatio;
       }
     }
 
     for (var wheel of this.wheels) {
       wheel.angle += wheel.angularVelocity * fixedDeltaTime;
+
+      if (Math.abs(wheel.slipRatio) > 0.7) {
+        var up = Matrix.getUp(carWorldMatrix);
+        var worldPos = Matrix.transformVector(carWorldMatrix, wheel.position);
+        Vector.addTo(worldPos, Vector.multiply(up, -wheel.radius));
+        this.smoke.emitPosition = () => worldPos;
+
+        var sideways = Matrix.getRight(carWorldMatrix);
+        var driveForwardVector = Quaternion.QxV(Quaternion.angleAxis(-Math.PI / 2, sideways), wheel.groundHit.normal);
+        var [ tangent, bitangent ] = Vector.formOrthogonalBasis(driveForwardVector);
+        var basis = Matrix.basis(tangent, bitangent, driveForwardVector);
+
+        this.smoke.emitVelocity = () => {
+          var v = new Vector((Math.random() - 0.5), (Math.random() - 0.5), 2);
+          v = Matrix.transformVector(basis, v);
+          v.y += 0.5;
+          return v;
+        };
+        
+        this.smoke.emit();
+      }
     }
 
     skidAudio.volume += (highestSkidVolume - skidAudio.volume) * 0.1;
@@ -1124,7 +1237,7 @@ function Car(settings = {}) {
     this.forwardFriction = settings.forwardFriction ?? 1;
     this.sidewaysFriction = settings.sidewaysFriction ?? 1.5;
     this.radius = settings.radius ?? 0.35;
-    this.camberAngle = settings.camberAngle ?? 0;
+    this.camberAngle = 0;
     this.camberAngleCoeff = settings.camberAngleCoeff ?? 1;
 
     this.stopLength = settings.stopLength ?? 0.01;
@@ -1185,10 +1298,6 @@ function Car(settings = {}) {
     m.angularVelocity += impulses[2] / m.inertia;
   }
 
-  function divideVectorAndVector(a, b) {
-    return new Vector(a.x / b.x, a.y / b.y, a.z / b.z);
-  }
-
   function multiply1DMatrices(m1, m2) {
     if (m1.length != m2.length) {
       throw new Error("Matrices have to be the same length!");
@@ -1221,6 +1330,15 @@ function Car(settings = {}) {
     throw new Error("No peak found!");
   }
 }
+Car.ENUMS = {
+  DIFFERENTIAL: { OPEN: 0, LOCKED: 1, LSD: 2 }
+};
+
+/*
+
+  Controller helpers
+
+*/
 
 function deadZone(x, zone = 0.1) {
   if (Math.abs(x) < zone) {
@@ -1228,6 +1346,10 @@ function deadZone(x, zone = 0.1) {
   }
 
   return x;
+}
+
+function quadraticCurve(x) {
+  return Math.abs(x) * x;
 }
 
 function DebugLines() {

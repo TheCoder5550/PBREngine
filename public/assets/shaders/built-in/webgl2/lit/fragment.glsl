@@ -442,14 +442,26 @@ vec3 IBL (vec3 N, vec3 V, vec3 R, vec3 albedo, float metallic, float roughness, 
   kD *= 1.0 - metallic;	  
     
   vec3 irradiance = texture(u_diffuseIBL, N).rgb;
+  // irradiance = pow(irradiance, vec3(2.2));
+
   vec3 diffuse  = irradiance * albedo;
     
   const float MAX_REFLECTION_LOD = 4.0;
   vec3 prefilteredColor = textureLod(u_specularIBL, R, roughness * MAX_REFLECTION_LOD).rgb;   
-  vec2 envBRDF = texture(u_splitSum, vec2(max(dot(N, V), 0.), roughness)).rg;
+  // prefilteredColor = pow(prefilteredColor, vec3(2.2)); // should not be needed
+
+  vec2 uv = vec2(max(dot(N, V), 0.), roughness);
+  // uv.x = 1. - uv.x;
+  uv.y = 1. - uv.y;
+
+  // uv.xy = uv.yx;
+
+  vec2 envBRDF = texture(u_splitSum, uv).rg;
+  // envBRDF = pow(envBRDF, vec2(1. / 2.2));
+
   vec3 specular = prefilteredColor * (F * envBRDF.x + envBRDF.y);
     
-  vec3 ambient = (kD * diffuse + specular) * ao;
+  vec3 ambient = (kD * diffuse + specular) * environmentIntensity;
 
   return ambient;
 }
@@ -468,9 +480,9 @@ vec3 DirectionalLight (vec3 worldPos, vec3 N, vec3 V, vec3 lightDir, vec3 lightC
   vec3 specular     = nominator / denominator;       
   vec3 kS = F;
   vec3 kD = vec3(1.0) - kS;
-    
-  kD *= 1.0 - metallic;     
-  float NdotL = max(dot(N, L), 0.0);        
+
+  kD *= 1.0 - metallic;
+  float NdotL = max(dot(N, L), 0.0);
   return (kD * albedo / PI + specular) * radiance * NdotL;  
 }
 
@@ -552,7 +564,7 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
   float f0 = 0.04;
 
   vec3 col = vec3(0);
-  col += IBL(N, V, R, _albedo.rgb, _metallic, _roughness, f0) * _ao * environmentIntensity;
+  col += IBL(N, V, R, _albedo.rgb, _metallic, _roughness, f0) * _ao;
   
   if (sunIntensity.xyz != vec3(0)) {
     col += DirectionalLight(vPosition, N, V, sunDirection.xyz, sunIntensity.xyz, _albedo.rgb, _metallic, _roughness, f0) * _ao * getShadowAmount(dot(sunDirection.xyz, N));

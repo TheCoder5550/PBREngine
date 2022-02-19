@@ -273,6 +273,12 @@ function Renderer() {
       console.warn("Max texture units: ", gl.getParameter(gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS));
     }
 
+    this.EXT_texture_filter_anisotropic = (
+      this.getExtension('EXT_texture_filter_anisotropic') ||
+      this.getExtension('MOZ_EXT_texture_filter_anisotropic') ||
+      this.getExtension('WEBKIT_EXT_texture_filter_anisotropic')
+    );
+
     if (this.version == 2) {
       this.getExtension("OES_texture_float_linear");
       this.getExtension("EXT_color_buffer_float");
@@ -645,8 +651,8 @@ function Renderer() {
   
   */
 
-  this.createCubemapFromHDR = async function(path, res = 1024) {
-    var hdr = await LoadHDR(path);
+  this.createCubemapFromHDR = async function(path, res = 1024, gamma = 1) {
+    var hdr = await LoadHDR(path, 1, gamma);
 
     var pixelData = hdr.data;
     if (!this.floatTextures) {
@@ -668,6 +674,7 @@ function Renderer() {
     gl.texImage2D(gl.TEXTURE_2D, 0, this.version == 1 ? gl.RGB : gl.RGB32F, hdr.width, hdr.height, 0, gl.RGB, getFloatTextureType(), pixelData);
   
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   
@@ -736,6 +743,123 @@ function Renderer() {
 
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap);
     gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+
+    gl.enable(gl.CULL_FACE);
+  
+    return cubemap;
+  }
+
+  this.createSpecularCubemapFromHDR = async function(folder, res = 1024, gamma = 1) {
+    var maxMipmapLevels = 5;
+    var hdrs = [];
+    
+    for (var i = 0; i < maxMipmapLevels; i++) {
+      var hdr = await LoadHDR(folder + "/specular_mip_" + i + ".hdr", 1, gamma);
+
+      var pixelData = hdr.data;
+      if (!this.floatTextures) {
+        if (renderer.textureHalfFloatExt) {
+          pixelData = Float32ToFloat16(pixelData);
+        }
+        else {
+          var exposure = 2;
+          pixelData = new Uint8Array(hdr.data.length);
+          for (var i = 0; i < hdr.data.length; i++) {
+            pixelData[i] = Math.min(255, Math.pow(hdr.data[i] / (hdr.data[i] + 1) * exposure, 1 / 2.2) * 255);
+          }
+        }
+      }
+
+      var hdrTexture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, hdrTexture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+      gl.texImage2D(gl.TEXTURE_2D, 0, this.version == 1 ? gl.RGB : gl.RGB32F, hdr.width, hdr.height, 0, gl.RGB, getFloatTextureType(), pixelData);
+    
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      hdrs.push({
+        hdr,
+        pixelData,
+        hdrTexture
+      });
+    }
+  
+    var hdrCubeMat = new Material(this.equirectangularToCubemapProgramContainer, {
+      "equirectangularMap": {type: "1i", name: "equirectangularMap", texture: true, arguments: [0]}
+    }, [{type: gl.TEXTURE_2D, texture: hdrTexture}]);
+    hdrCubeMat.doubleSided = true;
+  
+    var hdrCube = new GameObject("Cubemap", {
+      meshRenderer: new MeshRenderer([hdrCubeMat], [new MeshData(getCubeData())]),
+      castShadows: false
+    });
+  
+    var perspectiveMatrix = Matrix.orthographic({size: 1});//Matrix.perspective({fov: 45 * Math.PI / 180, aspect: canvas.width / canvas.height, near: 0.001, far: 100});
+    var views = [
+      Matrix.identity(),
+      Matrix.inverse(Matrix.transform([["ry", Math.PI]])),
+      Matrix.inverse(Matrix.transform([["ry", Math.PI / 2], ["rx", -Math.PI / 2]])),
+      Matrix.inverse(Matrix.transform([["ry", Math.PI / 2], ["rx", Math.PI / 2]])),
+      Matrix.inverse(Matrix.transform([["ry", Math.PI / 2]])),
+      Matrix.inverse(Matrix.transform([["ry", -Math.PI / 2]]))
+    ];
+
+    // Framebuffer
+    var framebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+  
+    // Depth buffer
+    const depthBuffer = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, res, res);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+  
+    // Cubemap
+    var cubemap = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap);
+  
+    for (var i = 0; i < 6; i++) {
+      gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, this.version == 1 ? gl.RGBA : gl.RGBA32F, res, res, 0, gl.RGBA, getFloatTextureType(), null);
+    }
+  
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    if (gl.TEXTURE_WRAP_R) {
+      gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+    }
+  
+    gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+  
+    // Viewport
+    gl.disable(gl.CULL_FACE);
+  
+    for (var mip = 0; mip < maxMipmapLevels; mip++) {
+      var currentRes = res * Math.pow(0.5, mip);
+
+      gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, currentRes, currentRes);
+
+      gl.viewport(0, 0, currentRes, currentRes);
+
+      hdrCubeMat.textures[0].texture = hdrs[mip].hdrTexture;
+
+      for (var i = 0; i < 6; i++) {
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, cubemap, mip);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        hdrCube.render({
+          projectionMatrix: perspectiveMatrix,
+          viewMatrix: views[i],
+          inverseViewMatrix: Matrix.inverse(views[i])
+        });
+      }
+    }
 
     gl.enable(gl.CULL_FACE);
   
@@ -916,10 +1040,13 @@ function Renderer() {
     var newCubemap = gl.createTexture();
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, newCubemap);
+
+    var internalFormat = this.version == 1 ? gl.RGBA : gl.RGBA32F;
+    var format = gl.RGBA;
   
     for (var i = 0; i < 6; i++) {
       gl.bindTexture(gl.TEXTURE_CUBE_MAP, newCubemap);
-      gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, this.version == 1 ? gl.RGBA : gl.RGBA32F, res, res, 0, gl.RGBA, getFloatTextureType(), null);
+      gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, internalFormat, res, res, 0, format, getFloatTextureType(), null);
     }
   
     gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -1045,7 +1172,14 @@ function Renderer() {
     return newCubemap;
   }
 
-  this.saveCubemapAsHDR = async function(cubemap, res = 512) {
+  this.saveSpecularCubemapAsHDR = async function(cubemap, mipmapLevels = 5, res = 128) {
+    for (var i = 0; i < mipmapLevels; i++) {
+      var currentRes = res * Math.pow(0.5, i);
+      await this.saveCubemapAsHDR(cubemap, currentRes, i, "specular_mip_" + i);
+    }
+  }
+
+  this.saveCubemapAsHDR = async function(cubemap, res = 512, mipmapLevel = 0, name = "cubemap") {
     var w = res;
     var h = res / 2;
 
@@ -1092,12 +1226,14 @@ function Renderer() {
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap);
     gl.uniform1i(gl.getUniformLocation(program, "cubemap"), 0);
 
+    gl.uniform1f(gl.getUniformLocation(program, "mipmapLevel"), mipmapLevel); // bruh please work
+
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
     var pixels = new Float32Array(w * h * 4);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.FLOAT, pixels);
 
-    CreateHDR(pixels, w, h, "cubemap");
+    CreateHDR(pixels, w, h, name);
 
     return true;
   }
@@ -1155,9 +1291,11 @@ function Renderer() {
 
   this.loadSplitsum = function(url) {
     return loadTexture(url, {
+      // ...this.getSRGBFormats(), // <- looks better with / or not ....
       TEXTURE_MIN_FILTER: gl.LINEAR,
       TEXTURE_WRAP_S: gl.CLAMP_TO_EDGE,
-      TEXTURE_WRAP_T: gl.CLAMP_TO_EDGE
+      TEXTURE_WRAP_T: gl.CLAMP_TO_EDGE,
+      // flipY: true // bruh... ._. is this it????
     });
   }
 
@@ -1322,6 +1460,16 @@ function Renderer() {
     }
 
     return gl.UNSIGNED_BYTE;
+  }
+
+  this.getSRGBFormats = function() {
+    var sRGBInternalFormat = renderer.version == 1 ? (renderer.sRGBExt && (renderer.floatTextures || renderer.textureHalfFloatExt) ? renderer.sRGBExt.SRGB_ALPHA_EXT : gl.RGBA) : gl.SRGB8_ALPHA8;
+    var sRGBFormat = renderer.version == 1 ? (renderer.sRGBExt && (renderer.floatTextures || renderer.textureHalfFloatExt) ? renderer.sRGBExt.SRGB_ALPHA_EXT : gl.RGBA) : gl.RGBA;
+
+    return {
+      internalFormat: sRGBInternalFormat,
+      format: sRGBFormat
+    };
   }
 
   function createFramebuffer(currentWidth, currentHeight) {
@@ -1507,7 +1655,7 @@ function Renderer() {
 
     this.emit = true;
     this.emitPosition = null;
-    this.width = 0.1;
+    this.width = 0.13;
     this.maxVertices = 500;
     this.minDistance = 0.05;
     
@@ -1543,13 +1691,11 @@ function Renderer() {
         size: 1
       }
     });
-    this.material = CreateLitMaterial({metallic: 1, albedoColor: [0.003, 0.003, 0.003, 1], albedoTexture: loadTexture(renderer.path + "assets/textures/skidmarksSoft.png")}, renderer.trailLitContainer);
+    this.material = CreateLitMaterial({metallic: 1, albedoColor: [0.003, 0.003, 0.003, 1], albedoTexture: loadTexture(renderer.path + "assets/textures/skidmarksSoft2.png")}, renderer.trailLitContainer);
     this.material.setUniform("opaque", 0);
     this.material.setUniform("alphaCutoff", 0);
 
     this.drawMode = gl.TRIANGLE_STRIP;
-
-    this.attribLocations = this.meshData.getAttribLocations(this.material.program);
 
     var meshRenderer = new MeshRenderer(this.material, this.meshData);
     meshRenderer.drawMode = gl.TRIANGLE_STRIP;
@@ -1621,7 +1767,7 @@ function Renderer() {
       //   var mat = this.material;
 
       //   useProgram(mat.program);
-      //   md.bindBuffers(mat.program, this.attribLocations);
+      //   md.bindBuffers(mat.programContainer);
         
       //   mat.bindModelMatrixUniform(identity);
       //   mat.bindUniforms(camera);
@@ -1646,6 +1792,8 @@ function Renderer() {
       albedoTexture: loadTexture("./assets/textures/bulletTrail.png"),
       albedoColor: [40, 10, 5, 1],
     }, renderer.particleContainer);
+    this.material.doubleSided = true;
+
     // this.material = CreateLitMaterial({albedoTexture: loadTexture("./assets/textures/snowParticle.png"), albedoColor: [2, 2, 2, 1]/*[40, 10, 5, 1]*/}, renderer.unlitInstanced);
     this.meshData = md ?? getParticleMeshData();
 
@@ -1676,9 +1824,16 @@ function Renderer() {
 
     var cameraPos;
 
+    this.startSize = () => new Vector(0.6 * (Math.random() * 0.8 + 0.2), 0.15 * (Math.random() * 0.4 + 0.6), 1);
+    this.endSize = () => Vector.zero();
+
     this.emitHealth = 0.5;
     this.emitPosition = () => Vector.zero();
     this.emitVelocity = () => Vector.zero();
+
+    this.wind = () => new Vector((Math.random() - 0.45) * 10, 0, (Math.random() - 0.45) * 10);
+    this.drag = 1;
+    this.gravityScale = 1;
 
     this.emit = function(amount = 1) {
       for (var i = 0; i < amount; i++) {
@@ -1686,8 +1841,10 @@ function Renderer() {
           var p = pool.shift();
           p.active = true;
           p.health = p.maxHealth = this.emitHealth;
-          p.position = Vector.copy(system.emitPosition());
-          p.velocity = Vector.copy(system.emitVelocity());
+          p.position = Vector.copy(typeof system.emitPosition == "function" ? system.emitPosition() : system.emitPosition);
+          p.velocity = Vector.copy(typeof system.emitVelocity == "function" ? system.emitVelocity() : system.emitVelocity);
+          p.startSize = Vector.copy(system.startSize());
+          p.endSize = Vector.copy(system.endSize());
         }
         else {
           break;
@@ -1720,7 +1877,7 @@ function Renderer() {
         cameraPos = Matrix.getPosition(camera.cameraMatrix); // Bruh
 
         useProgram(this.material.program);
-        this.meshData.bindBuffers(this.material.program);
+        this.meshData.bindBuffers(this.material.programContainer);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.matrixBuffer);
         const matrixLoc = gl.getAttribLocation(this.material.program, 'modelMatrix'); //Bruh
@@ -1739,6 +1896,7 @@ function Renderer() {
 
         this.material.bindUniforms(camera);
 
+        this.material.setCulling(shadowPass);
         drawElementsInstanced(this.drawMode, this.meshData.indices.length, this.meshData.indexType, 0, this.maxParticles);
       }
     }
@@ -1747,8 +1905,8 @@ function Renderer() {
       this.position = position;
       this.matrix = Matrix.translate(this.position);
       this.velocity = Vector.zero();
-      // this.size = Vector.multiply(new Vector(0.5, 2, 0.5), Math.random() * 0.7 + 0.3);
-      this.size = new Vector(0.6 * (Math.random() * 0.8 + 0.2), 0.15 * (Math.random() * 0.4 + 0.6), 1);
+      this.startSize = Vector.one();
+      this.endSize = Vector.one();
       this.health = 0.5;
       this.maxHealth = 0.5;
 
@@ -1760,11 +1918,15 @@ function Renderer() {
 
       this.getMatrix = function() {
         if (cameraPos) {
-          var dir = Vector.normalize(this.velocity);
-          var lookDir = Vector.projectOnPlane(Vector.subtract(cameraPos, this.position), dir);
+          // var dir = Vector.normalize(this.velocity);
+          // var lookDir = Vector.projectOnPlane(Vector.subtract(cameraPos, this.position), dir);
 
-          Matrix.lookAt(this.position, Vector.add(this.position, lookDir), dir, this.matrix);
-          Matrix.transform([["scale", this.size]], this.matrix);
+          // Matrix.lookAt(this.position, Vector.add(this.position, lookDir), dir, this.matrix);
+
+          Matrix.lookAt(this.position, cameraPos, Vector.up(), this.matrix);
+
+          var currentSize = Vector.lerp(this.endSize, this.startSize, this.health / this.maxHealth);
+          Matrix.transform([["scale", currentSize]], this.matrix);
         }
 
         return this.matrix;
@@ -1776,20 +1938,22 @@ function Renderer() {
           // var wind = new Vector((Math.random() - 0.3) * 3, 0, (Math.random() - 0.3) * 3);
           // this.velocity = Vector.add(this.velocity, Vector.multiply(wind, dt));
 
-          this.velocity.x += (Math.random() - 0.45) * 10 * dt;
-          this.velocity.z += (Math.random() - 0.45) * 10 * dt;
+          Vector.addTo(this.velocity, Vector.multiply(system.wind(), dt));
+
+          // this.velocity.x += (Math.random() - 0.45) * 10 * dt;
+          // this.velocity.z += (Math.random() - 0.45) * 10 * dt;
 
           //Drag
           // var drag = Vector.negate(Vector.compMultiply(this.velocity, Vector.applyFunc(this.velocity, Math.abs)));
           // this.velocity = Vector.add(this.velocity, Vector.multiply(drag, dt));
 
-          this.velocity.x -= Math.abs(this.velocity.x) * this.velocity.x * dt;
-          this.velocity.y -= Math.abs(this.velocity.y) * this.velocity.y * dt;
-          this.velocity.z -= Math.abs(this.velocity.z) * this.velocity.z * dt;
+          this.velocity.x -= system.drag * Math.abs(this.velocity.x) * this.velocity.x * dt;
+          this.velocity.y -= system.drag * Math.abs(this.velocity.y) * this.velocity.y * dt;
+          this.velocity.z -= system.drag * Math.abs(this.velocity.z) * this.velocity.z * dt;
 
           // Gravity
           // this.velocity = Vector.add(this.velocity, Vector.multiply(new Vector(0, -9.82, 0), dt));
-          this.velocity.y -= 9.82 * dt;
+          this.velocity.y -= system.gravityScale * 9.82 * dt;
 
           // Integrate
           // this.position = Vector.add(this.position, Vector.multiply(this.velocity, dt));
@@ -2327,8 +2491,17 @@ function Renderer() {
 
   // bruh single color when looking at specific angle on mobile
   function Skybox(program) {
-    assertProgram(program);
-    this.program = program;
+    this.programContainer = new renderer.ProgramContainer(program);
+
+    var _this = this;
+    Object.defineProperty(this, 'program', {
+      get: function() {
+        return _this.programContainer.program;
+      },
+      set: val => {
+        _this.programContainer.setProgram(val);
+      }
+    });
 
     this.meshData = new MeshData({
       position: {
@@ -2354,7 +2527,7 @@ function Renderer() {
   
     this.render = function(camera, cubemap) {
       useProgram(this.program);
-      this.meshData.bindBuffers(this.program);
+      this.meshData.bindBuffers(this.programContainer);
 
       Matrix.copy(camera.viewMatrix, matrix);
       Matrix.removeTranslation(matrix);
@@ -2408,6 +2581,7 @@ function Renderer() {
   function ProgramContainer(program) {
     var _this = this;
     var _program;
+    this.activeAttributes = {};
     this.activeUniforms = {};
     this.uniformBuffers = {};
 
@@ -2427,6 +2601,19 @@ function Renderer() {
     }
 
     this.updateUniformLocations = function() {
+      const nrAttribs = gl.getProgramParameter(_program, gl.ACTIVE_ATTRIBUTES);
+      for (var i = 0; i < nrAttribs; i++) {
+        const attribInfo = gl.getActiveAttrib(_program, i);
+        const location = gl.getAttribLocation(_program, attribInfo.name);
+
+        this.activeAttributes[attribInfo.name] = {
+          location,
+          size: attribInfo.size,
+          type: attribInfo.type,
+          typeString: glEnumToString(attribInfo.type)
+        };
+      }
+
       var nrUniforms = gl.getProgramParameter(_program, gl.ACTIVE_UNIFORMS);
 
       for (var i = 0; i < nrUniforms; i++) {
@@ -2871,7 +3058,7 @@ function Renderer() {
         }
   
         useProgram(mat.program);
-        md.bindBuffers(mat.program);
+        md.bindBuffers(mat.programContainer);
   
         mat.bindModelMatrixUniform(matrix);
         mat.bindUniforms(camera);
@@ -2956,7 +3143,7 @@ function Renderer() {
           }
 
           useProgram(mat.program);
-          md.bindBuffers(mat.program);
+          md.bindBuffers(mat.programContainer);
   
           gl.bindBuffer(gl.ARRAY_BUFFER, matrixBuffer);
           var matrixLoc = matrixLocations[i];
@@ -2985,11 +3172,6 @@ function Renderer() {
     this.meshData = Array.isArray(meshData) ? meshData : [meshData];
     this.drawMode = gl.TRIANGLES;
   
-    this.attribLocations = [];
-    for (var i = 0; i < this.materials.length; i++) {
-      this.attribLocations[i] = this.meshData[i].getAttribLocations(this.materials[i].program);
-    }
-  
     this.render = function(camera, matrix, shadowPass = false, opaquePass = true) {
       for (var i = 0; i < this.meshData.length; i++) {
         var md = this.meshData[i];
@@ -3000,7 +3182,7 @@ function Renderer() {
         }
   
         useProgram(mat.program);
-        md.bindBuffers(mat.program, this.attribLocations[i]);
+        md.bindBuffers(mat.programContainer);
         
         mat.bindModelMatrixUniform(matrix);
         mat.bindUniforms(camera, matrix);
@@ -3072,7 +3254,7 @@ function Renderer() {
       });
     }
   
-    var allVAOs = []; // bruh (extra memory)
+    var allVAOs = []; // bruh (extra memory?)
     this.vaos = new WeakMap();
   
     // bruh
@@ -3080,19 +3262,21 @@ function Renderer() {
       return this;
     }
   
-    this.getAttribLocations = function(program) {
-      var output = {};
-      for (var i = 0; i < this.buffers.length; i++) {
-        var buffer = this.buffers[i];
-        if (buffer.target != gl.ELEMENT_ARRAY_BUFFER) {
-          output[buffer.attribute] = gl.getAttribLocation(program, buffer.attribute);
-        }
-      }
+    // this.getAttribLocations = function(program) {
+    //   var output = {};
+    //   for (var i = 0; i < this.buffers.length; i++) {
+    //     var buffer = this.buffers[i];
+    //     if (buffer.target != gl.ELEMENT_ARRAY_BUFFER) {
+    //       output[buffer.attribute] = gl.getAttribLocation(program, buffer.attribute);
+    //     }
+    //   }
       
-      return output;
-    }
+    //   return output;
+    // }
   
-    this.bindBuffers = function(program, attribLocations) {
+    this.bindBuffers = function(programContainer) {
+      var program = programContainer.program;
+
       // bindVertexArray(null);
       // attribLocations = attribLocations ?? this.getAttribLocations(program);
   
@@ -3121,9 +3305,9 @@ function Renderer() {
         allVAOs.push(vao);
         this.vaos.set(program, vao);
   
-        bindVertexArray(vao);
-  
-        attribLocations = attribLocations ?? this.getAttribLocations(program);
+        bindVertexArray(vao)
+
+        var attribLocations = programContainer.activeAttributes;
   
         for (var i = 0; i < this.buffers.length; i++) {
           var buffer = this.buffers[i];
@@ -3132,11 +3316,14 @@ function Renderer() {
           }
           else {
             var attribLocation = attribLocations[buffer.attribute];
-            if (attribLocation != -1) {
-              gl.bindBuffer(buffer.target, buffer.buffer);
-              gl.enableVertexAttribArray(attribLocation);
-              vertexAttribDivisor(attribLocation, 0);
-              gl.vertexAttribPointer(attribLocation, buffer.size, buffer.type, false, buffer.stride, 0);
+            if (typeof attribLocation !== "undefined") {
+              attribLocation = attribLocation.location;
+              if (attribLocation != -1) {
+                gl.bindBuffer(buffer.target, buffer.buffer);
+                gl.enableVertexAttribArray(attribLocation);
+                vertexAttribDivisor(attribLocation, 0);
+                gl.vertexAttribPointer(attribLocation, buffer.size, buffer.type, false, buffer.stride, 0);
+              }
             }
           }
         }
@@ -3265,7 +3452,8 @@ function Renderer() {
   }
 
   function setupTexture(texture, image, settings) {
-    // if (!settings.hasOwnProperty("generateMipmap")) settings.generateMipmap = true;
+    if (!settings.hasOwnProperty("anisotropicFiltering")) settings.anisotropicFiltering = true;
+    if (!settings.hasOwnProperty("generateMipmap")) settings.generateMipmap = true;
     // if (!settings.hasOwnProperty("flipY")) settings.flipY = true;
 
     if (settings.hasOwnProperty("maxTextureSize") && image.width > settings.maxTextureSize) {
@@ -3283,6 +3471,7 @@ function Renderer() {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, settings.flipY ? 1 : 0);
     gl.texImage2D(gl.TEXTURE_2D, settings.level ?? 0, settings.internalFormat ?? gl.RGBA, settings.format ?? gl.RGBA, gl.UNSIGNED_BYTE, image);
 
+    // Mipmapping
     if (settings.generateMipmap && (renderer.version != 1 || (renderer.version == 1 && isPowerOf2(image.width) && isPowerOf2(image.height))) && settings.format != 35906) {
       gl.generateMipmap(gl.TEXTURE_2D);
     }
@@ -3300,6 +3489,13 @@ function Renderer() {
 
     if (settings.TEXTURE_MIN_FILTER) gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, settings.TEXTURE_MIN_FILTER);
     if (settings.TEXTURE_MAG_FILTER) gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, settings.TEXTURE_MAG_FILTER);
+
+    // Anisotropic filtering
+    if (settings.anisotropicFiltering && renderer.EXT_texture_filter_anisotropic) {
+      var ext = renderer.EXT_texture_filter_anisotropic;
+      var max = gl.getParameter(ext.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+      gl.texParameterf(gl.TEXTURE_2D, ext.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, max));
+    }
 
     return texture;
   }
@@ -4215,7 +4411,7 @@ function Renderer() {
   }
 
   this.getParticleMeshData = getParticleMeshData;
-  function getParticleMeshData(size = 0.04) {
+  function getParticleMeshData(size = 1) {
     var vertices = new Float32Array([   // Coordinates
       size, size, 0,
       -size, size, 0,
@@ -4489,8 +4685,12 @@ function Renderer() {
     return gameObject;
   }
 
-  this.CreatePBRGrid = async function(scene, w = 10, h = 10) {
-    var meshData = (await this.loadGLTF(this.path + "assets/models/primitives/uvSphere.glb")).children[0].meshRenderer.meshData[0];
+  this.CreatePBRGrid = async function(scene, w = 10, h = 10, shape = "sphere") {
+    var meshData = 
+      shape == "cube" ?
+        (await this.loadGLTF(this.path + "assets/models/primitives/cube.glb")).children[0].meshRenderer.meshData[0] :
+        (await this.loadGLTF(this.path + "assets/models/primitives/uvSphere.glb")).children[0].meshRenderer.meshData[0];
+      
 
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
@@ -4503,6 +4703,11 @@ function Renderer() {
         var gameObject = new GameObject();
         gameObject.transform.position = new Vector((x - (w - 1) / 2) * 2.1, (y - (h - 1) / 2) * 2.1, 0);
         gameObject.meshRenderer = meshRenderer;
+
+        if (shape == "cube") {
+          gameObject.transform.scale = new Vector(0.5, 0.5, 100);
+        }
+
         scene.add(gameObject);
       }
     }
@@ -5335,18 +5540,33 @@ function Scene(name) {
   this.loadEnvironment = async function(settings = {}) {
     if (this.renderer) {
       var res = settings.res ?? 1024;
-      if (settings.hdrFolder) {
+      if (settings.hdr) {
+        this.skyboxCubemap = await this.renderer.createCubemapFromHDR(settings.hdr, res);
+          
+        console.warn("No prebaked diffuse map. Generating one...");
+        this.diffuseCubemap = await this.renderer.getDiffuseCubemap(this.skyboxCubemap);
+      }
+      else if (settings.hdrFolder) {
         var hdrFolder = settings.hdrFolder;
 
         this.skyboxCubemap = await this.renderer.createCubemapFromHDR(hdrFolder + "/skybox.hdr", res);
       
         try {
+          // bruh();
           // bruh res should be 32
           this.diffuseCubemap = await this.renderer.createCubemapFromHDR(hdrFolder + "/diffuse.hdr", res);
         }
         catch (e) {
           console.warn("No prebaked diffuse map. Generating one...");
           this.diffuseCubemap = await this.renderer.getDiffuseCubemap(this.skyboxCubemap);
+        }
+
+        try {
+          this.specularCubemap = await this.renderer.createSpecularCubemapFromHDR(hdrFolder, res);
+        }
+        catch (e) {
+          console.error(e);
+          console.warn("No prebaked specular map. Generating one...");
         }
       }
       else if (settings.cubemap) {
@@ -5360,7 +5580,9 @@ function Scene(name) {
         this.diffuseCubemap = await this.renderer.getDiffuseCubemap(this.skyboxCubemap);
       }
 
-      this.specularCubemap = await this.renderer.getSpecularCubemap(this.skyboxCubemap);
+      if (!this.specularCubemap) {
+        this.specularCubemap = await this.renderer.getSpecularCubemap(this.skyboxCubemap);
+      }
 
       if (this.smoothSkybox) {
         this.skyboxCubemap = this.diffuseCubemap;
@@ -5435,7 +5657,6 @@ function Scene(name) {
   // }
 }
 
-// bruh not done
 function Light() {
   this.gameObject = null;
   this.angle = Math.PI / 3;
@@ -5443,32 +5664,7 @@ function Light() {
   this.type = 0;
 
   this.kelvinToRgb = function(k, intensity = 1) {
-    var retColor = [0, 0, 0];
-	
-    k = clamp(k, 1000, 40000) / 100;
-    
-    if (k <= 66) {
-      retColor[0] = 1;
-      retColor[1] = clamp(0.39008157876901960784 * Math.log(k) - 0.63184144378862745098, 0, 1);
-    }
-    else {
-    	var t = k - 60;
-      retColor[0] = clamp(1.29293618606274509804 * Math.pow(t, -0.1332047592), 0, 1);
-      retColor[1] = clamp(1.12989086089529411765 * Math.pow(t, -0.0755148492), 0, 1);
-    }
-    
-    if (k > 66)
-      retColor[2] = 1;
-    else if (k <= 19)
-      retColor[2] = 0;
-    else
-      retColor[2] = clamp(0.54320678911019607843 * Math.log(k - 10) - 1.19625408914, 0, 1);
-
-    retColor[0] *= intensity;
-    retColor[1] *= intensity;
-    retColor[2] *= intensity;
-
-    return retColor;
+    return Light.kelvinToRgb(k, intensity);
   }
 
   this.copy = function() {
@@ -5478,6 +5674,35 @@ function Light() {
     l.type = this.type;
     return l;
   }
+}
+
+Light.kelvinToRgb = function(k, intensity = 1) {
+  var retColor = [0, 0, 0];
+
+  k = clamp(k, 1000, 40000) / 100;
+  
+  if (k <= 66) {
+    retColor[0] = 1;
+    retColor[1] = clamp(0.39008157876901960784 * Math.log(k) - 0.63184144378862745098, 0, 1);
+  }
+  else {
+    var t = k - 60;
+    retColor[0] = clamp(1.29293618606274509804 * Math.pow(t, -0.1332047592), 0, 1);
+    retColor[1] = clamp(1.12989086089529411765 * Math.pow(t, -0.0755148492), 0, 1);
+  }
+  
+  if (k > 66)
+    retColor[2] = 1;
+  else if (k <= 19)
+    retColor[2] = 0;
+  else
+    retColor[2] = clamp(0.54320678911019607843 * Math.log(k - 10) - 1.19625408914, 0, 1);
+
+  retColor[0] *= intensity;
+  retColor[1] *= intensity;
+  retColor[2] *= intensity;
+
+  return retColor;
 }
 
 /*

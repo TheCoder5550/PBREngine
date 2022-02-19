@@ -14,6 +14,11 @@ vec2 Hammersley(uint i, uint N);
 vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness);
 float DistributionGGX(float NdotH, float roughness);
 float saturate(float x);
+
+// Settings
+const uint SAMPLE_COUNT = 1024u;//4096u * 4u;
+const vec3 maxBrightness = vec3(50);
+// --------
   
 void main()
 {		
@@ -21,11 +26,10 @@ void main()
     vec3 R = N;
     vec3 V = R;
 
-    const uint SAMPLE_COUNT = 4096u;
     float totalWeight = 0.0;
     vec3 prefilteredColor = vec3(0.0);
 
-    float resolution = 1024.0; // resolution of source cubemap (per face)
+    float resolution = float(textureSize(environmentMap, 0).x);//1024.0; // resolution of source cubemap (per face)
     float saTexel  = 4.0 * PI / (6.0 * resolution * resolution);
 
     for(uint i = 0u; i < SAMPLE_COUNT; ++i)
@@ -45,7 +49,7 @@ void main()
             float saSample = 1.0 / (float(SAMPLE_COUNT) * pdf + 0.0001);
             float mipLevel = roughness == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel); 
 
-            prefilteredColor += min(textureLod(environmentMap, L, mipLevel).rgb, vec3(100)) * NdotL;
+            prefilteredColor += min(textureLod(environmentMap, L, mipLevel).rgb, maxBrightness) * NdotL;
             totalWeight      += NdotL;
         }
     }
