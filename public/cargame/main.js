@@ -76,9 +76,9 @@ async function setup() {
     // Mobile
     version: 2,
     // renderScale: 0.1,
-    disableLitInstanced: true,
-    disableLitSkinned: true,
-    disableLitBillboard: true
+    // disableLitInstanced: true,
+    // disableLitSkinned: true,
+    // disableLitBillboard: true
   });
   renderer.canvas.classList.add("webglCanvas");
   renderer.postprocessing.exposure = -0.5;
@@ -93,11 +93,11 @@ async function setup() {
 
   setLoadingStatus("Loading environment");
   await scene.loadEnvironment({
-    hdrFolder: "../assets/hdri/wide_street_01_1k_precomputed",
+    // hdrFolder: "../assets/hdri/wide_street_01_1k_precomputed",
     res: 512
   });
-  scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(6000, 25)); //Vector.multiply(new Vector(1, 0.85, 0.55), 25);
-  scene.environmentIntensity = 1;//1.75;
+  scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(6000, 20)); //Vector.multiply(new Vector(1, 0.85, 0.55), 25);
+  scene.environmentIntensity = 0.75;//1.75;
   // scene.skyboxVisible = false;
   // scene.skyboxCubemap = scene.diffuseCubemap;
 
@@ -133,15 +133,17 @@ async function setup() {
 
   var map = await renderer.loadGLTF("../assets/models/kajaman.glb");
   scene.add(map);
-  physicsEngine.addMeshCollider(map);
+
+  var collider = await renderer.loadGLTF("../assets/models/kajamanCollider.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
+  physicsEngine.addMeshCollider(collider);
   physicsEngine.setupMeshCollider();
 
-  var cube = scene.add(renderer.CreateShape("cube"));
-  cube.transform.position.x = 3;
-  FindMaterials("", cube)[0].setUniform("albedo", [0, 0.5, 0, 1]);
+  // var cube = scene.add(renderer.CreateShape("cube"));
+  // cube.transform.position.x = 3;
+  // FindMaterials("", cube)[0].setUniform("albedo", [0, 0.5, 0, 1]);
   
   // await renderer.CreatePBRGrid(scene, 10, 10, "sphere");
-  scene.add(await renderer.loadGLTF("../assets/models/test/environmentTest.glb"));
+  // scene.add(await renderer.loadGLTF("../assets/models/test/environmentTest.glb"));
 
   // var grass = scene.add(await renderer.loadGLTF("./grass.glb"));
   // grass.children[0].meshRenderer = grass.children[0].meshRenderer.getInstanceMeshRenderer();
@@ -163,12 +165,13 @@ async function setup() {
   // Matrix.pprint(porsche.transform.matrix);
   // window.porsche = porsche;
 
-  // // Reflection probe
-  // var oldSkybox = scene.skyboxCubemap;
-  // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 1, 0));
-  // await scene.loadEnvironment({ cubemap });
-  // scene.skyboxCubemap = oldSkybox;
-  // scene.environmentIntensity = 1;
+  // Reflection probe
+  console.log("Creating reflection probe");
+  var oldSkybox = scene.skyboxCubemap;
+  var cubemap = renderer.captureReflectionCubemap(new Vector(0, 8, 200));
+  await scene.loadEnvironment({ cubemap });
+  scene.skyboxCubemap = oldSkybox;
+  scene.environmentIntensity = 1;
 
   // setLoadingStatus("Creating car");
   // car = new Car({
@@ -558,6 +561,8 @@ function Car(settings = {}) {
 
   var radPerSecToRPM = 30 / Math.PI;
 
+  this.frozen = false;
+
   this.cameraMode = 0;
   this.camera = {
     followDistance: 5,
@@ -587,7 +592,7 @@ function Car(settings = {}) {
 
   var maxSteerAngle = settings.maxSteerAngle ?? 35;
 
-  this.ABS = true;
+  this.ABS = false;
   this.TCS = false;
 
   var steerInput = 0;
@@ -680,12 +685,12 @@ function Car(settings = {}) {
 
     var smokeObject = new GameObject("Smoke");
     this.gameObject.addChild(smokeObject);
-    var smoke = smokeObject.addComponent(new renderer.ParticleSystem(undefined, 500));
+    var smoke = smokeObject.addComponent(new renderer.ParticleSystem(undefined, 700));
 
     smoke.material = renderer.CreateLitMaterial({
       albedoTexture: renderer.loadTexture("../assets/textures/smoke.png"),
       albedoColor: [2, 2, 2, 1],
-    }, renderer.particleContainer);
+    }, renderer.programContainers.particle);
     smoke.material.doubleSided = true;
 
     smoke.emitPosition = () => new Vector(0, 2, 0);
@@ -696,6 +701,7 @@ function Car(settings = {}) {
     smoke.gravityScale = 0;
     smoke.wind = () => Vector.zero();
     smoke.drag = 0.1;
+    smoke.orientation = "faceCamera";
     this.smoke = smoke;
   }
 
@@ -727,6 +733,10 @@ function Car(settings = {}) {
   }
 
   this.update = function(dt) {
+    // if (this.frozen) {
+    //   return;
+    // }
+
     if (keybindings.getInputDown("cameraMode")) {
       this.cameraMode++;
       if (this.cameraMode >= 3) {
@@ -734,11 +744,23 @@ function Car(settings = {}) {
       }
 
       if (this.cameraMode == 0) {
+        this.frozen = false;
+        this.rb.frozen = false;
         mainCamera.setFOV(fov);
+
+        cameraCarForward = Matrix.getForward(this.gameObject.transform.worldMatrix);
       }
       else if (this.cameraMode == 1) {
         mainCamera.setFOV(30);
       }
+      else if (this.cameraMode == 2) {
+        this.frozen = true;
+        this.rb.frozen = true;
+      }
+    }
+
+    if (this.frozen) {
+      return;
     }
 
     if (keybindings.getInputDown("resetCar")) {
@@ -768,6 +790,10 @@ function Car(settings = {}) {
   }
 
   this.fixedUpdate = function(fixedDeltaTime) {
+    if (this.frozen) {
+      return;
+    }
+
     Matrix.copy(this.gameObject.transform.worldMatrix, carWorldMatrix);
 
     Matrix.inverse(carWorldMatrix, inverseWorldMatrix);
@@ -1045,7 +1071,7 @@ function Car(settings = {}) {
               wheel.angularVelocity = Math.abs(forwardVelocity) < 1 ? 0 : w;
             }
             else {
-              var brakeTorque = 2000;
+              var brakeTorque = 700;//2000;
               wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(brakeInput * brakeTorque, Math.abs(wheel.angularVelocity) / dt) * dt;
               // wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - brakeInput);
             }
@@ -1065,30 +1091,40 @@ function Car(settings = {}) {
       }
     }
 
+    var forward = Vector.negate(Matrix.getForward(carWorldMatrix));
+    var forwardVelocity = Vector.dot(this.rb.velocity, forward);
+
     for (var wheel of this.wheels) {
       wheel.angle += wheel.angularVelocity * fixedDeltaTime;
 
-      if (Math.abs(wheel.slipRatio) > 0.7) {
-        var up = Matrix.getUp(carWorldMatrix);
-        var worldPos = Matrix.transformVector(carWorldMatrix, wheel.position);
-        Vector.addTo(worldPos, Vector.multiply(up, -wheel.radius));
-        this.smoke.emitPosition = () => worldPos;
+      if (wheel.isGrounded) {
+        var speedDiff = wheel.angularVelocity * wheel.radius - forwardVelocity;
+        if (Math.abs(speedDiff) > 5) {
+          var up = Matrix.getUp(carWorldMatrix);
+          var worldPos = Matrix.transformVector(carWorldMatrix, wheel.position);
+          Vector.addTo(worldPos, Vector.multiply(up, -wheel.radius));
+          this.smoke.emitPosition = () => worldPos;
 
-        var sideways = Matrix.getRight(carWorldMatrix);
-        var driveForwardVector = Quaternion.QxV(Quaternion.angleAxis(-Math.PI / 2, sideways), wheel.groundHit.normal);
-        var [ tangent, bitangent ] = Vector.formOrthogonalBasis(driveForwardVector);
-        var basis = Matrix.basis(tangent, bitangent, driveForwardVector);
+          var sideways = Matrix.getRight(carWorldMatrix);
+          var driveForwardVector = Quaternion.QxV(Quaternion.angleAxis(-Math.PI / 2, sideways), wheel.groundHit.normal);
+          var [ tangent, bitangent ] = Vector.formOrthogonalBasis(driveForwardVector);
+          var basis = Matrix.basis(tangent, bitangent, driveForwardVector);
 
-        this.smoke.emitVelocity = () => {
-          var v = new Vector((Math.random() - 0.5), (Math.random() - 0.5), 2);
-          v = Matrix.transformVector(basis, v);
-          v.y += 0.5;
-          return v;
-        };
-        
-        this.smoke.emit();
+          this.smoke.emitVelocity = () => {
+            var v = new Vector((Math.random() - 0.5), (Math.random() - 0.5), 2);
+            v = Matrix.transformVector(basis, v);
+            v.y += 0.5;
+            return v;
+          };
+          
+          this.smoke.emit();
+        }
       }
     }
+
+    this.rb.angularVelocity.x *= 0.995;
+    this.rb.angularVelocity.y *= 0.995;
+    this.rb.angularVelocity.z *= 0.995;
 
     skidAudio.volume += (highestSkidVolume - skidAudio.volume) * 0.1;
 
@@ -1251,7 +1287,7 @@ function Car(settings = {}) {
     this.inertia = this.mass * this.radius * this.radius / 2;
 
     this.slipRatioCoeffs = settings.slipRatioCoeffs ?? [16, 1.5, 1.1, -1.4];
-    this.slipAngleCoeffs = settings.slipAngleCoeffs ?? [0.15, 1.5, 1.1, -1.4];
+    this.slipAngleCoeffs = settings.slipAngleCoeffs ?? [0.2/*0.15*/, 1.5, 1.1, -1.4];
 
     this.slipRatioPeak = findPeak(x => {
       return magicFormula(x, this.slipRatioCoeffs);
@@ -1357,7 +1393,7 @@ function DebugLines() {
   var gl = renderer.gl;
 
   this.drawMode = gl.TRIANGLES;
-  this.material = renderer.CreateLitMaterial({albedoTexture: renderer.loadTexture("../assets/textures/snowParticle.png"), albedoColor: [2, 2, 2, 1]/*[40, 10, 5, 1]*/}, renderer.unlitInstancedContainer);
+  this.material = renderer.CreateLitMaterial({albedoTexture: renderer.loadTexture("../assets/textures/snowParticle.png"), albedoColor: [2, 2, 2, 1]/*[40, 10, 5, 1]*/}, renderer.programContainers.unlitInstanced);
   this.meshData = renderer.getParticleMeshData();
 
   this.matrixBuffer = gl.createBuffer();

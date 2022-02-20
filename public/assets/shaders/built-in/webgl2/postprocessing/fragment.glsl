@@ -6,8 +6,10 @@ uniform sampler2D mainTexture;
 uniform sampler2D bloomTexture;
 uniform sampler2D depthTexture;
 
+uniform float bloomIntensity;
 uniform float exposure;
 uniform float gamma;
+uniform int tonemapping;
 
 uniform bool enableGodrays;
 
@@ -37,21 +39,36 @@ void main() {
   // vec2 uvOffset = normal.xy * screenDistance;
   // uv += uvOffset;
 
-  vec4 samp = texture2D(mainTexture, uv);
-  vec4 bloom = texture2D(bloomTexture, uv);
   vec3 col = vec3(0);
-  col += samp.rgb;
-  col += bloom.rgb * 0.05;
 
+  // Scene
+  vec4 samp = texture2D(mainTexture, uv);
+  col += samp.rgb;
+
+  // Bloom
+  vec4 bloom = texture2D(bloomTexture, uv);
+  col += bloom.rgb * bloomIntensity;
+
+  // Godrays
   if (enableGodrays) {
     col += godrays(1., 0.01, 0.97, 0.6, vec2(0.5, 0.5), uv);
   }
 
-  // col = col / (col + vec3(1.0));
-  // col = col * pow(2., exposure);
-  col = ACESFilm(col * pow(2., exposure));
+  // Exposure correction
+  col = col * pow(2., exposure);
 
+  // Tonemapping
+  if (tonemapping == 1) {
+    col = ACESFilm(col);
+  }
+  else if (tonemapping == 2) {
+    col = col / (col + vec3(1.0));
+  }
+
+  // Gamma correction
   col = pow(col, vec3(1. / gamma));
+
+  // Saturation
   // col = adjustSaturation(col, 0.3);
 
   gl_FragColor = vec4(col, samp.a);

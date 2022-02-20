@@ -89,13 +89,14 @@
       var grassAlbedo = await renderer.loadTextureAsync("./assets/textures/Ground037_4K-JPG/Ground037_4K_Color.jpg", {internalFormat: sRGBInternalFormat, format: sRGBFormat});
       var grassNormal = await renderer.loadTextureAsync("./assets/textures/Ground037_4K-JPG/Ground037_4K_Normal.jpg");
 
-      var stoneAlbedo = await renderer.loadTextureAsync("./assets/textures/Snow/albedo.jpg");
+      var stoneAlbedo = await renderer.loadTextureAsync("./assets/textures/Snow/albedo.jpg", {internalFormat: sRGBInternalFormat, format: sRGBFormat});
       var stoneNormal = await renderer.loadTextureAsync("./assets/textures/Snow/normal.jpg");
 
-      var snowAlbedo = await renderer.loadTextureAsync("./assets/textures/Snow/albedo.jpg");
+      var snowAlbedo = await renderer.loadTextureAsync("./assets/textures/Snow/albedo.jpg", {internalFormat: sRGBInternalFormat, format: sRGBFormat});
       var snowNormal = await renderer.loadTextureAsync("./assets/textures/Snow/normal.jpg");
 
       var terrainMat = renderer.CreateLitMaterial({}, litTerrain);
+      terrainMat.setUniform("roughness", 1);
       terrainMat.setUniform("albedoTextures[0]", [ grassAlbedo, stoneAlbedo, snowAlbedo ]);
       terrainMat.setUniform("normalTextures[0]", [ grassNormal, stoneNormal, snowNormal ]);
 

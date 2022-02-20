@@ -322,19 +322,19 @@ async function setup() {
 
   // Bullet holes
   bulletHoles = scene.add(new GameObject("HitObject", {
-    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({opaque: 0, albedoTexture: bulletHole}, renderer.litInstancedContainer)], [new renderer.MeshData(await renderer.loadObj("./assets/models/plane.obj"))]),
+    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({opaque: 0, albedoTexture: bulletHole}, renderer.programContainers.litInstanced)], [await renderer.loadObj("./assets/models/plane.obj")]),
     castShadows: false
   }));
 
   // Bullet trails
   scene.add(new GameObject("BulletTrail", {
-    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({opaque: 0, emissiveFactor: [40, 5, 5], emissiveTexture: bulletTrail, albedo: [0, 0, 0, 1], albedoTexture: bulletTrail}, renderer.litInstancedContainer)], [new renderer.MeshData(await renderer.loadObj("./assets/models/bulletTrail.obj"))]),
+    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({opaque: 0, emissiveFactor: [40, 5, 5], emissiveTexture: bulletTrail, albedo: [0, 0, 0, 1], albedoTexture: bulletTrail}, renderer.programContainers.litInstanced)], [await renderer.loadObj("./assets/models/bulletTrail.obj")]),
     castShadows: false
   }));
 
   // Bullet metal hit sparks
   var sparksObject = new GameObject("Particles");
-  sparks = new renderer.ParticleSystem(new renderer.MeshData(await renderer.loadObj("./assets/models/bulletTrail.obj")));
+  sparks = new renderer.ParticleSystem(await renderer.loadObj("./assets/models/bulletTrail.obj"));
   sparksObject.addComponent(sparks);
   scene.add(sparksObject);
 

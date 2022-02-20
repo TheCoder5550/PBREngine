@@ -35,6 +35,8 @@ import {
 } from "./algebra.mjs";
 import { AABB } from "./physics.mjs";
 
+import * as litSource from "../assets/shaders/built-in/lit.glsl.js";
+
 var ENUMS = {
   RENDERPASS: { SHADOWS: 0b001, OPAQUE: 0b010, ALPHA: 0b100 },
   LIGHT: { POINT: 0, SPOT: 1 }
@@ -83,25 +85,36 @@ function Renderer() {
   // var blankTexture;
 
   var UBOLocationCounter = 0;
-  this.litContainer = null;
-  this.litInstancedContainer = null;
-  this.particleContainer = null;
-  this.unlitInstancedContainer = null;
-  this.litSkinnedContainer = null;
-  this.litBillboardContainer = null;
-  this.trailLitContainer = null;
+  // this.litContainer = null;
+  // this.litInstancedContainer = null;
+  // this.particleContainer = null;
+  // this.unlitInstancedContainer = null;
+  // this.litSkinnedContainer = null;
+  // this.litBillboardContainer = null;
+  // this.trailLitContainer = null;
 
-  // var _loadedPrograms = {};
-  // Object.defineProperty(this, 'lit', {
+  var _programContainers = {};
+  // Object.defineProperty(this, 'litContainer', {
   //   get: function() {
-  //     var name = "lit";
-  //     if (!_loadedPrograms[name]) {
-  //       _loadedPrograms[name] = await loadLitProgram(path);
-  //     }
-      
-  //     return _loadedPrograms[name];
+  //     return getProgramContainer("lit");
   //   }
   // });
+
+  this.programContainers = {
+    get lit() { return getProgramContainer("lit") }
+  }
+
+  function getProgramContainer(name) {
+    if (!_programContainers[name]) {
+      console.log("Loading program:", name);
+
+      var p = litSource["webgl" + renderer.version][name];
+      var program = renderer.createProgram(p.vertex, p.fragment);
+      _programContainers[name] = new ProgramContainer(program);
+    }
+    
+    return _programContainers[name];
+  }
 
   var currentProgram = null;
   var currentClearColor;
@@ -328,7 +341,7 @@ function Renderer() {
 
     // this.floatTextures = false;
 
-    var postprocessingProgram = await this.createProgramFromFile(this.path + `assets/shaders/built-in/webgl${this.version}/postprocessing`);
+    var postprocessingProgram = new ProgramContainer(await this.createProgramFromFile(this.path + `assets/shaders/built-in/webgl${this.version}/postprocessing`));
     this.postprocessing = new PostProcessing(postprocessingProgram);
     logGLError("Post processing");
 
@@ -345,40 +358,40 @@ function Renderer() {
     this.skybox = new Skybox(skyboxProgram);
     logGLError("Skybox");
 
-    console.log("Loading programs...");
-    if (!settings.disableLit) {
-      var lit = await loadLitProgram(this.path);
-      this.litContainer = new ProgramContainer(lit);
-    }
+    // console.log("Loading programs...");
+    // if (!settings.disableLit) {
+    //   var lit = await loadLitProgram(this.path);
+    //   this.litContainer = new ProgramContainer(lit);
+    // }
 
     if (!settings.disableLitInstanced) {
       var litInstanced = await loadLitInstancedProgram(this.path);
-      this.litInstancedContainer = new ProgramContainer(litInstanced);
+      this.programContainers.litInstanced = new ProgramContainer(litInstanced);
     }
 
     if (!settings.disableParticleProgram) {
       var particleProgram = await loadParticleProgram(this.path);
-      this.particleContainer = new ProgramContainer(particleProgram);
+      this.programContainers.particle = new ProgramContainer(particleProgram);
     }
 
     if (!settings.disableUnlitInstanced) {
       var unlitInstanced = await loadUnlitInstancedProgram(this.path);
-      this.unlitInstancedContainer = new ProgramContainer(unlitInstanced);
+      this.programContainers.unlitInstanced = new ProgramContainer(unlitInstanced);
     }
 
     if (!settings.disableLitSkinned) {
       var litSkinned = await loadLitSkinnedProgram(this.path);
-      this.litSkinnedContainer = new ProgramContainer(litSkinned);
+      this.programContainers.litSkinned = new ProgramContainer(litSkinned);
     }
 
     if (!settings.disableLitBillboard) {
       var litBillboard = await loadLitBillboardProgram(this.path);
-      this.litBillboardContainer = new ProgramContainer(litBillboard);
+      this.programContainers.litBillboard = new ProgramContainer(litBillboard);
     }
 
     if (!settings.disableTrailLit) {
       var trailProgram = await this.createProgramFromFile(this.path + `assets/shaders/built-in/webgl${this.version}/trail`);
-      this.trailLitContainer = new ProgramContainer(trailProgram);
+      this.programContainers.litTrail = new ProgramContainer(trailProgram);
     }
     
     logGLError("Programs");
@@ -1305,14 +1318,21 @@ function Renderer() {
   
   */
 
-  async function loadLitProgram(path) {
+  function loadLitProgram() {
     console.log("Lit");
+
+    var p = litSource["webgl" + renderer.version].lit;
+    return renderer.createProgram(p.vertex, p.fragment);
+
     // await this.createProgramFromFile(`./assets/shaders/built-in/webgl${this.version}/lit/vertex.glsl`, `./assets/shaders/built-in/webgl${this.version}/lit/fragmentMobile.glsl`);
-    return await await renderer.createProgramFromFile(path + `assets/shaders/built-in/webgl${renderer.version}/lit`);
+    // return await await renderer.createProgramFromFile(path + `assets/shaders/built-in/webgl${renderer.version}/lit`);
   }
 
   async function loadLitInstancedProgram(path) {
     console.log("Lit instanced");
+
+    var p = litSource["webgl" + renderer.version].litInstanced;
+    return renderer.createProgram(p.vertex, p.fragment);
 
     var vertexSource = await renderer.loadTextFile(path + `assets/shaders/built-in/webgl${renderer.version}/lit/vertexInstanced.glsl`);
     var fragmentSource = await renderer.loadTextFile(path + `assets/shaders/built-in/webgl${renderer.version}/lit/fragment.glsl`);
@@ -1691,7 +1711,7 @@ function Renderer() {
         size: 1
       }
     });
-    this.material = CreateLitMaterial({metallic: 1, albedoColor: [0.003, 0.003, 0.003, 1], albedoTexture: loadTexture(renderer.path + "assets/textures/skidmarksSoft2.png")}, renderer.trailLitContainer);
+    this.material = CreateLitMaterial({metallic: 1, albedoColor: [0.003, 0.003, 0.003, 1], albedoTexture: loadTexture(renderer.path + "assets/textures/skidmarksSoft2.png")}, renderer.programContainers.litTrail);
     this.material.setUniform("opaque", 0);
     this.material.setUniform("alphaCutoff", 0);
 
@@ -1791,7 +1811,7 @@ function Renderer() {
     this.material = CreateLitMaterial({
       albedoTexture: loadTexture("./assets/textures/bulletTrail.png"),
       albedoColor: [40, 10, 5, 1],
-    }, renderer.particleContainer);
+    }, renderer.programContainers.particle);
     this.material.doubleSided = true;
 
     // this.material = CreateLitMaterial({albedoTexture: loadTexture("./assets/textures/snowParticle.png"), albedoColor: [2, 2, 2, 1]/*[40, 10, 5, 1]*/}, renderer.unlitInstanced);
@@ -1823,6 +1843,7 @@ function Renderer() {
     gl.bufferData(gl.ARRAY_BUFFER, this.colorData, gl.DYNAMIC_DRAW);
 
     var cameraPos;
+    this.orientation = "faceVelocity";
 
     this.startSize = () => new Vector(0.6 * (Math.random() * 0.8 + 0.2), 0.15 * (Math.random() * 0.4 + 0.6), 1);
     this.endSize = () => Vector.zero();
@@ -1918,12 +1939,15 @@ function Renderer() {
 
       this.getMatrix = function() {
         if (cameraPos) {
-          // var dir = Vector.normalize(this.velocity);
-          // var lookDir = Vector.projectOnPlane(Vector.subtract(cameraPos, this.position), dir);
+          if (system.orientation == "faceVelocity") {
+            var dir = Vector.normalize(this.velocity);
+            var lookDir = Vector.projectOnPlane(Vector.subtract(cameraPos, this.position), dir);
 
-          // Matrix.lookAt(this.position, Vector.add(this.position, lookDir), dir, this.matrix);
-
-          Matrix.lookAt(this.position, cameraPos, Vector.up(), this.matrix);
+            Matrix.lookAt(this.position, Vector.add(this.position, lookDir), dir, this.matrix);
+          }
+          else if (system.orientation == "faceCamera") {
+            Matrix.lookAt(this.position, cameraPos, Vector.up(), this.matrix);
+          }
 
           var currentSize = Vector.lerp(this.endSize, this.startSize, this.health / this.maxHealth);
           Matrix.transform([["scale", currentSize]], this.matrix);
@@ -2008,14 +2032,35 @@ function Renderer() {
     }
   }
 
-  function PostProcessing(program) {
-    assertProgram(program);
+  function ScreenQuad() {
+    var vertices = new Float32Array([
+      -1.0,  1.0, // top left
+      -1.0, -1.0, // bottom left
+      1.0,  1.0, // top right
+      1.0, -1.0, // bottom right
+    ]);
+    this.vertexBuffer = createBuffer(vertices);
 
-    this.program = program;
+    this.render = function() {
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+  }
+
+  function PostProcessing(programContainer) {
+    this.programContainer = programContainer;
+
+    this.TONEMAPPING = { NONE: 0, ACES: 1, REINHARD: 2 };
+
     this.exposure = 0;
     this.gamma = 2.2;
+    this.tonemapping = this.TONEMAPPING.ACES;
 
-    this.colorBuffers = [];
+    var _lastExposure;
+    var _lastGamma;
+    var _lastWidth;
+    var _lastHeight;
+
+    // this.colorBuffers = [];
   
     const targetTextureWidth = gl.canvas.width;
     const targetTextureHeight = gl.canvas.height;
@@ -2025,18 +2070,19 @@ function Renderer() {
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
   
     // Color buffers
-    for (var i = 0; i < 1; i++) {
-      this.colorBuffers[i] = gl.createTexture();
+    // for (var i = 0; i < 1; i++) {
+      // this.colorBuffers[i] = gl.createTexture();
+      this.colorBuffer = gl.createTexture();
       gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, this.colorBuffers[i]);
+      gl.bindTexture(gl.TEXTURE_2D, this.colorBuffer);
       gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, targetTextureWidth, targetTextureHeight, 0, gl.RGBA, getFloatTextureType(), null);
     
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, this.colorBuffers[i], 0);
-    }
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0/* + i*/, gl.TEXTURE_2D, this.colorBuffer, 0);
+    // }
 
     // // Low quality depth info
     // this.depthTexture = gl.createTexture();
@@ -2055,40 +2101,42 @@ function Renderer() {
     gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, targetTextureWidth, targetTextureHeight);
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
   
+    var screenQuad = new ScreenQuad();
+
     // Screen quad
-    var vertices = new Float32Array([
-      -1.0,  1.0, // top left
-      -1.0, -1.0, // bottom left
-      1.0,  1.0, // top right
-      1.0, -1.0, // bottom right
-    ]);
-    this.vertexBuffer = createBuffer(vertices);
+    // var vertices = new Float32Array([
+    //   -1.0,  1.0, // top left
+    //   -1.0, -1.0, // bottom left
+    //   1.0,  1.0, // top right
+    //   1.0, -1.0, // bottom right
+    // ]);
+    // this.vertexBuffer = createBuffer(vertices);
   
-    this.vertexLocation = gl.getAttribLocation(this.program, "position");
+    // this.vertexLocation = gl.getAttribLocation(this.program, "position");
 
-    // bruh, use program container
-    this.SIZELocation = gl.getUniformLocation(this.program, "SIZE");
-    this.mainTextureLocation = gl.getUniformLocation(this.program, "mainTexture");
-    this.bloomTextureLocation = gl.getUniformLocation(this.program, "bloomTexture");
-    this.depthTextureLocation = gl.getUniformLocation(this.program, "depthTexture");
-    this.exposureLocation = gl.getUniformLocation(this.program, "exposure");
-    this.gammaLocation = gl.getUniformLocation(this.program, "gamma");
-    this.godraysLocation = gl.getUniformLocation(this.program, "enableGodrays");
+    // // bruh, use program container
+    // this.SIZELocation = gl.getUniformLocation(this.program, "SIZE");
+    // this.mainTextureLocation = gl.getUniformLocation(this.program, "mainTexture");
+    // this.bloomTextureLocation = gl.getUniformLocation(this.program, "bloomTexture");
+    // this.depthTextureLocation = gl.getUniformLocation(this.program, "depthTexture");
+    // this.exposureLocation = gl.getUniformLocation(this.program, "exposure");
+    // this.gammaLocation = gl.getUniformLocation(this.program, "gamma");
+    // this.godraysLocation = gl.getUniformLocation(this.program, "enableGodrays");
 
-    useProgram(this.program);
-    gl.uniform1i(this.mainTextureLocation, 0);
-    gl.uniform1i(this.bloomTextureLocation, 1);
+    useProgram(this.programContainer.program);
+    gl.uniform1i(this.programContainer.getUniformLocation("mainTexture"), 0);
+    gl.uniform1i(this.programContainer.getUniformLocation("bloomTexture"), 1);
 
     if (this.depthTexture || renderer.godrays) {
-      gl.uniform1i(this.godraysLocation, 1);
-      gl.uniform1i(this.depthTextureLocation, 2);
+      gl.uniform1i(this.programContainer.getUniformLocation("enableGodrays"), 1);
+      gl.uniform1i(this.programContainer.getUniformLocation("depthTexture"), 2);
     }
     else {
-      gl.uniform1i(this.godraysLocation, 0);
+      gl.uniform1i(this.programContainer.getUniformLocation("enableGodrays"), 0);
     }
   
     this.resizeFramebuffers = function() {
-      gl.bindTexture(gl.TEXTURE_2D, this.colorBuffers[0]);
+      gl.bindTexture(gl.TEXTURE_2D, this.colorBuffer);
       gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, gl.canvas.width, gl.canvas.height, 0, gl.RGBA, getFloatTextureType(), null);
 
       if (this.depthTexture) {
@@ -2108,15 +2156,16 @@ function Renderer() {
       gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   
-      useProgram(this.program);
+      useProgram(this.programContainer.program);
   
       bindVertexArray(null);
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-      gl.enableVertexAttribArray(this.vertexLocation);
-      gl.vertexAttribPointer(this.vertexLocation, 2, gl.FLOAT, false, 8, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, screenQuad.vertexBuffer);
+      var loc = this.programContainer.getAttribLocation("position");
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 8, 0);
   
       gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, this.colorBuffers[0]);
+      gl.bindTexture(gl.TEXTURE_2D, this.colorBuffer);
       // gl.uniform1i(this.mainTextureLocation, 0);
 
       gl.activeTexture(gl.TEXTURE1);
@@ -2141,12 +2190,27 @@ function Renderer() {
         // gl.uniform1i(this.godraysLocation, 0);
       }
   
-      gl.uniform2f(this.SIZELocation, gl.canvas.width, gl.canvas.height);
+      if (gl.canvas.width !== _lastWidth || gl.canvas.height !== _lastHeight) {
+        _lastWidth = gl.canvas.width;
+        _lastHeight = gl.canvas.height;
+        gl.uniform2f(this.programContainer.getUniformLocation("SIZE"), gl.canvas.width, gl.canvas.height);
+      }
 
-      gl.uniform1f(this.exposureLocation, this.exposure);
-      gl.uniform1f(this.gammaLocation, this.gamma);
-  
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      if (this.exposure !== _lastExposure) {
+        _lastExposure = this.exposure;
+        gl.uniform1f(this.programContainer.getUniformLocation("exposure"), this.exposure);
+      }
+
+      if (this.gamma !== _lastGamma) {
+        _lastGamma = this.gamma;
+        gl.uniform1f(this.programContainer.getUniformLocation("gamma"), this.gamma);
+      }
+
+      gl.uniform1f(this.programContainer.getUniformLocation("bloomIntensity"), renderer.bloom.bloomIntensity);
+      gl.uniform1i(this.programContainer.getUniformLocation("tonemapping"), this.tonemapping);
+
+      screenQuad.render();
+      // gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
   }
 
@@ -2157,6 +2221,7 @@ function Renderer() {
     var downsamples = 7;
     this.sampleScale = 1;
     this.threshold = 1;
+    this.bloomIntensity = 0.05;
 
     this.downsampleFramebuffers = [];
     this.upsampleFramebuffers = [];
@@ -2233,7 +2298,7 @@ function Renderer() {
         gl.viewport(0, 0, framebuffer.width, framebuffer.height);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        gl.bindTexture(gl.TEXTURE_2D, i < 1 ? renderer.postprocessing.colorBuffers[0] : this.downsampleFramebuffers[i - 1].colorBuffer);
+        gl.bindTexture(gl.TEXTURE_2D, i < 1 ? renderer.postprocessing.colorBuffer : this.downsampleFramebuffers[i - 1].colorBuffer);
 
         if (locations["mainTextureSize"]) {
           gl.uniform2fv(locations["mainTextureSize"], i < 1 ? [gl.canvas.width, gl.canvas.height] : [this.downsampleFramebuffers[i - 1].width, this.downsampleFramebuffers[i - 1].height]);
@@ -2600,6 +2665,20 @@ function Renderer() {
       this.updateUniformLocations();
     }
 
+    this.getUniformLocation = function(uniformName) {
+      var u = this.activeUniforms[uniformName];
+      if (u) {
+        return u.location;
+      }
+    }
+
+    this.getAttribLocation = function(attributeName) {
+      var a = this.activeAttributes[attributeName];
+      if (a) {
+        return a.location;
+      }
+    }
+
     this.updateUniformLocations = function() {
       const nrAttribs = gl.getProgramParameter(_program, gl.ACTIVE_ATTRIBUTES);
       for (var i = 0; i < nrAttribs; i++) {
@@ -2676,7 +2755,7 @@ function Renderer() {
   }
 
   this.CreateLitMaterial = CreateLitMaterial;
-  function CreateLitMaterial(settings = {}, programContainer = renderer.litContainer) {
+  function CreateLitMaterial(settings = {}, programContainer = renderer.programContainers.lit) {
     var uniforms = {
       "useTexture": {type: "1i", name: "useTexture", arguments: [settings.albedoTexture == undefined ? 0 : 1]},
       "useNormalMap": {type: "1i", name: "useNormalMap", arguments: [settings.normalMap == undefined ? 0 : 1]},
@@ -2707,6 +2786,7 @@ function Renderer() {
     if (settings.normalMap != undefined) {
       textures.push({type: gl.TEXTURE_2D, texture: settings.normalMap});
       uniforms["normalTexture"] = {type: "1i", name: "normalTexture", texture: true, arguments: [textures.length - 1]};
+      uniforms["normalStrength"] = {type: "1f", name: "normalStrength", arguments: [1]};
     }
     if (settings.metallicRoughnessTexture != undefined) {
       textures.push({type: gl.TEXTURE_2D, texture: settings.metallicRoughnessTexture});
@@ -2757,9 +2837,13 @@ function Renderer() {
   
     this.copy = function() {
       // bruh not copy
-      var m = new Material(this.programContainer, JSON.parse(JSON.stringify(this.uniforms)), this.textures);
+      var m = new Material(this.programContainer, {}, this.textures);
+      m.uniforms = JSON.parse(JSON.stringify(this.uniforms));
+      m.name = this.name;
       m.doubleSided = this.doubleSided;
+      m.doubleSidedShadows = this.doubleSidedShadows;
       m.opaque = this.opaque;
+
       return m;
     }
 
@@ -3210,7 +3294,7 @@ function Renderer() {
     }
 
     this.copy = function() {
-      return this; // bruh
+      // return this; // bruh
 
       var mats = [];
       for (var mat of this.materials) {
@@ -3708,7 +3792,7 @@ function Renderer() {
             var mats = [];
             for (var j = 0; j < skin.obj.meshRenderer.materials.length; j++) {
               var currentMat = skin.obj.meshRenderer.materials[j];
-              mats.push(new Material(renderer.litSkinnedContainer, currentMat.uniforms, currentMat.textures));
+              mats.push(new Material(renderer.programContainers.litSkinned, currentMat.uniforms, currentMat.textures));
             }
   
             skin.obj.meshRenderer = new SkinnedMeshRenderer(mats, new Skin(outJoints, skin.inverseBindMatrixData), skin.obj.meshRenderer.meshData);
@@ -4635,7 +4719,7 @@ function Renderer() {
       out = new Uint32Array(out);
     }
   
-    return {
+    return new MeshData({
       indices: {
         bufferData: out,
         target: gl.ELEMENT_ARRAY_BUFFER
@@ -4652,7 +4736,7 @@ function Renderer() {
         bufferData: new Float32Array(newUVs),
         size: 2
       }
-    }
+    });
     
     /*return [
       new Float32Array(newVertices),
@@ -5169,14 +5253,14 @@ function GameObject(name = "Unnamed", options = {}) {
         if (this.meshRenderer && !(shadowPass && !this.castShadows)) {
           if (settings.materialOverride) {
             for (var i = 0; i < this.meshRenderer.materials.length; i++) {
-              oldMats[i] = this.meshRenderer.materials[i];
-              this.meshRenderer.materials[i] = settings.materialOverride;
+              oldMats[i] = this.meshRenderer.materials[i].programContainer;
+              this.meshRenderer.materials[i].programContainer = settings.materialOverride.programContainer;
             }
 
             this.meshRenderer.render(camera, currentMatrix, shadowPass, opaquePass);
 
             for (var i = 0; i < this.meshRenderer.materials.length; i++) {
-              this.meshRenderer.materials[i] = oldMats[i];
+              this.meshRenderer.materials[i].programContainer = oldMats[i];
             }
           }
           else {
@@ -5517,7 +5601,7 @@ function Scene(name) {
   var lights = [];
 
   this.setupUBO = function() {
-    var uboData = this.renderer.litContainer.uniformBuffers["sharedPerScene"];
+    var uboData = this.renderer.programContainers.lit.uniformBuffers["sharedPerScene"];
     this.sharedUBO = new this.renderer.UniformBuffer(0, uboData.blockSize);
 
     var gl = this.renderer.gl;
@@ -5528,7 +5612,7 @@ function Scene(name) {
   }
 
   this.updateUniformBuffers = function(projectionMatrix, viewMatrix, inverseViewMatrix) {
-    var uboData = this.renderer.litContainer.uniformBuffers["sharedPerScene"];
+    var uboData = this.renderer.programContainers.lit.uniformBuffers["sharedPerScene"];
     var gl = this.renderer.gl;
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.sharedUBO.buffer);
 
@@ -5539,6 +5623,8 @@ function Scene(name) {
 
   this.loadEnvironment = async function(settings = {}) {
     if (this.renderer) {
+      this.specularCubemap = null;
+
       var res = settings.res ?? 1024;
       if (settings.hdr) {
         this.skyboxCubemap = await this.renderer.createCubemapFromHDR(settings.hdr, res);
@@ -5635,7 +5721,7 @@ function Scene(name) {
 
     lights = allLights;
 
-    // var uboData = this.renderer.litContainer.uniformBuffers["sharedPerScene"];
+    // var uboData = this.renderer.programContainers.lit.uniformBuffers["sharedPerScene"];
     // var gl = this.renderer.gl;
     // gl.bindBuffer(gl.UNIFORM_BUFFER, uboData.ubo.buffer);
     // gl.bufferSubData(gl.UNIFORM_BUFFER, uboData.offsets[6], new Float32Array([lights.length]), 0);

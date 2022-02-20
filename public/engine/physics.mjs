@@ -1315,6 +1315,7 @@ class Rigidbody {
     this.angularVelocity = Vector.zero();
     this.torque = Vector.zero();
 
+    this.frozen = false;
     this.lockRotation = false;
 
     this.gravity = new Vector(0, -9.82, 0);
@@ -1372,12 +1373,20 @@ class Rigidbody {
   }
 
   AddForceAtPosition(force, position) {
+    if (this.frozen) {
+      return;
+    }
+    
     this.AddForce(force);
     var r = Vector.subtract(position, Vector.add(this.position, this.getWorldCOMOffset()));
     this.AddTorque(Vector.cross(r, force));
   }
 
   AddImpulseAtPosition(force, position) {
+    if (this.frozen) {
+      return;
+    }
+
     this.velocity = Vector.add(this.velocity, Vector.multiply(force, 1 / this.mass));
     var r = Vector.subtract(position, Vector.add(this.position, this.getWorldCOMOffset()));
     var torque = Vector.cross(r, force);
@@ -1387,14 +1396,26 @@ class Rigidbody {
   }
 
   AddForce(force) {
+    if (this.frozen) {
+      return;
+    }
+
     this.force = Vector.add(this.force, force);
   }
 
   AddTorque(torque) {
+    if (this.frozen) {
+      return;
+    }
+
     this.torque = Vector.add(this.torque, torque);
   }
 
   applyForces(dt) {
+    if (this.frozen) {
+      return;
+    }
+
     // Apply force
     this.velocity = Vector.add(this.velocity, Vector.multiply(this.force, dt / this.mass));
     this.force = Vector.zero();
@@ -1412,6 +1433,10 @@ class Rigidbody {
   }
 
   integrate(dt) {
+    if (this.frozen) {
+      return;
+    }
+
     this.position = Vector.add(this.position, Vector.multiply(this.velocity, dt));
 
     if (this.lockRotation) {

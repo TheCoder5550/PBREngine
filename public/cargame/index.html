@@ -50,6 +50,23 @@
       /* z-index: 10000; */
     }
 
+    .mainmenu {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 4;
+
+      padding: 50px;
+    }
+
+    .mainmenu .button {
+      width: 300px;
+      height: 100px;
+      backdrop-filter: blur(10px);
+    }
+
     .ingameUICanvas {
       position: fixed;
       pointer-events: none;
@@ -57,7 +74,7 @@
     }
 
     .ingameUIDiv {
-      /* position: fixed; */
+      position: fixed;
       top: 0;
       bottom: 0;
       left: 0;
@@ -119,6 +136,10 @@
   </style>
 </head>
 <body>
+  <!-- <div class="mainmenu">
+    <div class="button"></div>
+  </div> -->
+
   <div class="ingameUIDiv">
     <div class="carSettings">
       <input type="color" id="carColor" />
