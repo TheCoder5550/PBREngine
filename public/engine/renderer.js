@@ -36,6 +36,7 @@ import {
 import { AABB } from "./physics.mjs";
 
 import * as litSource from "../assets/shaders/built-in/lit.glsl.js";
+import * as unlitSource from "../assets/shaders/built-in/unlit.glsl.js";
 
 var ENUMS = {
   RENDERPASS: { SHADOWS: 0b001, OPAQUE: 0b010, ALPHA: 0b100 },
@@ -85,36 +86,15 @@ function Renderer() {
   // var blankTexture;
 
   var UBOLocationCounter = 0;
-  // this.litContainer = null;
-  // this.litInstancedContainer = null;
-  // this.particleContainer = null;
-  // this.unlitInstancedContainer = null;
-  // this.litSkinnedContainer = null;
-  // this.litBillboardContainer = null;
-  // this.trailLitContainer = null;
 
   var _programContainers = {};
-  // Object.defineProperty(this, 'litContainer', {
-  //   get: function() {
-  //     return getProgramContainer("lit");
-  //   }
-  // });
-
   this.programContainers = {
-    get lit() { return getProgramContainer("lit") }
-  }
-
-  function getProgramContainer(name) {
-    if (!_programContainers[name]) {
-      console.log("Loading program:", name);
-
-      var p = litSource["webgl" + renderer.version][name];
-      var program = renderer.createProgram(p.vertex, p.fragment);
-      _programContainers[name] = new ProgramContainer(program);
-    }
-    
-    return _programContainers[name];
-  }
+    get lit() { return _getProgramContainer("lit", litSource) },
+    get litSkinned() { return _getProgramContainer("litSkinned", litSource) },
+    get litInstanced() { return _getProgramContainer("litInstanced", litSource) },
+    get litTrail() { return _getProgramContainer("litTrail", litSource) },
+    get unlitInstanced() { return _getProgramContainer("unlitInstanced", unlitSource) },
+  };
 
   var currentProgram = null;
   var currentClearColor;
@@ -364,35 +344,41 @@ function Renderer() {
     //   this.litContainer = new ProgramContainer(lit);
     // }
 
-    if (!settings.disableLitInstanced) {
-      var litInstanced = await loadLitInstancedProgram(this.path);
-      this.programContainers.litInstanced = new ProgramContainer(litInstanced);
-    }
+    // if (!settings.disableLitInstanced) {
+    //   var litInstanced = await loadLitInstancedProgram(this.path);
+    //   this.programContainers.litInstanced = new ProgramContainer(litInstanced);
+    // }
 
     if (!settings.disableParticleProgram) {
       var particleProgram = await loadParticleProgram(this.path);
       this.programContainers.particle = new ProgramContainer(particleProgram);
     }
 
-    if (!settings.disableUnlitInstanced) {
-      var unlitInstanced = await loadUnlitInstancedProgram(this.path);
-      this.programContainers.unlitInstanced = new ProgramContainer(unlitInstanced);
-    }
+    // if (!settings.disableUnlitInstanced) {
+    //   var unlitInstanced = await loadUnlitInstancedProgram(this.path);
+    //   this.programContainers.unlitInstanced = new ProgramContainer(unlitInstanced);
+    // }
 
-    if (!settings.disableLitSkinned) {
-      var litSkinned = await loadLitSkinnedProgram(this.path);
-      this.programContainers.litSkinned = new ProgramContainer(litSkinned);
-    }
+    // if (!settings.disableLitSkinned) {
+    //   var litSkinned = await loadLitSkinnedProgram(this.path);
+    //   this.programContainers.litSkinned = new ProgramContainer(litSkinned);
+    // }
 
     if (!settings.disableLitBillboard) {
       var litBillboard = await loadLitBillboardProgram(this.path);
       this.programContainers.litBillboard = new ProgramContainer(litBillboard);
     }
 
-    if (!settings.disableTrailLit) {
-      var trailProgram = await this.createProgramFromFile(this.path + `assets/shaders/built-in/webgl${this.version}/trail`);
-      this.programContainers.litTrail = new ProgramContainer(trailProgram);
-    }
+    // if (!settings.disableTrailLit) {
+    //   console.log("Trail lit");
+
+    //   var p = litSource["webgl" + renderer.version].litTrail;
+    //   var trailProgram = renderer.createProgram(p.vertex, p.fragment);
+    //   this.programContainers.litTrail = new ProgramContainer(trailProgram);
+
+    //   // var trailProgram = await this.createProgramFromFile(this.path + `assets/shaders/built-in/webgl${this.version}/trail`);
+    //   // this.programContainers.litTrail = new ProgramContainer(trailProgram);
+    // }
     
     logGLError("Programs");
 
@@ -597,6 +583,7 @@ function Renderer() {
     Canvas helper
   
   */
+  // #region Canvas helper
 
   this.disableContextMenu = function() {
     renderer.canvas.addEventListener('contextmenu', function(e) {
@@ -657,12 +644,14 @@ function Renderer() {
 
     return false;
   }
+  // #endregion Canvas helper
 
   /*
   
     PBR environment
   
   */
+  // #region PBR environment
 
   this.createCubemapFromHDR = async function(path, res = 1024, gamma = 1) {
     var hdr = await LoadHDR(path, 1, gamma);
@@ -1311,6 +1300,7 @@ function Renderer() {
       // flipY: true // bruh... ._. is this it????
     });
   }
+  // #endregion PBR environment
 
   /*
   
@@ -1375,6 +1365,10 @@ function Renderer() {
 
   async function loadLitSkinnedProgram(path) {
     console.log("Lit skinned");
+
+    var p = litSource["webgl" + renderer.version].litSkinned;
+    return renderer.createProgram(p.vertex, p.fragment);
+
     return await renderer.createProgramFromFile(path + `assets/shaders/built-in/webgl${renderer.version}/lit/vertexSkinned.glsl`, path + `assets/shaders/built-in/webgl${renderer.version}/lit/fragment.glsl`);
   }
 
@@ -1585,6 +1579,18 @@ function Renderer() {
     }
 
     return "";
+  }
+
+  function _getProgramContainer(name, source = litSource) {
+    if (!_programContainers[name]) {
+      console.log("Loading program:", name);
+
+      var p = source["webgl" + renderer.version][name];
+      var program = renderer.createProgram(p.vertex, p.fragment);
+      _programContainers[name] = new ProgramContainer(program);
+    }
+    
+    return _programContainers[name];
   }
 
   /*
@@ -3112,8 +3118,6 @@ function Renderer() {
       this.uniformLocations[i].u_jointTexture = gl.getUniformLocation(mat.program, "u_jointTexture"),
       this.uniformLocations[i].u_numJoints = gl.getUniformLocation(mat.program, "u_numJoints")
     }
-
-    // bruh store attrib locations like MeshRenderer
   
     this.copy = function() {
       var mats = [];
@@ -3283,7 +3287,7 @@ function Renderer() {
       var mats = [];
       for (var mat of this.materials) {
         var newMat = mat.copy();
-        newMat.program = renderer.litInstanced;
+        newMat.programContainer = renderer.programContainers.litInstanced;
         mats.push(newMat);
       }
 
@@ -3792,7 +3796,9 @@ function Renderer() {
             var mats = [];
             for (var j = 0; j < skin.obj.meshRenderer.materials.length; j++) {
               var currentMat = skin.obj.meshRenderer.materials[j];
-              mats.push(new Material(renderer.programContainers.litSkinned, currentMat.uniforms, currentMat.textures));
+              var newMat = new Material(renderer.programContainers.litSkinned, {}, currentMat.textures);
+              newMat.uniforms = currentMat.uniforms;
+              mats.push(newMat);
             }
   
             skin.obj.meshRenderer = new SkinnedMeshRenderer(mats, new Skin(outJoints, skin.inverseBindMatrixData), skin.obj.meshRenderer.meshData);

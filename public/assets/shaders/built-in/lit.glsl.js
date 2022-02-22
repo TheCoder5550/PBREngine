@@ -1,3 +1,9 @@
+/*
+
+  Shader bases
+
+*/
+
 var shaderBase = `
 #version 300 es
 precision highp float;
@@ -404,6 +410,12 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 }
 `;
 
+/*
+
+  Webgl 2
+
+*/
+
 var webgl2Vertex = `
 ${shaderBase}
 
@@ -412,6 +424,7 @@ in vec3 normal;
 in vec3 tangent;
 in vec3 color;
 in vec2 uv;
+//#in
 
 out vec3 vPosition;
 out vec3 vNormal;
@@ -419,6 +432,7 @@ out vec3 vTangent;
 out vec3 vColor;
 out vec2 vUV;
 out mat3 vTBN;
+//#out
 
 const int levels = 2;
 
@@ -438,6 +452,8 @@ uniform mat4 textureMatrices[levels];
 out vec4 projectedTexcoords[levels];
 
 void main() {
+  //#main
+
   vNormal = normal;
   vTangent = tangent;
   vUV = uv;
@@ -513,6 +529,103 @@ void main() {
 }
 `;
 
+var webgl2VertexSkinned = `
+${shaderBase}
+
+in vec3 position;
+in vec3 normal;
+in vec3 tangent;
+in vec3 color;
+in vec2 uv;
+
+out vec3 vPosition;
+out vec3 vNormal;
+out vec3 vTangent;
+out vec3 vColor;
+out vec2 vUV;
+out mat3 vTBN;
+out mat4 vSkin;
+
+const int levels = 2;
+
+uniform sharedPerScene {
+  mat4 projectionMatrix;
+  mat4 viewMatrix;
+  mat4 inverseViewMatrix;
+  float biases[levels];
+};
+
+// uniform mat4 projectionMatrix;
+// uniform mat4 viewMatrix;
+uniform mat4 modelMatrix;
+
+//Skinning
+in vec4 weights;
+in vec4 joints;
+
+uniform sampler2D u_jointTexture;
+uniform float u_numJoints;
+
+// these offsets assume the texture is 4 pixels across
+#define ROW0_U ((0.5 + 0.0) / 4.)
+#define ROW1_U ((0.5 + 1.0) / 4.)
+#define ROW2_U ((0.5 + 2.0) / 4.)
+#define ROW3_U ((0.5 + 3.0) / 4.)
+ 
+mat4 getBoneMatrix(float jointNdx) {
+  float v = (jointNdx + 0.5) / u_numJoints;
+  return mat4(
+    texture(u_jointTexture, vec2(ROW0_U, v)),
+    texture(u_jointTexture, vec2(ROW1_U, v)),
+    texture(u_jointTexture, vec2(ROW2_U, v)),
+    texture(u_jointTexture, vec2(ROW3_U, v))
+  );
+}
+
+//Shadows
+uniform mat4 textureMatrices[levels];
+out vec4 projectedTexcoords[levels];
+
+void main() {
+  vTangent = tangent;
+  vUV = uv;
+  vColor = color;
+
+  mat4 skinMatrix = getBoneMatrix(joints[0]) * weights[0] +
+                    getBoneMatrix(joints[1]) * weights[1] +
+                    getBoneMatrix(joints[2]) * weights[2] +
+                    getBoneMatrix(joints[3]) * weights[3];
+  
+  mat4 world = modelMatrix * skinMatrix;
+  // mat4 world = skinMatrix * modelMatrix;
+  // mat4 world = modelMatrix;
+
+  mat4 TBNWorld = modelMatrix * skinMatrix * modelMatrix;
+  vec3 _T = normalize(vec3(TBNWorld * vec4(tangent, 0.0)));
+  vec3 _B = normalize(vec3(TBNWorld * vec4(cross(normal, tangent), 0.0)));
+  vec3 _N = normalize(vec3(TBNWorld * vec4(normal, 0.0)));
+  vTBN = mat3(_T, _B, _N);
+
+  vec4 worldPosition = world * vec4(position, 1.0);
+  for (int i = 0; i < levels; i++) {
+    projectedTexcoords[i] = textureMatrices[i] * worldPosition;
+  }
+  
+  gl_Position = projectionMatrix * viewMatrix * worldPosition;
+  vPosition = worldPosition.xyz;
+  vNormal = normal;
+  // vNormal = mat3(inverse(modelMatrix * skinMatrix)) * normal;
+  // vNormal = mat3(world * inverse(modelMatrix)) * normal;
+
+  vSkin = skinMatrix;
+}
+`;
+
+var webgl2VertexTrail = webgl2Vertex;
+webgl2VertexTrail = webgl2VertexTrail.replace("//#in", "in float alpha;");
+webgl2VertexTrail = webgl2VertexTrail.replace("//#out", "out float vAlpha;");
+webgl2VertexTrail = webgl2VertexTrail.replace("//#main", "vAlpha = alpha;");
+
 var webgl2Fragment = `
 ${shaderBase}
 
@@ -525,6 +638,7 @@ in vec3 vTangent;
 in vec3 vColor;
 in vec2 vUV;
 in mat3 vTBN;
+//#in
 
 // Material properties
 uniform sampler2D albedoTexture;
@@ -619,6 +733,7 @@ void main() {
   vec4 currentAlbedo = useTexture ? sampleTexture(albedoTexture, vUV) : vec4(1);
   currentAlbedo *= albedo;
   currentAlbedo.xyz *= vec3(1) - vColor;
+  //#currentAlbedo
 
   if (doNoTiling) {
     currentAlbedo.rgb = mix(vec3(0.2), currentAlbedo.rgb, noise(vUV / 5.));
@@ -658,16 +773,40 @@ var webgl2FragmentInstanced = webgl2Fragment;
 webgl2FragmentInstanced = webgl2FragmentInstanced.replaceAll("modelMatrix", "vModelMatrix");
 webgl2FragmentInstanced = webgl2FragmentInstanced.replaceAll("uniform mat4 vModelMatrix", "in mat4 vModelMatrix");
 
+var webgl2FragmentSkinned = webgl2Fragment;
+
+var webgl2FragmentTrail = webgl2Fragment;
+webgl2FragmentTrail = webgl2FragmentTrail.replace("//#in", "in float vAlpha;");
+webgl2FragmentTrail = webgl2FragmentTrail.replace("//#currentAlbedo", "currentAlbedo *= vec4(1, 1, 1, vAlpha);");
+
+/*
+
+  Webgl 1
+
+*/
+
 var webglVertex = `
 `;
 
 var webglFragment = `
 `;
 
+/*
+
+  Export
+
+*/
+
 webgl2Vertex = webgl2Vertex.trim();
 webgl2VertexInstanced = webgl2VertexInstanced.trim();
+webgl2VertexSkinned = webgl2VertexSkinned.trim();
+webgl2VertexTrail = webgl2VertexTrail.trim();
+
 webgl2Fragment = webgl2Fragment.trim();
 webgl2FragmentInstanced = webgl2FragmentInstanced.trim();
+webgl2FragmentSkinned = webgl2FragmentSkinned.trim();
+webgl2FragmentTrail = webgl2FragmentTrail.trim();
+
 webglVertex = webglVertex.trim();
 webglFragment = webglFragment.trim();
 
@@ -683,10 +822,19 @@ var webgl2 = {
   litInstanced: {
     vertex: webgl2VertexInstanced,
     fragment: webgl2FragmentInstanced
-  }
+  },
+  litSkinned: {
+    vertex: webgl2VertexSkinned,
+    fragment: webgl2FragmentSkinned
+  },
+  litTrail: {
+    vertex: webgl2VertexTrail,
+    fragment: webgl2FragmentTrail
+  },
 };
 
 export {
+  shaderBase,
   webgl1,
   webgl2
 };

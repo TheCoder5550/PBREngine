@@ -131,9 +131,11 @@ async function setup() {
   // physicsEngine.addMeshCollider(mapCollider);
   // physicsEngine.setupMeshCollider();
 
+  setLoadingStatus("Loading map");
   var map = await renderer.loadGLTF("../assets/models/kajaman.glb");
   scene.add(map);
 
+  setLoadingStatus("Creating map collider");  
   var collider = await renderer.loadGLTF("../assets/models/kajamanCollider.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
   physicsEngine.addMeshCollider(collider);
   physicsEngine.setupMeshCollider();
@@ -149,9 +151,9 @@ async function setup() {
   // grass.children[0].meshRenderer = grass.children[0].meshRenderer.getInstanceMeshRenderer();
 
   // for (var i = 0; i < 1000; i++) {
-  //   var origin = new Vector((Math.random() - 0.5) * 50, 100, (Math.random() - 0.5) * 50 - 50);
+  //   var origin = new Vector((Math.random() - 0.5) * 50, 100, (Math.random() - 0.5) * 50);
   //   var hit = physicsEngine.Raycast(origin, Vector.down());
-  //   if (hit) {
+  //   if (hit && hit.firstHit) {
   //     grass.children[0].meshRenderer.addInstance(Matrix.transform([
   //       ["translate", hit.firstHit.point],
   //       ["scale", Vector.fill(1 + Math.random() * 3)],
@@ -166,6 +168,7 @@ async function setup() {
   // window.porsche = porsche;
 
   // Reflection probe
+  setLoadingStatus("Creating reflection probe");
   console.log("Creating reflection probe");
   var oldSkybox = scene.skyboxCubemap;
   var cubemap = renderer.captureReflectionCubemap(new Vector(0, 8, 200));
@@ -173,7 +176,7 @@ async function setup() {
   scene.skyboxCubemap = oldSkybox;
   scene.environmentIntensity = 1;
 
-  // setLoadingStatus("Creating car");
+  setLoadingStatus("Creating car");
   // car = new Car({
   //   drivetrain: "RWD",
   //   friction: 1,
@@ -212,7 +215,8 @@ async function setup() {
   //   suspensionTravel: 0.15
   // });
   // await car.setup("../assets/models/americanMuscle.glb");
-  await car.setup("./porsche.glb");
+  // await car.setup("./porsche.glb");
+  await car.setup("./nissanGTR2.glb");
 
   car.camera.followDistance = 5;
   car.camera.followHeight = 0.35;
@@ -220,8 +224,8 @@ async function setup() {
 
   car.rb.COMOffset.y += 0.2;//0.15;
 
-  // car.wheels[0].friction *= 1.3;
-  // car.wheels[1].friction *= 1.3;
+  car.wheels[0].friction *= 1.05;
+  car.wheels[1].friction *= 1.05;
 
   FindMaterials("paint", car.gameObject)?.[0]?.setUniform("albedo", [0, 0, 0, 1]);
   FindMaterials("paint", car.gameObject)?.[0]?.setUniform("roughness", 0.05);
@@ -291,9 +295,7 @@ async function setup() {
       }
     
       if (keybindings.getInputDown("resetGame")) {
-        car.rb.velocity = Vector.zero();
-        car.rb.angularVelocity = Vector.zero();
-        car.rb.rotation = Quaternion.euler(0, Math.PI / 2, 0);
+        car.reset();
     
         car.rb.position = Vector.zero();
         car.gameObject.transform.position = Vector.zero();
@@ -592,6 +594,7 @@ function Car(settings = {}) {
 
   var maxSteerAngle = settings.maxSteerAngle ?? 35;
 
+  this.brakeTorque = 1200;//2000;
   this.ABS = false;
   this.TCS = false;
 
@@ -707,12 +710,20 @@ function Car(settings = {}) {
 
   this.reset = function() {
     this.rb.position.y += 2;
+    this.rb.rotation = Quaternion.euler(0, 0 * Math.PI / 2, 0);
+    this.gameObject.transform.rotation = this.rb.rotation;
+
     this.rb.velocity = Vector.zero();
-    // this.rb.rotation = Quaternion.euler(0, Math.PI / 2, 0);
-    // this.rb.angles = new Vector(0, this.rb.angles.y, 0);
     this.rb.angularVelocity = Vector.zero();
 
     this.currentGear = 1;
+
+    this.engine.angularVelocity = 0;
+    for (var wheel of this.wheels) {
+      wheel.angularVelocity = 0;
+    }
+
+    cameraCarForward = Matrix.getForward(this.gameObject.transform.worldMatrix);
   }
 
   this.renderUI = function() {
@@ -781,7 +792,7 @@ function Car(settings = {}) {
 
     if (brakeMat) {
       if (brakeInput > 0) {
-        brakeMat.setUniform("emissiveFactor", [200, 200, 200]);
+        brakeMat.setUniform("emissiveFactor", [20, 20, 20]);
       }
       else {
         brakeMat.setUniform("emissiveFactor", [0, 0, 0]);
@@ -1035,11 +1046,28 @@ function Car(settings = {}) {
             return magicFormula(_slipRatio, wheel.slipRatioCoeffs) * roadFriction * wheel.friction * wheel.forwardFriction;
           }
           var Fy = ( _slipAngle) => {
-            return magicFormula(_slipAngle * 180 / Math.PI - wheel.camberAngle * wheel.camberAngleCoeff, wheel.slipAngleCoeffs) * roadFriction * wheel.friction * wheel.sidewaysFriction;
+            return advancedFy(_slipAngle * 180 / Math.PI, wheel.normalForce, wheel.camberAngle, [
+              1.799,
+              0,
+              1688,
+              930,//4140,
+              6.026,
+              0,
+              -0.3589,
+              1,
+              0.8, // Camber x offset
+              -6.111 / 1000,
+              -3.224 / 100,
+              0,
+              0,
+              0,
+              0
+            ]);
+            // return magicFormula(_slipAngle * 180 / Math.PI - wheel.camberAngle * wheel.camberAngleCoeff, wheel.slipAngleCoeffs) * roadFriction * wheel.friction * wheel.sidewaysFriction;
           }
 
           var finalForceX = s / rho * Fx(rho * wheel.slipRatioPeak) * wheel.normalForce;
-          var finalForceY = a / rho * Fy(rho * wheel.slipAnglePeak) * wheel.normalForce;
+          var finalForceY = a / rho * Fy(rho * wheel.slipAnglePeak);// * wheel.normalForce;
 
           if (!isNaN(finalForceX)) {
             var contactVelocity = (wheel.angularVelocity * wheel.radius + forwardVelocity);
@@ -1071,8 +1099,7 @@ function Car(settings = {}) {
               wheel.angularVelocity = Math.abs(forwardVelocity) < 1 ? 0 : w;
             }
             else {
-              var brakeTorque = 700;//2000;
-              wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(brakeInput * brakeTorque, Math.abs(wheel.angularVelocity) / dt) * dt;
+              wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(brakeInput * this.brakeTorque, Math.abs(wheel.angularVelocity) / dt) * dt;
               // wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - brakeInput);
             }
           }
@@ -1118,6 +1145,8 @@ function Car(settings = {}) {
           };
           
           this.smoke.emit();
+
+          // gamepadManager.vibrate(100, 0.5, 1);
         }
       }
     }
@@ -1345,6 +1374,18 @@ function Car(settings = {}) {
     }
 
     return sum;
+  }
+
+  function advancedFy(slipAngle, Fz, camberAngle, a) {
+    var camberAngleRad = camberAngle / 180 * Math.PI;
+    var FzkN = Fz / 1000;
+
+    var D = (a[1] * FzkN + a[2]) * FzkN;
+    var S = slipAngle + a[8] * camberAngle + a[9] * FzkN + a[10];
+    var B = a[3] * Math.sin(2 * Math.atan(FzkN / a[4])) * (1 - a[5] * Math.abs(camberAngleRad)) / (a[0] * (a[1] * FzkN + a[2]) * FzkN);
+    var E = a[6] * FzkN + a[7];
+    var Sy = ((a[11] * FzkN + a[12]) * camberAngle + a[13]) * FzkN + a[14];
+    return D * Math.sin(a[0] * Math.atan(S * B + E * (Math.atan(S * B) - S * B))) + Sy;
   }
 
   function magicFormula(x, coeffs) {
