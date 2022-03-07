@@ -25,7 +25,7 @@ bool doNoTiling = true;
 // uniform sampler2D albedoTexture;
 // uniform bool useTexture;
 // uniform sampler2D normalTexture;
-// uniform bool useNormalMap;
+// uniform bool useNormalTexture;
 // uniform sampler2D metallicRoughnessTexture;
 // uniform bool useMetallicRoughnessTexture;
 // uniform sampler2D emissiveTexture;

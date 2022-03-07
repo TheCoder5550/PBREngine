@@ -142,6 +142,12 @@ function showElement(element) {
   element.classList.remove("hidden");
 }
 
+function resetAnimations(element) {
+  element.style.animation = 'none';
+  element.offsetHeight; /* trigger reflow */
+  element.style.animation = null; 
+}
+
 export {
   xor,
   clamp,
@@ -156,5 +162,6 @@ export {
   isMobile,
   fadeOutElement,
   hideElement,
-  showElement
+  showElement,
+  resetAnimations
 };

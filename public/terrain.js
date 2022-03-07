@@ -66,7 +66,7 @@ async function setup() {
   var normal = await renderer.loadTextureAsync("./assets/textures/Snow/normal.jpg");
   var terrainMat = renderer.CreateLitMaterial({
     albedoTexture: albedo,
-    normalMap: normal
+    normalTexture: normal
   });
 
   for (var z = -1; z <= 1; z++) {

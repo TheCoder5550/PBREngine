@@ -115,9 +115,10 @@ export default class Matrix {
   }
 
   static inverse(m, dst) {
-    dst = dst || new Float32Array(16);
+    // dst = dst || new Float32Array(16);
+    var c = new Float32Array(16);
 
-    _fillFloat32Array(dst,
+    _fillFloat32Array(c,
       m[5]*m[10]*m[15] - m[5]*m[11]*m[14] - m[9]*m[6]*m[15] + m[9]*m[7]*m[14] + m[13]*m[6]*m[11] - m[13]*m[7]*m[10],
       -m[1]*m[10]*m[15] + m[1]*m[11]*m[14] + m[9]*m[2]*m[15] - m[9]*m[3]*m[14] - m[13]*m[2]*m[11] + m[13]*m[3]*m[10],
         m[1]*m[6]*m[15]  - m[1]*m[7]*m[14]  - m[5]*m[2]*m[15] + m[5]*m[3]*m[14] + m[13]*m[2]*m[7]  - m[13]*m[3]*m[6],
@@ -136,12 +137,18 @@ export default class Matrix {
         m[0]*m[5]*m[10]  - m[0]*m[6]*m[9]   - m[4]*m[1]*m[10] + m[4]*m[2]*m[9]  + m[8]*m[1]*m[6]   - m[8]*m[2]*m[5]
     );
 
-    var det = m[0] * dst[0] + m[1] * dst[4] + m[2] * dst[8] + m[3] * dst[12];
+    var det = m[0] * c[0] + m[1] * c[4] + m[2] * c[8] + m[3] * c[12];
     if (!det) return m;
     det = 1 / det;
     for (var i = 0; i < 16; i++) {
-      dst[i] *= det;
+      c[i] *= det;
     }
+
+    if (!dst) {
+      dst = new Float32Array(16);
+    }
+    Matrix.copy(c, dst);
+
     return dst;
   }
 
@@ -485,6 +492,14 @@ export default class Matrix {
     var output = [];
     for (var i = 0; i < 4; i++) {
       output[i] = m[i] * v.x + m[i + 4] * v.y + m[i + 8] * v.z + m[i + 12];
+    }
+    return {x: output[0], y: output[1], z: output[2]};
+  }
+
+  static transformDirection(m, v) {
+    var output = [];
+    for (var i = 0; i < 4; i++) {
+      output[i] = m[i] * v.x + m[i + 4] * v.y + m[i + 8] * v.z + m[i + 12] * 0;
     }
     return {x: output[0], y: output[1], z: output[2]};
   }

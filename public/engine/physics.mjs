@@ -476,6 +476,13 @@ function AABB(bl = Vector.zero(), tr = Vector.zero()) {
   this.getSize = function() {
     return Vector.subtract(this.tr, this.bl);
   }
+
+  // this.transform = function(matrix) {
+  //   return new AABB(
+  //     Matrix.transformVector(matrix, this.bl),
+  //     Matrix.transformVector(matrix, this.tr)
+  //   );
+  // }
 }
 AABB.bounds = function(points) {
   var min = Vector.fill(Infinity);
@@ -490,7 +497,7 @@ AABB.bounds = function(points) {
   return new AABB(min, max);
 }
 
-function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fill(200.33))) {
+function PhysicsEngine(scene, settings = {}) {
   var physicsEngine = this;
   this.scene = scene;
 
@@ -580,13 +587,19 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
   }
 
   this.setupMeshCollider = function() {
-    var aabb = new AABB();
-    for (var c of meshCollidersToAdd) {
-      aabb.extend(this.scene.renderer.GetMeshAABB(c, 0.1));
+    var aabb;
+
+    if (settings.bounds) {
+      aabb = settings.bounds;
+    }
+    else {
+      aabb = new AABB();
+      for (var c of meshCollidersToAdd) {
+        aabb.extend(this.scene.renderer.GetMeshAABB(c, 0.1));
+      }
     }
 
-    // var aabb = new AABB(new Vector(-30.33, -35.33, -40.33), new Vector(30, 3.6, 40));
-    this.octree = new Octree(aabb, 4);
+    this.octree = new Octree(aabb, settings.octreeLevels ?? 4);
 
     for (var c of meshCollidersToAdd) {
       this._addMeshToOctree(c);
@@ -894,14 +907,16 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
 
           if (constraint.bodies.length > 0) {
             for (var body of constraint.bodies) {
+              var m = body.collider.disableRotationImpulse ? 0 : 1;
+
               var pc = Vector.cross(Vector.subtract(body.p, body.body.position), body.normal);
               jacobian.push(
                 body.normal.x,
                 body.normal.y,
                 body.normal.z,
-                pc.x,
-                pc.y,
-                pc.z
+                pc.x * m,
+                pc.y * m,
+                pc.z * m
               );
 
               var [ tangent, bitangent ] = Vector.formOrthogonalBasis(body.normal);
@@ -911,9 +926,9 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
                 tangent.x,
                 tangent.y,
                 tangent.z,
-                pc.x,
-                pc.y,
-                pc.z
+                pc.x * m,
+                pc.y * m,
+                pc.z * m
               );
 
               var pc = Vector.cross(Vector.subtract(body.p, body.body.position), bitangent);
@@ -921,9 +936,9 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
                 bitangent.x,
                 bitangent.y,
                 bitangent.z,
-                pc.x,
-                pc.y,
-                pc.z
+                pc.x * m,
+                pc.y * m,
+                pc.z * m
               );
 
               velocities.push(
@@ -1195,8 +1210,8 @@ function PhysicsEngine(scene, bounds = new AABB(Vector.fill(-200.15), Vector.fil
   this.update = function() {
     var newTime = performance.now();
     var frameTime = (newTime - lastTime) / 1000;
-    if (frameTime > 0.5)
-      frameTime = 0.5;
+    if (frameTime > 0.4)
+      frameTime = 0.4;
     lastTime = newTime;
 
     accumulator += frameTime;
@@ -1275,6 +1290,8 @@ class Collider {
   constructor() {
     this.gameObject = null;
     this.friction = 0.5;
+
+    this.disableRotationImpulse = false;
   }
 }
 

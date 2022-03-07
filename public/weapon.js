@@ -47,6 +47,8 @@ function Weapon(settings = {}) {
   var reloadTimeouts = [];
   this.isReloading = false;
   this.isFiring = false;
+  var fireTimer = 0;
+  var currentSpreeRound = 0;
 
   this.fireAnimationTime = 0;
   this.reloadAnimationTime = 0;
@@ -54,6 +56,9 @@ function Weapon(settings = {}) {
   this.weaponObject = def(settings.weaponObject, null);
   this.muzzleObject = this.weaponObject ? this.weaponObject.getChild("MuzzleOffset", true) : null;
   this.adsObject = this.weaponObject ? this.weaponObject.getChild("ADSOffset", true) : null;
+
+  // Movement
+  this.adsMovementSpeed = def(settings.adsMovementSpeed, 0.75);
 
   //this.shellCasingModel = null;
   //this.muzzleFlashModel = null;
@@ -126,6 +131,14 @@ function Weapon(settings = {}) {
     this.weaponObject.animationController?.play(name);
   }
 
+  this.getSpeed = function() {
+    if (this.mode == this.GunModes.ADS) {
+      return this.adsMovementSpeed;
+    }
+
+    return 1;
+  }
+
   this.getCurrentSensitivity = function() {
     return (this.mode == this.GunModes.ADS ? this.scope.ADSMouseSensitivity : 1);
   }
@@ -133,17 +146,18 @@ function Weapon(settings = {}) {
   this.fire = function() {
     if (this.isReloading && this.sequentialReloading) {
       this.cancelReload();
-      return false;
+      // return false;
     }
 
     if (!this.isFiring && !this.isReloading) {
       this.isFiring = true;
+      fireTimer = 1 / this.roundsPerSecond;
 
-      this.fireTimeout = setTimeout(() => {
-        this.isFiring = false;
-        if (this.fireMode == WEAPONENUMS.FIREMODES.AUTO && this.roundsInMag > 0 && renderer.mouse.left)
-          this.fire();
-      }, 1000 / this.roundsPerSecond);
+      // this.fireTimeout = setTimeout(() => {
+      //   this.isFiring = false;
+      //   if (this.fireMode == WEAPONENUMS.FIREMODES.AUTO && this.roundsInMag > 0 && renderer.mouse.left)
+      //     this.fire();
+      // }, 1000 / this.roundsPerSecond);
 
       if (this.roundsInMag > 0) {
         //this.shellCasings.push(new Shellcasing(this));
@@ -151,7 +165,9 @@ function Weapon(settings = {}) {
 
         this.roundsInMag--;
 
-        this.recoilOffsetTarget = {...this.recoilOffset};
+        // if (currentSpreeRound < 4) { // Remove recoil climb after 4 shots
+          this.recoilOffsetTarget = {...this.recoilOffset};
+        // }
         var currentRecoil = this.recoil();
         this.recoilOffsetVelocity = Vector.add(this.recoilOffsetVelocity, currentRecoil);
 
@@ -190,10 +206,20 @@ function Weapon(settings = {}) {
           var trail = new BulletTrail(trailPos, trailVel, direction);
           bulletTrails.push(trail);
 
+          // Get scene hit
           var hit = physicsEngine.Raycast(origin, direction).firstHit;
-          if (hit && hit.point) {
-            // hitmarker.markHit(Math.random() < 0.5 ? "body" : "head");
 
+          // Detect enemy hits
+          var maxDistance = (hit && hit.point) ? hit.distance : Infinity;
+          for (var enemy of enemies) {
+            var enemyHit = enemy.fireBullet(this, origin, direction, maxDistance);
+            if (enemyHit) {
+              hitmarker.markHit(enemyHit.type == 0 ? "body" : "head");
+            }
+          }
+
+          if (hit && hit.point) {
+            // Create bullethole
             var mat =  Matrix.lookAt(Vector.add(hit.point, Vector.multiply(hit.normal, 0.01 + Math.random() * 0.01)), Vector.add(hit.point, hit.normal), Vector.normalize({x: 1, y: 0.1, z: 0}));
             Matrix.transform([
               ["scale", Vector.fill(0.03)]
@@ -209,9 +235,10 @@ function Weapon(settings = {}) {
               })(currentInstance), 15000);
             }
 
+            // Sparks
             var [ tangent, bitangent ] = Vector.formOrthogonalBasis(hit.normal);
             var basis = Matrix.basis(tangent, bitangent, hit.normal);
-
+   
             sparks.emitVelocity = () => {
               var v = new Vector((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 1.2);
               return Matrix.transformVector(basis, v);
@@ -339,6 +366,19 @@ function Weapon(settings = {}) {
     this.fireAnimationTime += dt;
     this.reloadAnimationTime += dt;
 
+    fireTimer -= dt;
+    if (fireTimer <= 0 && this.isFiring) {
+      this.isFiring = false;
+
+      if (this.fireMode == WEAPONENUMS.FIREMODES.AUTO && this.roundsInMag > 0 && renderer.mouse.left) {
+        currentSpreeRound++;
+        this.fire();
+      }
+      else {
+        currentSpreeRound = 0;
+      }
+    }
+
     if (this.weaponObject) {
       // var baseMatrix = Matrix.transform([
       //   ["translate", this.getWeaponOffset()],
@@ -363,6 +403,7 @@ function Weapon(settings = {}) {
         ["ry", -rot.y],
         ["rx", -rot.x],
         ["translate", Vector.multiply(player.handOffset, adsT)],
+        ["translate", Vector.multiply(new Vector(Math.cos(player.walkTime * 0.5) * 0.005, Math.pow(Math.sin(player.walkTime * 0.5), 2) * 0.01, 0), adsT)], // Weapon bobbing
         ["rz", player.handRotOffset.z * adsT],
         ["ry", player.handRotOffset.y * adsT],
         ["rx", player.handRotOffset.x * adsT],
@@ -373,7 +414,7 @@ function Weapon(settings = {}) {
         ["ry", this.modelRecoil.rotation.y * adsT],
         ["rx", this.modelRecoil.rotation.x * adsT],
 
-        ["translate", Vector.multiply({x: 0, y: -clamp(currentPlayerVelYOffset * 0.005, -0.08, 0.08), z: 0}, adsT)]
+        ["translate", Vector.multiply({x: 0, y: -clamp(currentPlayerVelYOffset * 0.005, -0.08, 0.08), z: 0}, adsT)] // Jump and fall bobbing
 
         // ["rx", this.swayRotation.x],
         // ["ry", this.swayRotation.y],

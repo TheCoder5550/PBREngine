@@ -37,7 +37,10 @@ var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 100
 var cameraEulerAngles = Vector.zero();
 var cameraCarForward = Vector.zero();
 
-var physicsEngine = new PhysicsEngine(scene);
+var physicsEngine = new PhysicsEngine(scene, {
+  bounds: new AABB(Vector.fill(-1500), Vector.fill(1500)),
+  octreeLevels: 7
+});
 var audioListener = new AudioListener3D();
 var keybindings = new Keybindings();
 
@@ -70,15 +73,14 @@ async function setup() {
   await renderer.setup({
     path: "../",
     clearColor: [0, 0, 0, 1],
-    shadowSizes: [8, 56],
-    shadowBiases: [-0.0005, -0.001],
+    shadowSizes: [7, 56],
+    shadowBiases: [-0.0001, -0.001],
+    shadowResolution: 4096,
 
     // Mobile
     version: 2,
     // renderScale: 0.1,
-    // disableLitInstanced: true,
-    // disableLitSkinned: true,
-    // disableLitBillboard: true
+    disableLitBillboard: true
   });
   renderer.canvas.classList.add("webglCanvas");
   renderer.postprocessing.exposure = -0.5;
@@ -93,11 +95,12 @@ async function setup() {
 
   setLoadingStatus("Loading environment");
   await scene.loadEnvironment({
-    // hdrFolder: "../assets/hdri/wide_street_01_1k_precomputed",
-    res: 512
+    hdrFolder: "../assets/hdri/sky_only",
+    // hdrFolder: "./hdr",
+    res: 1024
   });
-  scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(6000, 20)); //Vector.multiply(new Vector(1, 0.85, 0.55), 25);
-  scene.environmentIntensity = 0.75;//1.75;
+  scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(6000, 10));
+  scene.environmentIntensity = 1;
   // scene.skyboxVisible = false;
   // scene.skyboxCubemap = scene.diffuseCubemap;
 
@@ -132,13 +135,23 @@ async function setup() {
   // physicsEngine.setupMeshCollider();
 
   setLoadingStatus("Loading map");
-  var map = await renderer.loadGLTF("../assets/models/kajaman.glb");
+  var map = await renderer.loadGLTF("./monza.glb");
   scene.add(map);
 
+  FindMaterials("Grass", map)?.[0]?.setUniform("doNoTiling", 1);
+  // FindMaterials("Road", map)?.[0]?.setUniform("doNoTiling", 1);
+
   setLoadingStatus("Creating map collider");  
-  var collider = await renderer.loadGLTF("../assets/models/kajamanCollider.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
+  var collider = await renderer.loadGLTF("./monza.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
   physicsEngine.addMeshCollider(collider);
   physicsEngine.setupMeshCollider();
+  // physicsEngine.octree.render(scene);
+
+  // var dancingMonster = scene.add(await renderer.loadGLTF("../assets/models/dancingMonster.glb"));
+  // dancingMonster.animationController.loop = true;
+  // Matrix.transform([
+  //   ["translate", {x: 0, y: 0, z: 5}]
+  // ], dancingMonster.transform.matrix);
 
   // var cube = scene.add(renderer.CreateShape("cube"));
   // cube.transform.position.x = 3;
@@ -167,14 +180,18 @@ async function setup() {
   // Matrix.pprint(porsche.transform.matrix);
   // window.porsche = porsche;
 
+  var spawnPosition = map.getChild("SpawnPosition", true);
+
   // Reflection probe
   setLoadingStatus("Creating reflection probe");
-  console.log("Creating reflection probe");
   var oldSkybox = scene.skyboxCubemap;
-  var cubemap = renderer.captureReflectionCubemap(new Vector(0, 8, 200));
+  var cubemap = renderer.captureReflectionCubemap(Matrix.getPosition(spawnPosition.transform.worldMatrix));
+  // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 3, 20));
+  // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 8, 200));
   await scene.loadEnvironment({ cubemap });
   scene.skyboxCubemap = oldSkybox;
-  scene.environmentIntensity = 1;
+  // scene.environmentIntensity = 2;
+  // scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(6000, 15));
 
   setLoadingStatus("Creating car");
   // car = new Car({
@@ -189,31 +206,31 @@ async function setup() {
   // car.rb.COMOffset.y += 0.35;
   // car.camera.followDistance = 6;
 
-  car = new Car({
-    drivetrain: "RWD",
-    friction: 1,
-    forwardFriction: 1.3,
-    sidewaysFriction: 1,
-    frontCamber: 4,
-    maxSteerAngle: 55,
-    torque: 700,
-    differential: Car.ENUMS.DIFFERENTIAL.LOCKED,
-
-    suspensionForce: 90_000,
-    suspensionDamping: 3500,
-    suspensionTravel: 0.15
-  });
   // car = new Car({
   //   drivetrain: "RWD",
   //   friction: 1,
   //   forwardFriction: 1.3,
-  //   sidewaysFriction: 1.7,
+  //   sidewaysFriction: 1,
+  //   frontCamber: 4,
+  //   maxSteerAngle: 55,
   //   torque: 700,
+  //   differential: Car.ENUMS.DIFFERENTIAL.OPEN,
 
   //   suspensionForce: 90_000,
   //   suspensionDamping: 3500,
   //   suspensionTravel: 0.15
   // });
+  car = new Car({
+    drivetrain: "RWD",
+    friction: 1,
+    forwardFriction: 1.3,
+    sidewaysFriction: 1.7,
+    torque: 700,
+
+    suspensionForce: 90_000,
+    suspensionDamping: 3500,
+    suspensionTravel: 0.15
+  });
   // await car.setup("../assets/models/americanMuscle.glb");
   // await car.setup("./porsche.glb");
   await car.setup("./nissanGTR2.glb");
@@ -226,6 +243,10 @@ async function setup() {
 
   car.wheels[0].friction *= 1.05;
   car.wheels[1].friction *= 1.05;
+
+  if (spawnPosition) {
+    car.rb.position = Matrix.getPosition(spawnPosition.transform.worldMatrix);
+  }
 
   FindMaterials("paint", car.gameObject)?.[0]?.setUniform("albedo", [0, 0, 0, 1]);
   FindMaterials("paint", car.gameObject)?.[0]?.setUniform("roughness", 0.05);
@@ -304,10 +325,9 @@ async function setup() {
       physicsEngine.update();
       if (car) car.update(frameTime);
       scene.update(physicsEngine.dt);
-    
-      // if (!renderer.getKey("81")) flyCamera.update(frameTime);
-    
+
       // cameraControls(frameTime);
+      // if (!renderer.getKey("81")) flyCamera.update(frameTime);
     
       // renderer.render(flyCamera.camera);
       renderer.render(mainCamera);
@@ -402,7 +422,9 @@ function cameraControls(dt) {
       var cameraTurnAngle = deadZone(gamepadManager.getAxis("RSHorizontal")) * Math.PI;
 
       var planeVelocity = Vector.projectOnPlane(car.rb.velocity, Vector.up());
-      var currentForward = Quaternion.QxV(Quaternion.angleAxis(cameraTurnAngle, Vector.up()), Matrix.getForward(car.gameObject.transform.worldMatrix));//Vector.slerp(Matrix.getForward(car.gameObject.transform.worldMatrix), Vector.normalize(Vector.negate(planeVelocity)), clamp(Vector.lengthSqr(planeVelocity) / 5, 0, 1));
+      // var currentForward = Vector.slerp(Matrix.getForward(car.gameObject.transform.worldMatrix), Vector.normalize(Vector.negate(planeVelocity)), clamp(Vector.lengthSqr(planeVelocity) / 5, 0, 1));
+      var currentForward = Matrix.getForward(car.gameObject.transform.worldMatrix);
+      currentForward = Quaternion.QxV(Quaternion.angleAxis(cameraTurnAngle, Vector.up()), currentForward);
       cameraCarForward = Vector.slerp(cameraCarForward, currentForward, followSpeed);
 
       var finalCameraDir = null;
@@ -586,6 +608,7 @@ function Car(settings = {}) {
   this.allGearRatios = [this.reverseGearRatio, ...this.gearRatios];
 
   this.differentialRatio = 3.42;
+  this.differentialType = settings.differential ?? Car.ENUMS.DIFFERENTIAL.OPEN;
 
   var activateAutoCountersteer = true;
   var autoCountersteerMinVel = 2;
@@ -594,8 +617,8 @@ function Car(settings = {}) {
 
   var maxSteerAngle = settings.maxSteerAngle ?? 35;
 
-  this.brakeTorque = 1200;//2000;
-  this.ABS = false;
+  this.brakeTorque = 1600;//2000;
+  this.ABS = true;
   this.TCS = false;
 
   var steerInput = 0;
@@ -650,7 +673,10 @@ function Car(settings = {}) {
       var position = wheelObject.transform.position;
       // wheelObject.setParent(scene.root);
 
-      this.gameObject.addComponent(new SphereCollider(0.6, Vector.add(position, new Vector(0, 0.5, 0))));
+      var sc = new SphereCollider(0.25, Vector.add(position, new Vector(0, 0, 0)));
+      sc.disableRotationImpulse = true;
+      // sc.friction = 0;
+      this.gameObject.addComponent(sc);
 
       this.wheels[i] = new Wheel(position, wheelObject, settings);
       this.wheels[i].skidmarks = wheelObject.addComponent(new renderer.TrailRenderer());
@@ -979,7 +1005,7 @@ function Car(settings = {}) {
       this.engine.fixedUpdate(dt);
 
       if (ebrakeInput < 0.5) {
-        if (settings.differential == Car.ENUMS.DIFFERENTIAL.OPEN) {
+        if (this.differentialType == Car.ENUMS.DIFFERENTIAL.OPEN) {
           if (this.drivetrain == "RWD" || this.drivetrain == "AWD") {
             differentialConstraint(this.engine, this.wheels[0], this.wheels[1], dt, (this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio);
           }
@@ -987,7 +1013,7 @@ function Car(settings = {}) {
             differentialConstraint(this.engine, this.wheels[2], this.wheels[3], dt, (this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio);
           }
         }
-        else if (settings.differential == Car.ENUMS.DIFFERENTIAL.LOCKED) {
+        else if (this.differentialType == Car.ENUMS.DIFFERENTIAL.LOCKED) {
           if (this.drivetrain == "RWD" || this.drivetrain == "AWD") {
             gearConstraint(this.engine, this.wheels[0], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
             gearConstraint(this.engine, this.wheels[1], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
@@ -1062,7 +1088,7 @@ function Car(settings = {}) {
               0,
               0,
               0
-            ]);
+            ]) * roadFriction * wheel.friction * wheel.sidewaysFriction;
             // return magicFormula(_slipAngle * 180 / Math.PI - wheel.camberAngle * wheel.camberAngleCoeff, wheel.slipAngleCoeffs) * roadFriction * wheel.friction * wheel.sidewaysFriction;
           }
 
@@ -1477,6 +1503,12 @@ function SetupEvents() {
   renderer.disableContextMenu();
   renderer.disablePinchToZoom();
 
+  renderer.on("mousedown", function(e) {
+    if (e.which != 1) {
+      e.preventDefault();
+    }
+  });
+
   renderer.on("mousemove", function(e) {
     if (renderer.isPointerLocked()) {
       cameraEulerAngles.x -= e.movementY * 0.002;
@@ -1551,6 +1583,7 @@ function hexToRgb(hex) {
 }
 
 function setLoadingStatus(str) {
+  console.log(str);
   if (!anyError) {
     loadingStatus.innerText = str;
   }

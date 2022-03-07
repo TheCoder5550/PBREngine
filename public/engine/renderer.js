@@ -2764,7 +2764,7 @@ function Renderer() {
   function CreateLitMaterial(settings = {}, programContainer = renderer.programContainers.lit) {
     var uniforms = {
       "useTexture": {type: "1i", name: "useTexture", arguments: [settings.albedoTexture == undefined ? 0 : 1]},
-      "useNormalMap": {type: "1i", name: "useNormalMap", arguments: [settings.normalMap == undefined ? 0 : 1]},
+      "useNormalTexture": {type: "1i", name: "useNormalTexture", arguments: [settings.normalTexture == undefined ? 0 : 1]},
       "useMetallicRoughnessTexture": {type: "1i", name: "useMetallicRoughnessTexture", arguments: [settings.metallicRoughnessTexture == undefined ? 0 : 1]},
       "useEmissiveTexture": {type: "1i", name: "useEmissiveTexture", arguments: [settings.emissiveTexture == undefined ? 0 : 1]},
       "useOcclusionTexture": {type: "1i", name: "useOcclusionTexture", arguments: [settings.occlusionTexture == undefined ? 0 : 1]},
@@ -2789,8 +2789,8 @@ function Renderer() {
       textures.push({type: gl.TEXTURE_2D, texture: settings.albedoTexture});
       uniforms["albedoTexture"] = {type: "1i", name: "albedoTexture", texture: true, arguments: [textures.length - 1]};
     }
-    if (settings.normalMap != undefined) {
-      textures.push({type: gl.TEXTURE_2D, texture: settings.normalMap});
+    if (settings.normalTexture != undefined) {
+      textures.push({type: gl.TEXTURE_2D, texture: settings.normalTexture});
       uniforms["normalTexture"] = {type: "1i", name: "normalTexture", texture: true, arguments: [textures.length - 1]};
       uniforms["normalStrength"] = {type: "1f", name: "normalStrength", arguments: [1]};
     }
@@ -3104,37 +3104,12 @@ function Renderer() {
     }
   }
   
-  function SkinnedMeshRenderer(materials, skin, meshData) {
-    this.materials = materials;
+  function SkinnedMeshRenderer(skin, materials, meshData, options = {}) {
+    this.materials = Array.isArray(materials) ? materials : [materials];
+    this.meshData = Array.isArray(meshData) ? meshData : [meshData];
+    this.drawMode = options.drawMode ?? gl.TRIANGLES;
+
     this.skin = skin;
-    this.meshData = meshData;
-    this.drawMode = gl.TRIANGLES;
-  
-    this.uniformLocations = {};
-  
-    for (var i = 0; i < this.materials.length; i++) {
-      var mat = this.materials[i];
-      this.uniformLocations[i] = {};
-      this.uniformLocations[i].u_jointTexture = gl.getUniformLocation(mat.program, "u_jointTexture"),
-      this.uniformLocations[i].u_numJoints = gl.getUniformLocation(mat.program, "u_numJoints")
-    }
-  
-    this.copy = function() {
-      var mats = [];
-      for (var mat of this.materials) {
-        mats.push(mat.copy());
-      }
-  
-      var mds = [];
-      for (var md of this.meshData) {
-        mds.push(md.copy());
-      }
-  
-      var newSkinnedMeshRenderer = new SkinnedMeshRenderer(mats, this.skin.copy(), mds);
-      newSkinnedMeshRenderer.drawMode = this.drawMode;
-  
-      return newSkinnedMeshRenderer;
-    }
   
     this.render = function(camera, matrix, shadowPass = false, opaquePass = true) {
       for (var i = 0; i < this.meshData.length; i++) {
@@ -3156,8 +3131,8 @@ function Renderer() {
 
         // bruh why does order matter ^^^ (activeTexture and bindTexture (skin) vvvvvvv)
         if (!shadowPass) {
-          gl.uniform1i(this.uniformLocations[i].u_jointTexture, this.skin.textureIndex);
-          gl.uniform1f(this.uniformLocations[i].u_numJoints, this.skin.joints.length);
+          gl.uniform1i(mat.programContainer.getUniformLocation("u_jointTexture"), this.skin.textureIndex);
+          gl.uniform1f(mat.programContainer.getUniformLocation("u_numJoints"), this.skin.joints.length);
         }
 
         this.skin.updateMatrixTexture();
@@ -3166,18 +3141,36 @@ function Renderer() {
         md.drawCall(this.drawMode);
       }
     }
+
+    this.copy = function() {
+      var mats = [];
+      for (var mat of this.materials) {
+        mats.push(mat.copy());
+      }
+  
+      var mds = [];
+      for (var md of this.meshData) {
+        mds.push(md.copy());
+      }
+  
+      var newSkinnedMeshRenderer = new SkinnedMeshRenderer(this.skin.copy(), mats, mds);
+      newSkinnedMeshRenderer.drawMode = this.drawMode;
+  
+      return newSkinnedMeshRenderer;
+    }
   }
   
   this.MeshInstanceRenderer = MeshInstanceRenderer;
   function MeshInstanceRenderer(materials, meshData, options = {}) {
-    this.materials = materials;
-    this.drawMode = def(options.drawMode, gl.TRIANGLES);
-    this.meshData = meshData;
+    this.materials = Array.isArray(materials) ? materials : [materials];
+    this.meshData = Array.isArray(meshData) ? meshData : [meshData];
+    this.drawMode = options.drawMode ?? gl.TRIANGLES;
   
-    var matrixLocations = [];
-    for (var mat of this.materials) {
-      matrixLocations.push(gl.getAttribLocation(mat.program, 'modelMatrix'));
-    }
+    // var matrixLocations = [];
+    // for (var mat of this.materials) {
+    //   matrixLocations.push(gl.getAttribLocation(mat.program, 'modelMatrix'));
+    // }
+
     const matrixBuffer = gl.createBuffer();
     this.matrices = [];
   
@@ -3234,7 +3227,7 @@ function Renderer() {
           md.bindBuffers(mat.programContainer);
   
           gl.bindBuffer(gl.ARRAY_BUFFER, matrixBuffer);
-          var matrixLoc = matrixLocations[i];
+          var matrixLoc = mat.programContainer.getAttribLocation("modelMatrix");
           for (var j = 0; j < 4; j++) {
             const loc = matrixLoc + j;
             gl.enableVertexAttribArray(loc);
@@ -3252,13 +3245,17 @@ function Renderer() {
         }
       }
     }
+
+    this.copy = function() {
+      return this; // bruh
+    }
   }
   
   this.MeshRenderer = MeshRenderer;
-  function MeshRenderer(materials, meshData) {
+  function MeshRenderer(materials, meshData, options = {}) {
     this.materials = Array.isArray(materials) ? materials : [materials];
     this.meshData = Array.isArray(meshData) ? meshData : [meshData];
-    this.drawMode = gl.TRIANGLES;
+    this.drawMode = options.drawMode ?? gl.TRIANGLES;
   
     this.render = function(camera, matrix, shadowPass = false, opaquePass = true) {
       for (var i = 0; i < this.meshData.length; i++) {
@@ -3273,7 +3270,7 @@ function Renderer() {
         md.bindBuffers(mat.programContainer);
         
         mat.bindModelMatrixUniform(matrix);
-        mat.bindUniforms(camera, matrix);
+        mat.bindUniforms(camera);
         if (!shadowPass && renderer.shadowCascades) {
           renderer.shadowCascades.setUniforms(mat);
         }
@@ -3298,8 +3295,6 @@ function Renderer() {
     }
 
     this.copy = function() {
-      // return this; // bruh
-
       var mats = [];
       for (var mat of this.materials) {
         mats.push(mat.copy());
@@ -3801,7 +3796,7 @@ function Renderer() {
               mats.push(newMat);
             }
   
-            skin.obj.meshRenderer = new SkinnedMeshRenderer(mats, new Skin(outJoints, skin.inverseBindMatrixData), skin.obj.meshRenderer.meshData);
+            skin.obj.meshRenderer = new SkinnedMeshRenderer(new Skin(outJoints, skin.inverseBindMatrixData), mats, skin.obj.meshRenderer.meshData);
             skin.obj.meshRenderer.skin.parentNode = skin.obj.parent;
           }
 
@@ -4028,7 +4023,7 @@ function Renderer() {
                     opaque,
                     albedoColor,
                     albedoTexture,
-                    normalMap: normalTexture,
+                    normalTexture: normalTexture,
                     metallicRoughnessTexture,
                     roughness,
                     metallic,
@@ -5174,6 +5169,23 @@ function GameObject(name = "Unnamed", options = {}) {
     }
     else {
       return this.children.find(e => e.name == name);
+    }
+  }
+
+  this.getChildren = function(name, recursive = false, exactMatch = true) {
+    if (recursive) {
+      var found = [];
+      
+      this.traverse(o => {
+        if ((exactMatch && o.name === name) || (!exactMatch && o.name.indexOf(name) !== -1)) {
+          found.push(o);
+        }
+      });
+
+      return found;
+    }
+    else {
+      return this.children.every(e => (exactMatch && e.name === name) || (!exactMatch && e.name.indexOf(name) !== -1));
     }
   }
 

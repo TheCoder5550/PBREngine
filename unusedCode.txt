@@ -8,7 +8,7 @@
   // vec3 H = normalize(sunDirection + viewDirection);
 
   // vec3 worldNormal = normalize(mat3(modelMatrix) * vNormal);
-  // if (useNormalMap) {
+  // if (useNormalTexture) {
   //   // vec3 worldTangent = normalize(mat3(modelMatrix) * vTangent);
 
   //   // float normalMapStrength = 0.3;

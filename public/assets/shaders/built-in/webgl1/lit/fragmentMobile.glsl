@@ -11,7 +11,7 @@ varying mat3 vTBN;
 uniform sampler2D albedoTexture;
 uniform bool useTexture;
 uniform sampler2D normalTexture;
-uniform bool useNormalMap;
+uniform bool useNormalTexture;
 uniform sampler2D metallicRoughnessTexture;
 uniform bool useMetallicRoughnessTexture;
 uniform sampler2D emissiveTexture;
@@ -222,7 +222,7 @@ void main() {
   vec3 N = normalize(mat3(modelMatrix) * vNormal);
   vec3 V = normalize(vec3(inverseViewMatrix * vec4(0, 0, 0, 1)) - vPosition);
 
-  if (useNormalMap && vTangent != vec3(0)) {
+  if (useNormalTexture && vTangent != vec3(0)) {
     vec3 tangentNormal = sampleTexture(normalTexture, vUV).grb * 2. - 1.;
     N = normalize(vTBN * tangentNormal);
   }

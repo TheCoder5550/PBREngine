@@ -130,6 +130,7 @@
     .gameUI {
       pointer-events: none;
       position: fixed;
+      z-index: 50;
       top: 0;
       bottom: 0;
       left: 0;
@@ -150,9 +151,33 @@
       font-size: 30px;
     }
 
+    .killAlert > div {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+    }
+
+    .killAlert img {
+      height: 1.5em;
+      margin-right: 0.5em;
+      animation: skullAnim 0.2s;
+    }
+
+    @keyframes skullAnim {
+      from {
+        opacity: 0;
+        transform: scale(4);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
     .killAlert .player {
       font-size: 20px;
-      color: gray;
+      color: white;
+      text-shadow: 1px 1px 5px black;
     }
 
     .killAlert .kills {
@@ -221,6 +246,55 @@
       text-shadow: 0 0 5px black;
     }
 
+    .leaderboardWrapper {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      
+      position: absolute;
+      inset: 0;
+    }
+
+    .leaderboard {
+      width: 500px;
+      min-height: 300px;
+      max-height: 100%;
+      /* background: white; */
+    }
+
+    .leaderboard > h1 {
+      color: white;
+      margin: 0;
+    }
+
+    .leaderboard .list > div,
+    .leaderboard .listHeader {
+      background: lightgray;
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      padding: 1px 7px;
+    }
+
+    .leaderboard .listHeader {
+      background: var(--team);
+    }
+
+    .leaderboard .list > div:nth-child(2n) {
+      background: #eee;
+    }
+
+    /* .leaderboard .list > div:first-child {
+      background: var(--team);
+    } */
+
+    .leaderboard .list > div > div > span,
+    .leaderboard .listHeader > div > span {
+      display: inline-block;
+      width: 50px;
+      text-align: right;
+    }
+
     .debugInfo {
       background: rgba(0, 0, 0, 0.5);
       color: white;
@@ -270,8 +344,39 @@
 
     <div class="hidden killAlert">
       <span class="special">REVENGE</span>
-      <span class="player">You killed PlayerName</span>
+      <div>
+        <img src="./assets/textures/skull.png">
+        <span class="player">You killed PlayerName</span>
+      </div>
       <span class="kills">0 kills</span>
+    </div>
+
+    <div class="leaderboardWrapper">
+      <div class="leaderboard hidden">
+        <h1>Leaderboard</h1>
+
+        <div class="listHeader">
+          <span>Player name</span>
+          <div>
+            <span>Kills</span>
+            <span>Deaths</span>
+            <span>Score</span>
+          </div>
+        </div>
+
+        <div class="list">
+          <template class="itemTemplate">
+            <div>
+              <span>Player name</span>
+              <div>
+                <span class="kills">0</span>
+                <span class="deaths">0</span>
+                <span class="score">0</span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
     </div>
 
     <div class="debugInfo">
@@ -284,6 +389,7 @@
     <span id="loadingStatus">Loading script</span>
   </div>
 
+  <script src="perlin.js"></script>
   <script src="fakeConsole.js"></script>
   <script src="Stats.js"></script>
   <script src="gamepadManager.js"></script>

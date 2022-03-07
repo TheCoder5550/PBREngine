@@ -6,7 +6,7 @@ out vec4 fragColor;
 uniform sampler2D albedoTexture;
 uniform bool useTexture;
 uniform sampler2D normalTexture;
-uniform bool useNormalMap;
+uniform bool useNormalTexture;
 
 uniform mat4 inverseViewMatrix;
 uniform mat4 modelMatrix;

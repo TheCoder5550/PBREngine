@@ -21,7 +21,7 @@ uniform mat4 modelMatrix;
 uniform sampler2D albedoTexture;
 uniform bool useTexture;
 uniform sampler2D normalTexture;
-uniform bool useNormalMap;
+uniform bool useNormalTexture;
 uniform sampler2D metallicRoughnessTexture;
 uniform bool useMetallicRoughnessTexture;
 uniform sampler2D emissiveTexture;
@@ -146,7 +146,7 @@ void main() {
   _roughness = clamp(_roughness, 0.01, 0.99);
 
   vec3 _tangentNormal = vec3(0, 0, 1);
-  // if (useNormalMap) {
+  // if (useNormalTexture) {
   //   _tangentNormal = sampleTexture(normalTexture, vUV).rgb * 2. - 1.;
 
   //   if (normalStrength != 0.) {

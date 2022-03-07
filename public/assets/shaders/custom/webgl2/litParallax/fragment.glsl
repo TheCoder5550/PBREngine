@@ -8,7 +8,7 @@ uniform sampler2D heightmapTexture;
 uniform sampler2D albedoTexture;
 uniform bool useTexture;
 uniform sampler2D normalTexture;
-uniform bool useNormalMap;
+uniform bool useNormalTexture;
 uniform sampler2D metallicRoughnessTexture;
 uniform bool useMetallicRoughnessTexture;
 uniform sampler2D emissiveTexture;
@@ -288,7 +288,7 @@ void main() {
     N *= -1.;
   }
 
-  if (useNormalMap) {
+  if (useNormalTexture) {
     // vec3 worldTangent = normalize(mat3(modelMatrix) * vTangent);
 
     // float normalMapStrength = 1.;

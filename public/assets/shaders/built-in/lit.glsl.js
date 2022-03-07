@@ -75,6 +75,24 @@ float noise( in vec2 p ) {
   return (dot( n, vec3(70.0) ) + 1.) / 2.;
 }
 
+const int OCTAVES = 4;
+float LayeredNoise(vec2 p) {
+  float _noise = 0.;
+  float frequency = 1.;
+  float factor = 1.;
+
+  float persistance = 0.45;
+  float roughness = 3.;
+
+  for (int i = 0; i < OCTAVES; i++) {
+    _noise += noise(p * frequency + float(i) * 0.72354) * factor;
+    factor *= persistance;
+    frequency *= roughness;
+  }
+
+  return _noise;
+}
+
 // Texture sampling
 vec4 sampleTexture(sampler2D samp, vec2 uv) {
   if (doNoTiling) {
@@ -155,7 +173,7 @@ float getShadowAmount(float cosTheta) {
       // for (int i=0;i<16;i++){
       //   int index = int(16.0*random(floor(vPosition.xyz*1000.0), i))%16;
         
-      //   if (texture(projectedTextures[0], proj.xy + poissonDisk[index] * shadowStepSize * 2.).r < currentDepth) {
+      //   if (texture(projectedTextures[0], proj.xy + poissonDisk[index] * shadowStepSize * 3.).r < currentDepth) {
       //     visibility -= 1. / 16.;
       //   }
 
@@ -168,18 +186,20 @@ float getShadowAmount(float cosTheta) {
         for (float k = -shadowKernalSize / 2. + 0.5; k <= shadowKernalSize / 2. - 0.5; k++) {
           // float projectedDepth = texture(projectedTextures[0], proj.xy + shadowStepSize * hash(vec2(j, k) / 1000.)).r;
           float projectedDepth = texture(projectedTextures[0], proj.xy + shadowStepSize * vec2(j, k)).r;
+
           sum += 1. - step(projectedDepth, currentDepth);//(projectedDepth <= currentDepth ? shadowDarkness : 1.);// * shadowKernel[j + 1][k + 1];
         }
       }
 
-      // bruh double calc
-      vec3 projNext = projectedTexcoords[1].xyz / projectedTexcoords[1].w;
-      float depthNext = projNext.z + biases[1];
-      float projectedDepthNext = texture(projectedTextures[1], projNext.xy).r;
-      float nextVis = (projectedDepthNext <= depthNext ? shadowDarkness : 1.);
+      return sum / float(shadowKernalSize * shadowKernalSize);
 
-      return fadeToNextShadowMap(sum / float(shadowKernalSize * shadowKernalSize), nextVis, proj);
-      // return sum / 16.;
+      // // bruh double calc
+      // vec3 projNext = projectedTexcoords[1].xyz / projectedTexcoords[1].w;
+      // float depthNext = projNext.z + biases[1];
+      // float projectedDepthNext = texture(projectedTextures[1], projNext.xy).r;
+      // float nextVis = (projectedDepthNext <= depthNext ? shadowDarkness : 1.);
+
+      // return fadeToNextShadowMap(sum / float(shadowKernalSize * shadowKernalSize), nextVis, proj);
     }
 
     proj = projectedTexcoords[1].xyz / projectedTexcoords[1].w;
@@ -263,22 +283,14 @@ vec3 IBL (vec3 N, vec3 V, vec3 R, vec3 albedo, float metallic, float roughness, 
   kD *= 1.0 - metallic;	  
     
   vec3 irradiance = texture(u_diffuseIBL, N).rgb;
-  // irradiance = pow(irradiance, vec3(2.2));
-
   vec3 diffuse  = irradiance * albedo;
     
   const float MAX_REFLECTION_LOD = 4.0;
-  vec3 prefilteredColor = textureLod(u_specularIBL, R, roughness * MAX_REFLECTION_LOD).rgb;   
-  // prefilteredColor = pow(prefilteredColor, vec3(2.2)); // should not be needed
+  vec3 prefilteredColor = textureLod(u_specularIBL, R, roughness * MAX_REFLECTION_LOD).rgb;
 
   vec2 uv = vec2(max(dot(N, V), 0.), roughness);
-  // uv.x = 1. - uv.x;
   uv.y = 1. - uv.y;
-
-  // uv.xy = uv.yx;
-
   vec2 envBRDF = texture(u_splitSum, uv).rg;
-  // envBRDF = pow(envBRDF, vec2(1. / 2.2));
 
   vec3 specular = prefilteredColor * (F * envBRDF.x + envBRDF.y);
     
@@ -416,6 +428,7 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 
 */
 
+// vertex
 var webgl2Vertex = `
 ${shaderBase}
 
@@ -626,6 +639,7 @@ webgl2VertexTrail = webgl2VertexTrail.replace("//#in", "in float alpha;");
 webgl2VertexTrail = webgl2VertexTrail.replace("//#out", "out float vAlpha;");
 webgl2VertexTrail = webgl2VertexTrail.replace("//#main", "vAlpha = alpha;");
 
+// Fragment
 var webgl2Fragment = `
 ${shaderBase}
 
@@ -644,7 +658,7 @@ in mat3 vTBN;
 uniform sampler2D albedoTexture;
 uniform bool useTexture;
 uniform sampler2D normalTexture;
-uniform bool useNormalMap;
+uniform bool useNormalTexture;
 uniform sampler2D metallicRoughnessTexture;
 uniform bool useMetallicRoughnessTexture;
 uniform sampler2D emissiveTexture;
@@ -736,7 +750,7 @@ void main() {
   //#currentAlbedo
 
   if (doNoTiling) {
-    currentAlbedo.rgb = mix(vec3(0.2), currentAlbedo.rgb, noise(vUV / 5.));
+    currentAlbedo.rgb *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(vUV / 40.), 0., 1.));
   }
 
   vec3 _emission = emissiveFactor;
@@ -760,7 +774,7 @@ void main() {
   _roughness = clamp(_roughness, 0.01, 0.99);
 
   vec3 _tangentNormal = vec3(0, 0, 1);
-  if (useNormalMap) {
+  if (useNormalTexture) {
     _tangentNormal = sampleTexture(normalTexture, vUV).rgb * 2. - 1.;
     _tangentNormal = setNormalStrength(_tangentNormal, normalStrength);
   }

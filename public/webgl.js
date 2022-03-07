@@ -8,13 +8,16 @@ import Vector from "./engine/vector.mjs";
 import Quaternion from "./engine/quaternion.mjs";
 import Matrix from "./engine/matrix.mjs";
 import {
+  mapValue,
   clamp,
   lerp,
   inverseLerp,
   watchGlobal,
   fadeOutElement,
   hideElement,
-  showElement
+  showElement,
+  roundNearest,
+  resetAnimations
 } from "./engine/helper.mjs";
 import {
   AABBToAABB,
@@ -33,6 +36,8 @@ import {
 } from "./engine/algebra.mjs";
 import { WEAPONENUMS, updateBulletTrails, Weapon, Scope } from "./weapon.js";
 import OrbitCamera from "./engine/orbitCamera.mjs";
+
+var perlin = new Perlin();
 
 /*
 
@@ -57,6 +62,8 @@ function setHealth(health) {
   healthBarAnimation.style.right = t;
 }
 
+var leaderboard = new Leaderboard(document.querySelector(".leaderboard"));
+
 var killAlert = document.querySelector(".gameUI .killAlert");
 var killAlertSpecial = document.querySelector(".gameUI .killAlert .special");
 var killAlertPlayer = document.querySelector(".gameUI .killAlert .player");
@@ -64,13 +71,7 @@ var killAlertPlayer = document.querySelector(".gameUI .killAlert .player");
 var killsSpans = [
   document.querySelector(".gameUI .killAlert .kills"),
   document.querySelector(".gameUI .topRight .kills")
-]
-
-watchGlobal("kills", function() {
-  killsSpans[0].innerText = kills + " kills";
-  killsSpans[1].innerText = kills + " kills";
-});
-kills = 0;
+];
 
 var loadingDiv = document.getElementsByClassName("loading")[0];
 var loadingStatus = document.getElementById("loadingStatus");
@@ -225,6 +226,7 @@ var currentWeaponFov = defaultWeaponFov;
 var crosshair = new Crosshair();
 window.hitmarker = new Hitmarker();
 window.player = null;
+window.enemies = [];
 
 // var physicsEngine = new PhysicsEngine(scene, new AABB({x: -100, y: -50.33, z: -150}, {x: 100, y: 50, z: 300})); // city collider size 
 // var physicsEngine = new PhysicsEngine(scene, new AABB({x: -20, y: -1.33, z: -30}, {x: 20, y: 15, z: 30}));
@@ -308,7 +310,7 @@ async function setup() {
   foliageMat.setUniform("albedoTexture", leaves);
 
   // var waterMaterial = new Material(waterShader, [
-  //   {type: "1i", name: "useNormalMap", arguments: [1]},
+  //   {type: "1i", name: "useNormalTexture", arguments: [1]},
   //   {type: "1i", name: "normalTexture", arguments: [0]},
   //   {type: "2f", name: "uvScale", arguments: [20, 20]},
   //   {type: "3f", name: "sunDirection", arguments: [sunDirection.x, sunDirection.y, sunDirection.z]},
@@ -344,20 +346,33 @@ async function setup() {
   // var mapCollider = await renderer.loadGLTF("./assets/models/city/collider.glb");
   // var map = scene.add(await renderer.loadGLTF("./assets/models/test/playerArea.glb"));
   // var mapCollider = await renderer.loadGLTF("./assets/models/test/playerArea.glb");
-  var map = await renderer.loadGLTF("./assets/models/shipYard/model.glb", { loadMaterials: true, maxTextureSize: 1024 });
-  scene.add(renderer.BatchGameObject(map));
+  var map = await renderer.loadGLTF("./assets/models/gunTestRoom/gunTestRoom.glb", { loadMaterials: true, maxTextureSize: 1024 });
+  // scene.add(renderer.BatchGameObject(map));
+  scene.add(map);
   // map.getChild("Plane").meshRenderer.materials[0].setUniform("doNoTiling", 1);
 
   loadingStatus.innerText = "Generating collider";
-  var mapCollider = await renderer.loadGLTF("./assets/models/shipYard/collider.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
+  var mapCollider = await renderer.loadGLTF("./assets/models/gunTestRoom/gunTestRoom.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
 
   physicsEngine = new PhysicsEngine(scene);
   physicsEngine.addMeshCollider(mapCollider);
   physicsEngine.setupMeshCollider();
   // physicsEngine.octree.render(scene);
 
+  // var terrain = scene.add(new GameObject("Terrain"));
+  // var chunkSize = 100;
+  // var chunkRes = 100;
+  // var material = renderer.CreateLitMaterial();
+  // material.setUniform("albedo", [0.2, 0.7, 0.1, 1]);
+  // terrain.meshRenderer = new renderer.MeshRenderer(material, createTerrainData(chunkSize, chunkSize, chunkRes, 30, Vector.zero(), 0.01, 600));
+
+  // physicsEngine = new PhysicsEngine(scene);
+  // physicsEngine.addMeshCollider(terrain);
+  // physicsEngine.setupMeshCollider();
+
   physicsEngine.fixedUpdate = function(dt) {
     player.fixedUpdate(dt);
+    player.update(dt);
   }
 
   // console.time("addMeshToOctree");
@@ -370,6 +385,15 @@ async function setup() {
   // King of the hill zone
   var hill = await CreateCaptureZone(Vector.zero());
   captureZoneManager.add(hill);
+
+  enemies.push(new Enemy(map.getChild("Target", true)));
+  enemies.push(new Enemy(map.getChild("Target.001", true)));
+  enemies.push(new Enemy(map.getChild("Target.002", true)));
+
+  var soldier = scene.add(await renderer.loadGLTF("./assets/models/lowpolySoldier.glb"));
+  soldier.transform.scale = Vector.fill(0.067);
+  soldier.transform.position.z = 7;
+  enemies.push(new Enemy(soldier));
 
   // var rock = (await CreateGameObjectFromGLTF("./assets/models/rock.glb"))[0];
   // rock.position = new Vector(4, 0, 0);
@@ -419,7 +443,7 @@ async function setup() {
   
   // var material = renderer.CreateLitMaterial({
   //   albedoTexture: albedo,
-  //   normalMap: normal,
+  //   normalTexture: normal,
   //   metallicRoughnessTexture: metalRoughness
   // });
   // var meshData = new renderer.MeshData(renderer.getPlaneData());
@@ -446,10 +470,10 @@ async function setup() {
   // cube.position = new Vector(0, 4, 0);
   // scene.add(cube);
   
-  // // Skinning
-  // swat = await renderer.loadGLTF("./assets/models/swatOptimizedRunning.glb");
-  // swat.transform.scale = Vector.fill(1.25);
-  // swat.animationController.loop = true;
+  // Skinning
+  swat = await renderer.loadGLTF("./assets/models/lowpolySoldier.glb");
+  swat.transform.scale = Vector.fill(0.067);
+  swat.animationController.loop = true;
 
   // var dancingMonster = scene.add(await renderer.loadGLTF("./assets/models/dancingMonster.glb"));
   // dancingMonster.animationController.loop = true;
@@ -478,7 +502,7 @@ async function setup() {
     sniper: scene.add(renderer.BatchGameObject(await renderer.loadGLTF("./assets/models/weapons/sniper.glb", {gameObjectOptions: {castShadows: false}}))),
 
     // ak47: scene.add(await renderer.loadGLTF("./assets/models/ak47Hands.glb", { loadMaterials: true, maxTextureSize: 256, gameObjectOptions: {castShadows: false}})),
-    // shotgun: scene.add(await renderer.loadGLTF("./assets/models/shotgun.glb", {gameObjectOptions: {castShadows: false}})),
+    shotgun: scene.add(await renderer.loadGLTF("./assets/models/shotgun.glb", {gameObjectOptions: {castShadows: false}})),
     // sks: scene.add(await renderer.loadGLTF("./assets/models/sks.glb", { loadMaterials: false, gameObjectOptions: {castShadows: false}}))
   };
 
@@ -534,6 +558,7 @@ async function setup() {
         weaponObject: weaponModels.AK12,
         scope: scopes.reddot,
         weaponModelADSOffset: Vector.zero(),
+        bulletDamage: 26,
         reloadTime: 1500,
         magSize: 30,
         fireMode: WEAPONENUMS.FIREMODES.AUTO,
@@ -548,6 +573,9 @@ async function setup() {
           };
         }
       });
+
+      // w.modelRecoil.fireTorque.z = 3;
+
       return w;
     },
     pistol: () => {
@@ -570,6 +598,7 @@ async function setup() {
         roundsPerSecond: 1,
         magSize: 5,
         reloadTime: 1500,
+        bulletDamage: 70,
         fireMode: WEAPONENUMS.FIREMODES.SINGLE,
         fireSoundBufferSize: 3,
         recoil: function() {
@@ -586,6 +615,27 @@ async function setup() {
       w.modelRecoil.rotationReturn = -60;
       return w;
     },
+    shotgun: () => {
+      var w = new Weapon({
+        weaponObject: weaponModels.shotgun,
+        reloadTime: 400,
+        magSize: 6,
+        roundsPerSecond: 2,
+        bulletsPerShot: 10,
+        ADSBulletSpread: 1,
+        crosshairType: 1,
+        sequentialReloading: true,
+        bulletDamage: 10,
+        recoil: function() {
+          return {x: -5, y: (Math.random() - 0.5) * 0.2, z: 0};
+        },
+        fireSound: "./assets/sound/shotgun/fire.wav",
+        reloadSound: "./assets/sound/shotgun/insertShell.wav",
+        doneReloadingSound: "./assets/sound/shotgun/reloadEnd.wav"
+      });
+
+      return w;
+    }
 
     // ak47: () => new Weapon({
     //   weaponObject: weaponModels.ak47,
@@ -604,9 +654,6 @@ async function setup() {
     // overpowered: () => new Weapon({weaponObject: pistolGameObject, roundsPerSecond: 1000, magSize: 5000, fireMode: WEAPONENUMS.FIREMODES.AUTO, recoil: function() {
     //   return Vector.zero();
     // }}),
-    // shotgun: () => new Weapon({weaponObject: shotgun, reloadTime: 400, magSize: 6, roundsPerSecond: 2, bulletsPerShot: 10, ADSBulletSpread: 1, crosshairType: 1, sequentialReloading: true, recoil: function() {
-    //   return {x: -5, y: (Math.random() - 0.5) * 0.2, z: 0};
-    // }, fireSound: "./assets/sound/shotgun/fire.wav", reloadSound: "./assets/sound/shotgun/insertShell.wav", doneReloadingSound: "./assets/sound/shotgun/reloadEnd.wav"}),
   };
 
 
@@ -617,6 +664,7 @@ async function setup() {
   player.setWeapons([
     weapons.AK12(),
     weapons.sniper(),
+    weapons.shotgun(),
     weapons.pistol()
   ]);
 
@@ -697,6 +745,10 @@ async function setup() {
     // var weaponSens = currentWeapon ? currentWeapon.getCurrentSensitivity() : 1;
     // player.rotation.x += Math.abs(y) * y * 0.07 * weaponSens;
     // player.rotation.y += Math.abs(x) * x * 0.07 * weaponSens;
+
+    enemies[1].gameObject.transform.position.z = 6;
+    enemies[2].gameObject.transform.position.z = -6;
+    enemies[0].gameObject.transform.position.z = Math.sin(timeSinceStart * 2.5) * 3;
   
     physicsEngine.update();
 
@@ -704,7 +756,7 @@ async function setup() {
       multiplayerCharacters[key].update(physicsEngine.dt);
     }
 
-    player.update(frameTime);
+    // player.update(frameTime);
     // flyCamera(renderer, mainCamera, player.rotation, physicsEngine.dt);
     // mainCamera.transform.rotation = Quaternion.eulerVector(player.rotation);
     // player.position = Vector.add(Vector.compMultiply(mainCamera.transform.position, {x: 1, y: 1, z: 1}), {x: 0, y: -(player.height - 0.1), z: 0});
@@ -853,6 +905,106 @@ function Hitmarker() {
   }
 }
 
+function Enemy(gameObject) {
+  function Collider(bl, tr, matrix, type) {
+    this.type = type ?? Collider.TYPES.BODY;
+    this.matrix = matrix;
+    this.aabb = new AABB(bl, tr);
+  }
+  Collider.TYPES = { BODY: 0, HEAD: 1, ARM: 2, LEG: 3 };
+
+  this.gameObject = gameObject;
+  this.colliders = [];
+
+  var goColliders = this.gameObject.getChildren("Collider", true, false);
+  if (goColliders.length > 0) {
+    for (var g of goColliders) {
+      var mr = g.meshRenderer;
+      if (mr) {
+        var aabb = new AABB();
+
+        var md = mr.meshData[0];
+        var buffer = md.data.position.bufferData;
+        for (var i = 0; i < buffer.length; i += md.data.position.size) {
+          var v = new Vector(buffer[i], buffer[i + 1], buffer[i + 2]);
+          aabb.extend(v);
+        }
+
+        this.colliders.push(new Collider(aabb.bl, aabb.tr, g.transform.getWorldMatrix(this.gameObject), g.name.indexOf("Head") !== -1 ? Collider.TYPES.HEAD : Collider.TYPES.BODY));
+      }
+
+      g.delete();
+    }
+  }
+  else {
+    this.colliders = [
+      new Collider(new Vector(-0.5, 0, -0.05), new Vector(0.5, 1.4, 0.05), Matrix.identity(), Collider.TYPES.BODY),
+      new Collider(new Vector(-0.25, 1.4, -0.05), new Vector(0.25, 2, 0.05), Matrix.identity(), Collider.TYPES.HEAD)
+    ];
+  }
+
+  this.dead = false;
+  this.maxHealth = 100;
+  this.health = this.maxHealth;
+  this.headshotMultiplier = 1.75;
+  this.name = "Enemy";
+
+  this.fireBullet = function(weapon, origin, direction, maxDistance = Infinity) {
+    if (!this.dead) {
+      for (var collider of this.colliders) {
+        var m = Matrix.copy(this.gameObject.transform.worldMatrix);
+        Matrix.multiply(m, collider.matrix, m);
+        var minv = Matrix.inverse(m);
+
+        var newOrigin = Matrix.transformVector(minv, origin);
+        var newDirection = Vector.normalize(Matrix.transformDirection(minv, direction));
+
+        var intersection = rayToAABB(newOrigin, newDirection, collider.aabb);
+
+        if (intersection) {
+          var localHitPoint = Vector.add(newOrigin, Vector.multiply(newDirection, intersection.min));
+          var worldDist = Vector.distance(origin, Matrix.transformVector(m, localHitPoint));
+
+          if (worldDist < maxDistance) {
+            if (collider.type == Collider.TYPES.BODY) {
+              this.takeDamage(weapon.bulletDamage);
+            }
+            else if (collider.type == Collider.TYPES.HEAD) {
+              this.takeDamage(weapon.bulletDamage * weapon.bulletDamageHeadMultiplier);
+            }
+
+            return collider;
+          }
+        }
+      }
+    }
+  }
+
+  this.takeDamage = function(amount) {
+    if (!this.dead) {
+      this.health -= amount;
+      this.health = Math.max(0, this.health);
+
+      if (this.health <= 0) {
+        this.dead = true;
+
+        this.gameObject.visible = false;
+        setTimeout(() => {
+          this.gameObject.visible = true;
+          this.respawn();
+        }, 2000);
+
+        player.enemyKilled(this);
+      }
+    }
+  }
+
+  this.respawn = function() {
+    this.dead = false;
+    this.health = this.maxHealth;
+  }
+}
+
 function Player(pos = Vector.zero()) {
   this.rotation = Vector.zero();
   this.position = pos;
@@ -863,6 +1015,7 @@ function Player(pos = Vector.zero()) {
   this.standHeight = 2;
   this.crouchHeight = 1.1;
   var targetHeight = this.standHeight;
+  var visualHeight = this.standHeight;
   this.height = targetHeight;
   this.colliderRadius = 0.5;
 
@@ -889,6 +1042,19 @@ function Player(pos = Vector.zero()) {
 
   this.handOffset = {x: 0.3, y: -0.25, z: -0.5};
   this.handRotOffset = {x: 0, y: 0.1 * 0, z: 0};
+
+  // Head bobbing
+  this.headBobStrength = 0.06;
+  this.headBobSpeed = 0.25;
+  this.walkTime = 0;
+
+  // Kills
+  this.kills = 0;
+  this.deaths = 0;
+
+  this.killStreak = 0;
+  this.killTimer = 0;
+  this.streakNames = ["", "Doublekill", "Triplekill", "Quadkill", "Megakill"];
 
   // this.getHandMatrix = function(t = 0) {
   //   var rot = this.getHeadRotation();
@@ -937,6 +1103,16 @@ function Player(pos = Vector.zero()) {
   //   return m;
   // }
 
+  this.enemyKilled = function(enemy) {
+    this.killStreak++;
+    this.killTimer = 3;
+    this.kills++;
+    showKillAlert(enemy.name, this.streakNames[Math.min(this.streakNames.length - 1, this.killStreak - 1)]);
+
+    killsSpans[0].innerText = this.kills + " kills";
+    killsSpans[1].innerText = this.kills + " kills";
+  }
+
   this.setWeapons = function(weapons) {
     this.weapons = weapons;
 
@@ -982,7 +1158,7 @@ function Player(pos = Vector.zero()) {
   }
 
   this.getHeadPos = function() {
-    return Vector.add(this.position, {x: 0, y: this.standHeight / 2 + this.height / 2 - 0.1, z: 0});
+    return Vector.add(this.position, {x: 0, y: this.standHeight / 2 + visualHeight / 2 - 0.1 + Math.sin(this.walkTime) * this.headBobStrength, z: 0});
   }
 
   this.getHeadRotation = function() {
@@ -1003,7 +1179,13 @@ function Player(pos = Vector.zero()) {
     this.crouching = renderer.getKey(16);
 
     targetHeight = this.crouching ? this.crouchHeight : this.standHeight;
-    this.height += (targetHeight - this.height) * 0.6;
+    this.height = targetHeight;
+    // this.height += (targetHeight - this.height) * 0.6;
+    visualHeight += (this.height - visualHeight) * 0.4;
+
+    if (renderer.getKeyDown(16) && this.grounded) {
+      this.position.y -= 0.5;
+    }
 
     if (this.getCurrentWeapon()) {
       this.getCurrentWeapon().update(dt);
@@ -1030,6 +1212,11 @@ function Player(pos = Vector.zero()) {
     // ]);
     // audioListener.setDirection(Matrix.getForward(m), Vector.up());
     // audioListener.setPosition(this.position);
+
+    this.killTimer -= dt;
+    if (this.killTimer <= 0) {
+      this.killStreak = 0;
+    }
   }
 
   // bruh 200kb memory
@@ -1058,13 +1245,25 @@ function Player(pos = Vector.zero()) {
       }
 
       var currentAcceleration = this.runningAcceleration;//renderer.getKey(16) ? this.runningAcceleration : this.walkAcceleration;
-      currentAcceleration *= (this.grounded ? 1 : 0.1);
+      currentAcceleration *= (this.grounded ? this.crouching ? 0.5 : 1 : 0.1);
+      if (this.getCurrentWeapon()) {
+        currentAcceleration *= this.getCurrentWeapon().getSpeed();
+      }
+
+      if (this.grounded) {
+        this.walkTime += currentAcceleration * this.headBobSpeed * dt;
+      }
 
       actionQueue.push({type: "movement", time: new Date(), direction: direction, speed: this.walkSpeed, dt: dt});
       // this.position = Vector.add(this.position, Vector.multiply(direction, this.walkSpeed * dt));
 
       this.velocity = Vector.add(this.velocity, Vector.multiply(direction, currentAcceleration * dt));
     }
+    else {
+      this.walkTime += (roundNearest(this.walkTime, Math.PI) - this.walkTime) * 0.1;
+    }
+
+    // this.walkTime = this.walkTime % (Math.PI * 2);
 
     // Jumping
     // if (renderer.getKey(32) && this.grounded) {
@@ -1406,15 +1605,173 @@ async function CreateCaptureZone(position = Vector.zero(), zoneInstance) {
   return z;
 }
 
+function createTerrainData(w = 20, h = 20, res = 5, heightFactor = 2, noiseOffset = Vector.zero(), noiseScale = 0.01, uvScale = 20) {
+  function getHeight(i, j) {
+    return Math.pow(LayeredNoise(i * noiseScale, j * noiseScale, 4), 2) * heightFactor;// * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
+    // return perlin.noise(i * noiseScale, j * noiseScale) * scale * heightFactor * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
+  }
+
+  var uvs = [];
+  var vertices = [];
+  var triangles = [];
+  var tangents = [];
+
+  for (var i = 0; i < res; i++) {
+    for (var j = 0; j < res; j++) {
+      var x = mapValue(i, 0, res - 1, -w / 2, w / 2);
+      var z = mapValue(j, 0, res - 1, -h / 2, h / 2);
+
+      var vertex = new Vector(
+        x,
+        getHeight(x + noiseOffset.x, z + noiseOffset.y),
+        z
+      );
+      vertices.push(vertex.x, vertex.y, vertex.z);
+      uvs.push(i / (res - 1) * uvScale, j / (res - 1) * uvScale);
+    }
+  }
+
+  var normals = new Array(vertices.length / 3);
+  for (var i = 0; i < normals.length; i++) {
+    normals[i] = [];
+  }
+
+  for (var i = 0; i < res - 1; i++) {
+    for (var j = 0; j < res - 1; j++) {
+      var ind = j + i * res;
+      var indices = [
+        ind,
+        ind + 1,
+        ind + res,
+
+        ind + 1,
+        ind + res + 1,
+        ind + res
+      ];
+      triangles.push(...indices);
+
+      var t1Normal = getTriangleNormal([Vector.fromArray(vertices, indices[0] * 3), Vector.fromArray(vertices, indices[1] * 3), Vector.fromArray(vertices, indices[2] * 3)]);
+      var t2Normal = getTriangleNormal([Vector.fromArray(vertices, indices[3] * 3), Vector.fromArray(vertices, indices[4] * 3), Vector.fromArray(vertices, indices[5] * 3)]);
+
+      normals[indices[0]].push(t1Normal);
+      normals[indices[1]].push(t1Normal);
+      normals[indices[2]].push(t1Normal);
+      normals[indices[3]].push(t2Normal);
+      normals[indices[4]].push(t2Normal);
+      normals[indices[5]].push(t2Normal);
+    }
+  }
+
+  var outNormals = [];
+  for (var i = 0; i < normals.length; i++) {
+    var normal = Vector.divide(normals[i].reduce((a, b) => {
+      return Vector.add(a, b);
+    }, Vector.zero()), normals[i].length);
+
+    outNormals.push(normal.x, normal.y, normal.z);
+
+    tangents.push(normal.y, normal.x, normal.z);
+  }
+
+  var meshData = new renderer.MeshData({
+    indices: {
+      bufferData: new Uint32Array(triangles),
+      target: renderer.gl.ELEMENT_ARRAY_BUFFER
+    },
+    position: {
+      bufferData: new Float32Array(vertices),
+      size: 3
+    },
+    normal: {
+      bufferData: new Float32Array(outNormals),
+      size: 3
+    },
+    tangent: {
+      bufferData: new Float32Array(tangents),
+      size: 3
+    },
+    uv: {
+      bufferData: new Float32Array(uvs),
+      size: 2
+    }
+  });
+  
+  return meshData;
+}
+
+function LayeredNoise(x, y, octaves = 4) {
+  var noise = 0;
+  var frequency = 1;
+  var factor = 1;
+
+  var persistance = 0.4;
+  var roughness = 3;
+
+  for (var i = 0; i < octaves; i++) {
+    noise += perlin.noise(x * frequency + i * 0.72354, y * frequency + i * 0.72354) * factor;
+    factor *= persistance;
+    frequency *= roughness;
+  }
+
+  return noise;
+}
+
+function Leaderboard(element) {
+  this.element = element;
+  var list = this.element.querySelector(".list");
+  var itemTemplate = this.element.querySelector(".itemTemplate");
+
+  this.sort = function(querySel = ".kills") {
+    var items = [...element.querySelectorAll(".list > div")];
+    items.sort((a, b) => {
+      return parseInt(a.querySelector(querySel).innerText) - parseInt(b.querySelector(querySel).innerText);
+    });
+
+    for (var i = 0; i < items.length; i++) {
+      list.insertBefore(items[i], list.childNodes[i]);
+    }
+  }
+
+  this.addPlayer = function() {
+    var clone = itemTemplate.content.cloneNode(true);
+    return clone;
+  }
+
+  this.setItem = function(element, selector, value) {
+    element.querySelector(selector).innerText = value;
+  }
+
+  this.show = function() {
+    showElement(this.element);
+  }
+
+  this.hide = function() {
+    hideElement(this.element);
+  }
+
+  for (var i = 0; i < 10; i++) {
+    var el = this.addPlayer();
+    this.setItem(el, ".kills", Math.round(Math.random() * 100));
+    this.setItem(el, ".deaths", Math.round(Math.random() * 100));
+    this.setItem(el, ".score", roundNearest(Math.random() * 10000, 100));
+    list.appendChild(el);
+  }
+  this.sort(".score");
+}
+
 window.showKillAlert = showKillAlert;
+var killAlertTimeout;
 function showKillAlert(player, special = "") {
   killAlertPlayer.innerText = "You killed " + player;
   killAlertSpecial.innerText = special;
   showElement(killAlert);
 
-  setTimeout(function() {
+  resetAnimations(killAlert.querySelector("img"));
+
+  clearTimeout(killAlertTimeout);
+  killAlertTimeout = setTimeout(function() {
     fadeOutElement(killAlert);
-  }, 3000);
+  }, 2000);
 }
 
 // WebSocket
@@ -1467,6 +1824,9 @@ function websocketOnMessage(msg) {
             var found = multiplayerCharacters[entity.id];
             if (!found) {
               var gameObject = scene.add(swat.copy());
+
+              enemies.push(new Enemy(gameObject));
+
               found = new MultiplayerCharacter(gameObject);
               found.id = entity.id;
               multiplayerCharacters[entity.id] = found;
@@ -1655,7 +2015,18 @@ function SetupEvents() {
         }
       }
 
-      // e.preventDefault();
+      if (e.keyCode == 9) { // Tab
+        leaderboard.show();
+        e.preventDefault();
+      }
+    }
+  });
+
+  renderer.on("keyup", function(e) {
+    if (running) {
+      if (e.keyCode == 9) { // Tab
+        leaderboard.hide();
+      }
     }
   });
 
