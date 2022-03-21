@@ -1,7 +1,7 @@
 "use strict";
 
 import Renderer, { GameObject, Scene, Camera, AudioListener3D, FindMaterials, flyCamera, Light } from "../engine/renderer.js";
-import { PhysicsEngine, Rigidbody, SphereCollider } from "../engine/physics.mjs";
+import { PhysicsEngine, Rigidbody, SphereCollider, AABB } from "../engine/physics.mjs";
 import FlyCamera from "../engine/flyCamera.mjs";
 import Vector from "../engine/vector.mjs";
 import Matrix from "../engine/matrix.mjs";

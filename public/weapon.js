@@ -120,6 +120,8 @@ function Weapon(settings = {}) {
 
   // this.bulletTrails = [];
 
+  this.onFire = () => {};
+
   var playDoneReloading = () => {
     if (this.doneReloadingSoundPlayer) {
       this.doneReloadingSoundPlayer.currentTime = 0;
@@ -219,6 +221,8 @@ function Weapon(settings = {}) {
           }
 
           if (hit && hit.point) {
+            trail.health = hit.distance / 50;
+
             // Create bullethole
             var mat =  Matrix.lookAt(Vector.add(hit.point, Vector.multiply(hit.normal, 0.01 + Math.random() * 0.01)), Vector.add(hit.point, hit.normal), Vector.normalize({x: 1, y: 0.1, z: 0}));
             Matrix.transform([
@@ -258,6 +262,12 @@ function Weapon(settings = {}) {
     
           this.fireSoundPlayers.push(audioPlayer);
         }
+
+        this.onFire({
+          origin: origin,
+          direction: direction,
+          trailHealth: trail.health
+        });
 
         return true;
       }

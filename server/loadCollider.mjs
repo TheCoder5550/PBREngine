@@ -3,6 +3,7 @@ const require = createRequire(import.meta.url)
 
 import Vector from '../public/engine/vector.mjs';
 import Matrix from '../public/engine/matrix.mjs';
+import { AABBToAABB } from '../public/engine/algebra.mjs';
 const fs = require('fs');
 
 export default async function LoadCollider(path) {
@@ -223,6 +224,22 @@ function Octree(aabb) {
   this.items = [];
   this.maxDepth = 4;
   this.divided = false;
+
+  this.queryAABB = function(aabb, output = []) {
+    if (!AABBToAABB(aabb, this.aabb)) {
+      return;
+    }
+
+    for (var i = 0; i < this.items.length; i++) {
+      output.push(this.items[i]);
+    }
+
+    for (var i = 0; i < this.children.length; i++) {
+      this.children[i].queryAABB(aabb, output);
+    }
+
+    return output;
+  }
 
   this.query = function(origin, direction, output = []) {
     if (!rayToAABB(origin, direction, this.aabb)) {

@@ -32,5 +32,9 @@ void main() {
   offset = mat * offset;
 
   vec2 uv = offset.xy / textureScale;
-  fragColor = vec4(color, texture(albedoTexture, uv + vec2(0.5, 0.5)).a);
+
+  vec4 glassColor = vec4(0, 0, 0, 0.5);
+  vec4 finalColor = mix(glassColor, vec4(color, 1), texture(albedoTexture, uv + vec2(0.5, 0.5)).a);
+
+  fragColor = finalColor;
 }

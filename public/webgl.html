@@ -193,10 +193,15 @@
     }
 
     .gameUI .topRight .kills {
-      margin: 10px;
-      padding: 3px 8px;
+      margin: 0 10px;
+      padding: 0 8px;
       background: rgba(0, 0, 0, 0.5);
       color: white;
+
+      height: 30px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
 
     .gameUI .bottomLeft {
@@ -204,17 +209,19 @@
 
       left: 20px;
       bottom: 20px;
+
+      color: white;
     }
 
     .gameUI .bottomLeft .healthContainer {
       width: 175px;
-      height: 4px;
-      border-radius: 2px;
-      background: rgba(0, 0, 0, 0.5);
+      height: 8px;
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.8);
       position: relative;
       overflow: hidden;
 
-      box-shadow: 0 0 7px 1px var(--team);
+      /* box-shadow: 0 0 7px 1px var(--team); */
     }
     
     .gameUI .bottomLeft .healthContainer .currentHealth {
@@ -222,7 +229,7 @@
       bottom: 0;
       left: 0;
       right: 0;
-      background: var(--team);
+      background: red;
       position: absolute;
     }
 
@@ -231,8 +238,8 @@
       bottom: 0;
       left: 0;
       right: 0;
-      transition: right 0.7s;
-      background: var(--teamDark);
+      transition: right 0.3s;
+      background: darkred;
       position: absolute;
     }
 
@@ -241,9 +248,16 @@
 
       right: 20px;
       bottom: 20px;
+    }
 
-      color: var(--team);
+    .gameUI .bottomRight .ammo {
+      color: white;
+      font-size: 1.5em;
       text-shadow: 0 0 5px black;
+    }
+
+    .emptyMag {
+      color: red;
     }
 
     .leaderboardWrapper {
@@ -295,6 +309,38 @@
       text-align: right;
     }
 
+    .deathScreen {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(transparent, rgba(255, 0, 0, 0.5));
+    }
+
+    .deathScreen .boxWrapper {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 20px;
+
+      display: flex;
+      justify-content: center;
+    }
+
+    .deathScreen .boxWrapper .box {
+      width: 400px;
+      height: 100px;
+      background: black;
+      color: white;
+      box-sizing: border-box;
+
+      display: flex;
+      flex-direction: row;
+    }
+
+    .deathScreen .boxWrapper .box .text {
+      flex: 1;
+      padding: 1em;
+    }
+
     .debugInfo {
       background: rgba(0, 0, 0, 0.5);
       color: white;
@@ -328,6 +374,7 @@
 
   <div class="gameUI">
     <div class="bottomLeft">
+      <span>Health</span>
       <div class="healthContainer">
         <div class="healthAnimation"></div>
         <div class="currentHealth"></div>
@@ -335,7 +382,11 @@
     </div>
 
     <div class="bottomRight">
-      <span class="ammo">30 / 30</span>
+      <span class="ammo">
+        <span class="current">30</span>
+        <span>/</span>
+        <span class="max">30</span>
+      </span>
     </div>
 
     <div class="topRight">
@@ -365,23 +416,36 @@
         </div>
 
         <div class="list">
-          <template class="itemTemplate">
+        </div>
+
+        <template class="itemTemplate">
+          <div>
+            <span class="name">Player name</span>
             <div>
-              <span>Player name</span>
-              <div>
-                <span class="kills">0</span>
-                <span class="deaths">0</span>
-                <span class="score">0</span>
-              </div>
+              <span class="kills">0</span>
+              <span class="deaths">0</span>
+              <span class="score">0</span>
             </div>
-          </template>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="deathScreen hidden">
+      <div class="boxWrapper">
+        <div class="box">
+          <img src="https://via.placeholder.com/100x100" />
+          <div class="text"> 
+            <span>KILLED BY</span><br>
+            <span class="player" style="font-size: 1.5em;">Player name</span>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="debugInfo">
+    <!-- <div class="debugInfo">
       <span>Drawcalls: <span id="debug_drawCalls">0</span></span>
-    </div>
+    </div> -->
   </div>
 
   <div class="loading">

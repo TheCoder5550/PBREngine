@@ -188,13 +188,13 @@ export default class Matrix {
   // Directions
 
   static getForward(m) {
-    return {x: -m[8], y: -m[9], z: -m[10]};
+    return Vector.normalize({x: -m[8], y: -m[9], z: -m[10]});
   }
   static getRight(m) {
-    return {x: m[0], y: m[1], z: m[2]};
+    return Vector.normalize({x: m[0], y: m[1], z: m[2]});
   }
   static getUp(m) {
-    return {x: m[4], y: m[5], z: m[6]};
+    return Vector.normalize({x: m[4], y: m[5], z: m[6]});
   }
 
   static forward(m) {
