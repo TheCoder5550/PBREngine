@@ -6,13 +6,18 @@ import LoadCollider from "./loadCollider.mjs";
 import { AABB } from '../public/engine/physics.mjs';
 import { lerp, inverseLerp } from '../public/engine/helper.mjs';
 import { AABBTriangleToAABB, capsuleToTriangle } from '../public/engine/algebra.mjs';
+import PlayerPhysicsBase from '../public/playerPhysicsBase.mjs';
 
 const WebSocket = require('ws');
 
 var octree;
+var physicsEngine;
+
+var SIMULATED_PING = 0;
 
 (async function setup() {
-  octree = await LoadCollider("../public/assets/models/gunTestRoom/gunTestRoom.glb");
+  octree = await LoadCollider("../public/assets/models/gunTestRoom/collider.glb");
+  physicsEngine = { octree }; // Fixing call structure (fancy words :))
 
   loop();
 })();
@@ -38,29 +43,56 @@ wss.on('connection', ws => {
       if (parsed.hasOwnProperty("type") && parsed.hasOwnProperty("data")) {
         if (parsed.type == "login") {
           ws.id = getNewID();//parsed.data.id;
-          ws.name = getName(ws.id);
+          ws.name = parsed.data.username + "#" + getName(ws.id);
 
-          ws.actionQueue = {
-            id: -1,
-            actionQueue: []
-          };
-          ws.lastActionId = -1;
+          ws.inputQueue = [];
+          // ws.queuesToHandle = [];
 
-          ws.currentSimTime = new Date(parsed.clientSendTime).getTime();
-          ws.gameData = {
-            localUpdatedTime: new Date(),
-            position: {x: 10, y: 3, z: 10},
-            velocity: {x: 0, y: 0, z: 0},
-            isGrounded: false,
-            angle: 0,
-            speed: 300,
-            kills: 0,
-            deaths: 0
-          };
+          // ws.actionQueue = {
+          //   id: -1,
+          //   actionQueue: []
+          // };
+          // ws.lastActionId = -1;
+
+          // ws.currentSimTime = new Date(parsed.clientSendTime).getTime();
+
+          // new Vector(10, 3, 10)
+          ws.gameData = new PlayerPhysicsBase();
+          ws.gameData.physicsEngine = physicsEngine;
+          ws.gameData.state = ws.gameData.STATES.IN_LOBBY;
+
+          ws.gameData.localUpdatedTime = new Date();
+          // ws.gameData.yRotation = 0;
+
+          // ws.gameData = {
+          //   localUpdatedTime: new Date(),
+          //   position: {x: 10, y: 3, z: 10},
+          //   velocity: {x: 0, y: 0, z: 0},
+
+          //   isGrounded: false,
+          //   fakeGroundNormal: Vector.up(),
+          //   realGroundNormal: Vector.up(),
+
+          //   coyoteTime: 0.11,
+          //   jumpBuffering: 0.08,
+          //   groundCounter: 0,
+          //   jumpCounter: 0,
+
+          //   crouching: false,
+
+          //   friction: 10,
+          //   yRotation: 0,
+          //   // angle: 0,
+          //   speed: 300,
+
+          //   kills: 0,
+          //   deaths: 0
+          // };
           //ws.lastT = new Date();
 
           connectedClients[ws.id] = ws;
 
+          console.log("Logged in as " + ws.name);
           send("login", {
             status: "success",
             id: ws.id,
@@ -71,13 +103,30 @@ wss.on('connection', ws => {
             clientID: ws.id
           }, [ ws ]);
         }
+        else if (parsed.type == "deploy") {
+          if (ws.gameData.state == ws.gameData.STATES.IN_LOBBY) {
+            ws.gameData.state = ws.gameData.STATES.PLAYING;
+            send("deploy", {
+              status: "success"
+            });
+          }
+          else {
+            send("deploy", {
+              status: "error"
+            });
+          }
+        }
         else if (parsed.type == "updatePlayer") {
           ws.gameData.position = parsed.data.position;
           ws.gameData.angle = parsed.data.angle;
           ws.gameData.localUpdatedTime = parsed.clientSendTime;
         }
+        else if (parsed.type == "inputs") {
+          ws.inputQueue.push(parsed.data);
+        }
         else if (parsed.type == "actionQueue") {
-          ws.actionQueue = parsed.data;
+          // ws.actionQueue = parsed.data;
+          ws.queuesToHandle.push(parsed.data);
 
           // for (var action of parsed.data.actionQueue) {
           //   simulateClientToTime(ws, new Date(action.time));
@@ -103,16 +152,19 @@ wss.on('connection', ws => {
               data.push({
                 id: client.id,
                 name: client.name,
-                data: client.gameData
+                data: {
+                  position: client.gameData.position,
+                  rotation: client.gameData.rotation,
+                }
               });
             }
-            if (client == ws) {
-              send("getSelf", {
-                serverTime: new Date().getTime(),
-                gameData: client.gameData,
-                lastActionId: client.lastActionId
-              }, parsed.clientSendTime);
-            }
+            // if (client == ws) {
+            //   send("getSelf", {
+            //     serverTime: new Date().getTime(),
+            //     gameData: client.gameData,
+            //     lastActionId: client.lastActionId
+            //   }, parsed.clientSendTime);
+            // }
           }
           send("getAllPlayers", data, parsed.clientSendTime);
         }
@@ -129,10 +181,25 @@ wss.on('connection', ws => {
           }
         }
         else if (parsed.type == "killPlayer") {
-          broadcast("killPlayer", {
-            killed: parsed.data.clientID,
-            killer: ws.id
-          });
+          var killedClient = connectedClients[parsed.data.clientID];
+
+          if (
+            ws.gameData.state == ws.gameData.STATES.PLAYING && 
+            killedClient.gameData.state == killedClient.gameData.STATES.PLAYING
+          ) { // Do server auth check
+            killedClient.gameData.state = killedClient.gameData.STATES.DEAD;
+
+            broadcast("killPlayer", {
+              killed: parsed.data.clientID,
+              killer: ws.id
+            });
+
+            setTimeout(function() {
+              killedClient.gameData.state = killedClient.gameData.STATES.IN_LOBBY;
+              killedClient.gameData.health = killedClient.gameData.maxHealth;
+              sendGlobal(killedClient, "gotoLobby");
+            }, 3000);
+          }
 
           // sendGlobal(connectedClients[parsed.data.clientID], "killPlayer", {
           //   killer: ws.id
@@ -171,7 +238,7 @@ wss.on('connection', ws => {
           send("ping", "Pong!!!", parsed.clientSendTime);
         }
       }
-    }, 250);
+    }, SIMULATED_PING);
   });
 
   ws.on('close', function(reasonCode, description) {
@@ -192,18 +259,85 @@ wss.on('connection', ws => {
 
 var fixedDeltaTime = 1 / 60;
 const loopFPS = 60;
-let previous = hrtimeMs();
 let tickLengthMs = 1000 / loopFPS;
+let previous = hrtimeMs();
 
 function loop() {
   setTimeout(loop, tickLengthMs)
-  let now = hrtimeMs()
-  let delta = (now - previous) / 1000;
-  previous = now;
+  // let now = hrtimeMs()
+  // let delta = (now - previous) / 1000;
+  // previous = now;
 
   var smallClients = {};
   for (var key in connectedClients) {
     var client = connectedClients[key];
+
+    if (client.gameData.state != client.gameData.STATES.PLAYING) {
+      continue;
+    }
+
+    if (client.inputQueue.length > 0) {
+      for (var snapshot of client.inputQueue) {
+        client.gameData.rotation.y = snapshot.yRotation;
+        // client.gameData.yRotation = snapshot.yRotation;
+
+        client.gameData.applyInputs(snapshot.inputs, fixedDeltaTime);
+        client.gameData.simulatePhysicsStep(fixedDeltaTime);
+
+        // applyInputs(client, snapshot.inputs, fixedDeltaTime);
+        // physicsStep(client, fixedDeltaTime);
+      }
+
+      sendGlobal(client, "getSelf", {
+        gameData: {...client.gameData},
+        // currentSimTime: client.currentSimTime,
+        lastProcessedTick: client.inputQueue[client.inputQueue.length - 1].tick
+      });
+
+      client.gameData.localUpdatedTime = client.inputQueue[client.inputQueue.length - 1].localTime;//new Date().getTime();
+      client.inputQueue = [];
+    }
+
+    continue;
+
+    for (var actionQueue of client.queuesToHandle) {
+      for (var action of actionQueue.actionQueue) {
+        simulateClientToTime(client, action.time);
+
+        if (action.type == "movement") {
+          var dir = Vector.normalize(action.direction);
+          client.gameData.position.x += dir.x * action.speed * action.dt;
+          client.gameData.position.y += dir.y * action.speed * action.dt;
+          client.gameData.position.z += dir.z * action.speed * action.dt;
+        }
+        else if (action.type == "jump" && client.gameData.isGrounded) {
+          client.gameData.velocity.y = 6;
+          client.gameData.position.y += 0.05;
+          client.gameData.isGrounded = false;
+        }
+
+        solveCollision(client);
+      }
+    }
+
+    var lastActionQueue = client.queuesToHandle[client.queuesToHandle.length - 1];
+    if (lastActionQueue) {
+      client.lastActionId = lastActionQueue.id;
+    }
+    client.queuesToHandle = [];
+
+    simulateClientToTime(client, new Date());
+
+    sendGlobal(client, "getSelf", {
+      gameData: {...client.gameData},
+      currentSimTime: client.currentSimTime,
+      lastActionId: client.lastActionId
+    });
+
+    continue;
+
+
+
     //var speed = client.gameData.speed;
 
     // client.gameData.velocity.y -= 18 * fixedDeltaTime;
@@ -280,9 +414,45 @@ function loop() {
 
 }
 
+function applyInputs(client, inputs, dt) {
+  // Moving
+  var vertical = (inputs.forward || 0) - (inputs.back || 0);
+  var horizontal = (inputs.left || 0) - (inputs.right || 0);
+
+  if (vertical || horizontal) {
+    var direction = Vector.rotateAround({
+      x: vertical,
+      y: 0,
+      z: -horizontal
+    }, {x: 0, y: 1, z: 0}, -client.gameData.yRotation + Math.PI / 2);
+
+    if (client.gameData.isGrounded) {
+      direction = Vector.normalize(Vector.projectOnPlane(direction, client.gameData.realGroundNormal));
+    }
+    
+    var walkSpeed = 5;
+    client.gameData.position = Vector.add(client.gameData.position, Vector.multiply(direction, walkSpeed * dt));
+  }
+
+  // Jumping
+  if (inputs.jump) {
+    client.gameData.jumpCounter = client.gameData.jumpBuffering;
+  }
+
+  if (inputs.jump && client.gameData.jumpCounter > 0 && client.gameData.groundCounter > 0) {
+    client.gameData.velocity.y = 6;
+    client.gameData.position.y += 0.05;
+
+    client.gameData.jumpCounter = 0;
+    client.gameData.groundCounter = 0;
+  }
+
+  client.gameData.crouching = inputs.crouching;
+}
+
 function simulateClientToTime(client, time) {
   if (time <= client.currentSimTime) {
-    console.warn("End time is less than current time");
+    // console.warn("End time is less than current time");
     return;
   }
 
@@ -291,8 +461,12 @@ function simulateClientToTime(client, time) {
   while (client.currentSimTime < time) {
     physicsStep(client, fixedDeltaTime);
     client.currentSimTime += millisDT;
+
+    if (client.currentSimTime > time) {
+      client.currentSimTime -= millisDT;
+      break;
+    }
   }
-  client.currentSimTime -= millisDT;
 
   var leftOverTime = time - client.currentSimTime;
   physicsStep(client, leftOverTime / 1000);
@@ -303,14 +477,41 @@ function simulateClientToTime(client, time) {
 function physicsStep(client, dt) {
   client.gameData.velocity.y -= 18 * dt;
 
+  // Jumping
+  if (client.gameData.isGrounded) {
+    client.gameData.groundCounter = client.gameData.coyoteTime;
+  }
+
+  client.gameDatagroundCounter -= dt;
+  client.gameDatajumpCounter -= dt;
+
+  // Friction
+  if (client.gameData.isGrounded) {
+    var projectedVelocity = Vector.projectOnPlane(client.gameData.velocity, client.gameData.fakeGroundNormal);//{x: this.velocity.x, y: 0, z: this.velocity.z};
+    var speed = Vector.length(projectedVelocity);
+    client.gameData.velocity = Vector.add(client.gameData.velocity, Vector.multiply(Vector.normalize(projectedVelocity), -speed * dt * client.gameData.friction));
+
+    // // Sliding / turning
+    // if (this.crouching && speed > 10) {
+    //   var v = Vector.rotateAround({
+    //     x: Vector.length(Vector.projectOnPlane(this.velocity, this.fakeGroundNormal)),
+    //     y: 0,
+    //     z: 0
+    //   }, this.fakeGroundNormal, -this.rotation.y + Math.PI / 2);
+      
+    //   this.velocity.x = v.x;
+    //   this.velocity.z = v.z;
+    // }
+  }
+
   if (client.gameData.position.y < -30) {
     client.gameData.position = new Vector(10, 3, 10);
     client.gameData.velocity = Vector.zero();
   }
 
-  solveCollision(client);
-
   client.gameData.position = Vector.add(client.gameData.position, Vector.multiply(client.gameData.velocity, dt));
+
+  solveCollision(client);
 }
 
 function solveCollision(client) {
@@ -348,8 +549,8 @@ function solveCollision(client) {
 
           var isGround = Vector.dot(normal, Vector.up()) > 0.7;
           if (isGround) {
-            // this.fakeGroundNormal = normal;
-            // this.realGroundNormal = col.normal;
+            client.gameData.fakeGroundNormal = normal;
+            client.gameData.realGroundNormal = col.normal;
             client.gameData.isGrounded = true;
           }
         }

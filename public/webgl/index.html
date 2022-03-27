@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+  <title>Page Title</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;400&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="lobbyUI hidden">
+    <h1>Long Game Title</h1>
+    <div class="navigation">
+      <div>
+        <a href="#">Loadout</a>
+        <a href="#">Shop</a>
+        <a href="#">Item</a>
+      </div>
+      <div>
+        <input id="username" placeholder="Username" />
+        <a href="#" onclick="flashButton(this)" id="deploy">Deploy</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="gameUI hidden">
+    <div class="bottomLeft">
+      <span>Health</span>
+      <div class="healthContainer">
+        <div class="healthAnimation"></div>
+        <div class="currentHealth"></div>
+      </div>
+    </div>
+
+    <div class="bottomRight">
+      <span class="ammo">
+        <span class="current">30</span>
+        <span>/</span>
+        <span class="max">30</span>
+      </span>
+    </div>
+
+    <div class="topRight">
+      <span class="kills">0 kills</span>
+    </div>
+
+    <div class="hidden killAlert">
+      <span class="special">REVENGE</span>
+      <div>
+        <img src="../assets/textures/skull.png">
+        <span class="player">You killed PlayerName</span>
+      </div>
+      <span class="kills">0 kills</span>
+    </div>
+
+    <div class="leaderboardWrapper">
+      <div class="leaderboard hidden">
+        <h1>Leaderboard</h1>
+
+        <div class="listHeader">
+          <span>Player name</span>
+          <div>
+            <span>Kills</span>
+            <span>Deaths</span>
+            <span>Score</span>
+          </div>
+        </div>
+
+        <div class="list">
+        </div>
+
+        <template class="itemTemplate">
+          <div>
+            <span class="name">Player name</span>
+            <div>
+              <span class="kills">0</span>
+              <span class="deaths">0</span>
+              <span class="score">0</span>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="deathScreen hidden">
+      <div class="boxWrapper">
+        <div class="box">
+          <img src="https://via.placeholder.com/100x100" />
+          <div class="text"> 
+            <span>KILLED BY</span><br>
+            <span class="player" style="font-size: 1.5em;">Player name</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- <div class="debugInfo">
+      <span>Drawcalls: <span id="debug_drawCalls">0</span></span>
+    </div> -->
+  </div>
+
+  <div class="loading">
+    <span class="loader">Loading</span>
+    <span id="loadingStatus">Loading script</span>
+  </div>
+
+  <script src="../perlin.js"></script>
+  <script src="../fakeConsole.js"></script>
+  <script src="../Stats.js"></script>
+  <script src="../gamepadManager.js"></script>
+  <script src="../gameCanvas-5.0.js"></script>
+  <script src='webgl.js' type="module"></script>
+</body>
+</html>

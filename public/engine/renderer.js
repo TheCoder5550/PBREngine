@@ -1818,7 +1818,7 @@ function Renderer() {
 
     this.drawMode = gl.TRIANGLES;
     this.material = CreateLitMaterial({
-      albedoTexture: loadTexture("./assets/textures/bulletTrail.png"),
+      albedoTexture: loadTexture(renderer.path + "assets/textures/bulletTrail.png"),
       albedoColor: [40, 10, 5, 1],
     }, renderer.programContainers.particle);
     this.material.doubleSided = true;
@@ -6772,8 +6772,10 @@ function Camera(settings = {}) {
   }
 
   this.setFOV = function(fov) {
-    _fov = fov;
-    Matrix.setPerspectiveFov(this.projectionMatrix, this.aspect, _fov * Math.PI / 180);
+    if (fov != _fov) {
+      _fov = fov;
+      Matrix.setPerspectiveFov(this.projectionMatrix, this.aspect, _fov * Math.PI / 180);
+    }
   }
 
   this.getFOV = function() {

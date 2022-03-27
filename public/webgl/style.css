@@ -1,0 +1,434 @@
+/* Helper */
+
+.hidden {
+  display: none !important;
+}
+
+.fadeOut {
+  animation: fadeOut 0.4s linear;
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+.loader:after {
+  animation: changeLetter 2s linear infinite;
+  content: "...";
+}
+
+@keyframes changeLetter {
+  0% {
+    content: "";
+  }
+  25% {
+    content: ".";
+  }
+  50% {
+    content: "..";
+  }
+  75% {
+    content: "...";
+  }
+  100% {
+    content: "";
+  }
+}
+
+/* Setup */
+
+*, *::after, *::before {
+  box-sizing: border-box;
+}
+
+:root {
+  font-family: 'Oswald', sans-serif;
+
+  --black: #222;
+  --team: #1db676;
+  --teamDark: #147c51;
+  --enemy: #d43e20;
+}
+
+body {
+  background: var(--black);
+  margin: 0;
+  overflow: hidden;
+}
+
+/* UI */
+
+.ingameUI {
+  pointer-events: none;
+}
+
+/* Lobby */
+
+.lobbyUI {
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  padding: 50px;
+  padding-top: 0;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.lobbyUI h1 {
+  color: white;
+  font-size: 5em;
+  margin: 0;
+}
+
+.lobbyUI a, .lobbyUI input {
+  pointer-events: auto;
+}
+
+.navigation {
+  flex-grow: 1;
+  width: 300px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+
+  transition: transform 500ms;
+}
+
+.navigation > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.navigation > div > * {
+  margin: 0.25em;
+}
+
+.navigation input {
+  height: 2.5em;
+}
+
+.navigation a {
+  position: relative;
+  display: block;
+  
+  padding: 1.25em 1em;
+  text-decoration: none;
+  color: var(--black);
+  /* background: white;
+  border: 4px solid white; */
+
+  box-shadow: 0 0 1rem 0 rgba(0, 0, 0, .2); 
+  /* border-radius: 5px; */
+  background-color: rgba(255, 255, 255, .25);
+  backdrop-filter: blur(5px);
+
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.navigation a:hover {
+  transform: scale(1.03);
+}
+
+.navigation a::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: white;
+  opacity: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+#deploy {
+  background-color: rgba(255, 30, 30, 0.9);
+  color: white;
+}
+
+.flashButton::before {
+  animation: flash 500ms;
+}
+
+@keyframes flash {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.lobbyUI .slideOut {
+  transform: translateX(-100%);
+}
+
+/* */
+
+.loading {
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  font-size: 100px;
+}
+
+#loadingStatus {
+  font-size: 20px;
+  color: white;
+}
+
+.gameUI {
+  pointer-events: none;
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+}
+
+.killAlert {
+  position: absolute;
+  bottom: 200px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.killAlert .special {
+  font-size: 30px;
+}
+
+.killAlert > div {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.killAlert img {
+  height: 1.5em;
+  margin-right: 0.5em;
+  animation: skullAnim 0.2s;
+}
+
+@keyframes skullAnim {
+  from {
+    opacity: 0;
+    transform: scale(4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.killAlert .player {
+  font-size: 20px;
+  color: white;
+  text-shadow: 1px 1px 5px black;
+}
+
+.killAlert .kills {
+  color: red;
+  font-size: 40px;
+}
+
+.gameUI .topRight {
+  position: absolute;
+
+  right: 10px;
+  top: 10px;
+}
+
+.gameUI .topRight .kills {
+  margin: 0 10px;
+  padding: 0 8px;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+
+  height: 30px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.gameUI .bottomLeft {
+  position: absolute;
+
+  left: 20px;
+  bottom: 20px;
+
+  color: white;
+}
+
+.gameUI .bottomLeft .healthContainer {
+  width: 175px;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.8);
+  position: relative;
+  overflow: hidden;
+
+  /* box-shadow: 0 0 7px 1px var(--team); */
+}
+
+.gameUI .bottomLeft .healthContainer .currentHealth {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: red;
+  position: absolute;
+}
+
+.gameUI .bottomLeft .healthContainer .healthAnimation {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  transition: right 0.3s;
+  background: darkred;
+  position: absolute;
+}
+
+.gameUI .bottomRight {
+  position: absolute;
+
+  right: 20px;
+  bottom: 20px;
+}
+
+.gameUI .bottomRight .ammo {
+  color: white;
+  font-size: 1.5em;
+  text-shadow: 0 0 5px black;
+}
+
+.emptyMag {
+  color: red;
+}
+
+.leaderboardWrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  
+  position: absolute;
+  inset: 0;
+}
+
+.leaderboard {
+  width: 500px;
+  min-height: 300px;
+  max-height: 100%;
+  /* background: white; */
+}
+
+.leaderboard > h1 {
+  color: white;
+  margin: 0;
+}
+
+.leaderboard .list > div,
+.leaderboard .listHeader {
+  background: lightgray;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  padding: 1px 7px;
+}
+
+.leaderboard .listHeader {
+  background: var(--team);
+}
+
+.leaderboard .list > div:nth-child(2n) {
+  background: #eee;
+}
+
+/* .leaderboard .list > div:first-child {
+  background: var(--team);
+} */
+
+.leaderboard .list > div > div > span,
+.leaderboard .listHeader > div > span {
+  display: inline-block;
+  width: 50px;
+  text-align: right;
+}
+
+.deathScreen {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(transparent, rgba(255, 0, 0, 0.5));
+}
+
+.deathScreen .boxWrapper {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 20px;
+
+  display: flex;
+  justify-content: center;
+}
+
+.deathScreen .boxWrapper .box {
+  width: 400px;
+  height: 100px;
+  background: black;
+  color: white;
+  box-sizing: border-box;
+
+  display: flex;
+  flex-direction: row;
+}
+
+.deathScreen .boxWrapper .box .text {
+  flex: 1;
+  padding: 1em;
+}
+
+.debugInfo {
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+
+  display: flex;
+  flex-direction: column;
+  width: 400px;
+  padding: 10px;
+
+  bottom: 0;
+  left: 0;
+  position: fixed;
+  z-index: 100;
+}
+
+.debugInfo > span {
+  font-size: 0.75em;
+  margin: 0.1em;
+}

@@ -1,7 +1,7 @@
-import Quaternion from "./engine/quaternion.mjs";
-import Vector from "./engine/vector.mjs";
-import Matrix from "./engine/matrix.mjs";
-import { clamp, lerp } from "./engine/helper.mjs";
+import Quaternion from "../engine/quaternion.mjs";
+import Vector from "../engine/vector.mjs";
+import Matrix from "../engine/matrix.mjs";
+import { clamp, lerp } from "../engine/helper.mjs";
 
 var WEAPONENUMS = {
   FIREMODES: {SINGLE: 0, BURST: 1, AUTO: 2},
@@ -33,13 +33,13 @@ function Weapon(settings = {}) {
   this.fireSoundPlayers = [];
   this.readyFireSoundPlayers = [];
   for (var i = 0; i < def(settings.fireSoundBufferSize, 20); i++) {
-    var audio = new Audio(def(settings.fireSound, "./assets/sound/drumGun2.wav"));
+    var audio = new Audio(def(settings.fireSound, "../assets/sound/drumGun2.wav"));
     audio.playbackRate = 0.8 + Math.random() * 0.4;
     this.fireSoundPlayers.push(audio);
     this.readyFireSoundPlayers.push(audio);
   }
-  this.dryFireSoundPlayer = new Audio(def(settings.dryFireSound, "./assets/sound/dryFire.wav"));
-  this.reloadSoundPlayer = new Audio(def(settings.reloadSound, "./assets/sound/reload.wav"));
+  this.dryFireSoundPlayer = new Audio(def(settings.dryFireSound, "../assets/sound/dryFire.wav"));
+  this.reloadSoundPlayer = new Audio(def(settings.reloadSound, "../assets/sound/reload.wav"));
   if (settings.doneReloadingSound) {
     this.doneReloadingSoundPlayer = new Audio(settings.doneReloadingSound);
   }

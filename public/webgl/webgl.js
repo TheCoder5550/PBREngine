@@ -1,12 +1,12 @@
-import Renderer, { Scene, GameObject, Transform, AudioListener3D, Camera, Light, FindMaterials, flyCamera, IK } from "./engine/renderer.js";
+import Renderer, { Scene, GameObject, Transform, AudioListener3D, Camera, Light, FindMaterials, flyCamera, IK } from "../engine/renderer.js";
 import { 
   AABB,
   PhysicsEngine,
   Rigidbody
-} from "./engine/physics.mjs";
-import Vector from "./engine/vector.mjs";
-import Quaternion from "./engine/quaternion.mjs";
-import Matrix from "./engine/matrix.mjs";
+} from "../engine/physics.mjs";
+import Vector from "../engine/vector.mjs";
+import Quaternion from "../engine/quaternion.mjs";
+import Matrix from "../engine/matrix.mjs";
 import {
   mapValue,
   clamp,
@@ -18,7 +18,7 @@ import {
   showElement,
   roundNearest,
   resetAnimations
-} from "./engine/helper.mjs";
+} from "../engine/helper.mjs";
 import {
   AABBToAABB,
   closestPointToTriangle,
@@ -33,9 +33,10 @@ import {
   capsuleToTriangle,
   ClosestPointOnLineSegment,
   AABBTriangleToAABB
-} from "./engine/algebra.mjs";
+} from "../engine/algebra.mjs";
 import { WEAPONENUMS, updateBulletTrails, Weapon, Scope, BulletTrail, bulletTrails } from "./weapon.js";
-import OrbitCamera from "./engine/orbitCamera.mjs";
+import OrbitCamera from "../engine/orbitCamera.mjs";
+import PlayerPhysicsBase from "../playerPhysicsBase.mjs";
 
 var perlin = new Perlin();
 
@@ -49,7 +50,21 @@ https://wickedengine.net/2020/04/26/capsule-collision-detection/
 
 // var fc = new FakeConsole();
 
+var LS_USERNAME = "com.tc5550.webgl.username";
+
 console.log("Page loaded");
+
+var lobbyUI = document.querySelector(".lobbyUI");
+var deployButton = lobbyUI.querySelector("#deploy");
+deployButton.addEventListener("click", deploy);
+
+var usernameInput = lobbyUI.querySelector("#username");
+usernameInput.value = localStorage.getItem(LS_USERNAME);
+usernameInput.addEventListener("input", function() {
+  localStorage.setItem(LS_USERNAME, usernameInput.value);
+});
+
+var gameUI = document.querySelector(".gameUI");
 
 var ammoCounter = document.querySelector(".gameUI .bottomRight .ammo");
 
@@ -167,15 +182,19 @@ const urlParams = new URLSearchParams(window.location.search);
 // var playerId = parseInt(urlParams.get('id')) || Math.floor(Math.random() * 1e6);
 
 // Settings
-var LERP_DELAY = 200;
+var LERP_DELAY = 200 * 3;
 var SERVER_SEND_FPS = 15;
-var CORRECTION_SIM_STEPS = 5;
+// var CORRECTION_SIM_STEPS = 5;
 var SIMULATED_PING = () => 0;//Math.random() * 30 + 30;
 //
 
 var ws;
-var actionQueue = [];
-var oldActionQueues = [];
+var stateBuffer = [];
+var inputBuffer = [];
+var tick = 0;
+
+// var actionQueue = [];
+// var oldActionQueues = [];
 var sendDataInterval;
 var multiplayerCharacters = {};
 var latencies = [];
@@ -234,6 +253,7 @@ async function setup() {
     shadowSizes: [4, 30],
     shadowBiases: [-0.0003, -0.001],
     renderScale: 1,
+    path: "../"
 
     // disableLitInstanced: true,
     // disableLitSkinned: true,
@@ -253,12 +273,12 @@ async function setup() {
   renderer.add(scene);
   // await scene.loadEnvironment();
   // await scene.loadEnvironment({ hdrFolder: "./assets/hdri/sky_only" });
-  await scene.loadEnvironment({ hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed" });
+  await scene.loadEnvironment({ hdrFolder: "../assets/hdri/wide_street_01_1k_precomputed" });
   console.timeEnd("loadEnvironment");
 
   window.glDebugger = new GLDebugger();
 
-  orbitCamera = new OrbitCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 23});
+  // orbitCamera = new OrbitCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 23});
 
   var resizeEvent = function() {
     mainCamera.setAspect(renderer.aspect);
@@ -269,18 +289,18 @@ async function setup() {
 
   // Create programs / shaders
   loadingStatus.innerText = "Loading programs";
-  var reddotProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/reddot"));
-  var litParallax = new renderer.ProgramContainer(await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/litParallax"));
-  var solidColorInstanceProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/solidColor"));
-  var foliage = new renderer.ProgramContainer(await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/foliage"));
+  var reddotProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/reddot"));
+  var litParallax = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/litParallax"));
+  var solidColorInstanceProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/solidColor"));
+  var foliage = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/foliage"));
   // var waterShader = await createProgram("./assets/shaders/water");
 
   loadingStatus.innerText = "Loading textures";
-  var bulletHole = renderer.loadTexture("./assets/textures/bullethole.png");
-  var bulletTrail = renderer.loadTexture("./assets/textures/bulletTrail.png");
-  var reddotTexture = renderer.loadTexture("./assets/textures/reddot.png", { TEXTURE_WRAP_S: renderer.gl.CLAMP_TO_EDGE, TEXTURE_WRAP_T: renderer.gl.CLAMP_TO_EDGE });
-  var leaves = renderer.loadTexture("./assets/textures/leaves.png");
-  // var waterNormal = loadTexture("./assets/textures/water-normal.png");
+  var bulletHole = renderer.loadTexture("../assets/textures/bullethole.png");
+  var bulletTrail = renderer.loadTexture("../assets/textures/bulletTrail.png");
+  var reddotTexture = renderer.loadTexture("../assets/textures/reddot.png", { TEXTURE_WRAP_S: renderer.gl.CLAMP_TO_EDGE, TEXTURE_WRAP_T: renderer.gl.CLAMP_TO_EDGE });
+  var leaves = renderer.loadTexture("../assets/textures/leaves.png");
+  // var waterNormal = loadTexture("../assets/textures/water-normal.png");
 
   // Materials
   var reddotMaterial = new renderer.Material(reddotProgram);
@@ -308,35 +328,35 @@ async function setup() {
 
   // Bullet holes
   bulletHoles = scene.add(new GameObject("HitObject", {
-    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({opaque: 0, albedoTexture: bulletHole}, renderer.programContainers.litInstanced)], [await renderer.loadObj("./assets/models/plane.obj")]),
+    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({opaque: 0, albedoTexture: bulletHole}, renderer.programContainers.litInstanced)], [await renderer.loadObj("../assets/models/plane.obj")]),
     castShadows: false
   }));
 
   // Bullet trails
   scene.add(new GameObject("BulletTrail", {
-    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({opaque: 0, emissiveFactor: [40, 5, 5], emissiveTexture: bulletTrail, albedo: [0, 0, 0, 1], albedoTexture: bulletTrail}, renderer.programContainers.litInstanced)], [await renderer.loadObj("./assets/models/bulletTrail.obj")]),
+    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({opaque: 0, emissiveFactor: [40, 5, 5], emissiveTexture: bulletTrail, albedo: [0, 0, 0, 1], albedoTexture: bulletTrail}, renderer.programContainers.litInstanced)], [await renderer.loadObj("../assets/models/bulletTrail.obj")]),
     castShadows: false
   }));
 
   // Bullet metal hit sparks
   var sparksObject = new GameObject("Particles");
-  sparks = new renderer.ParticleSystem(await renderer.loadObj("./assets/models/bulletTrail.obj"));
+  sparks = new renderer.ParticleSystem(await renderer.loadObj("../assets/models/bulletTrail.obj"));
   sparksObject.addComponent(sparks);
   scene.add(sparksObject);
 
   // Load map
   loadingStatus.innerText = "Loading map";
-  // var map = scene.add(await renderer.loadGLTF("./assets/models/city/model.glb"));
-  // var mapCollider = await renderer.loadGLTF("./assets/models/city/collider.glb");
-  // var map = scene.add(await renderer.loadGLTF("./assets/models/test/playerArea.glb"));
-  // var mapCollider = await renderer.loadGLTF("./assets/models/test/playerArea.glb");
-  var map = await renderer.loadGLTF("./assets/models/gunTestRoom/gunTestRoom.glb", { loadMaterials: true, maxTextureSize: 1024 });
+  // var map = scene.add(await renderer.loadGLTF("../assets/models/city/model.glb"));
+  // var mapCollider = await renderer.loadGLTF("../assets/models/city/collider.glb");
+  // var map = scene.add(await renderer.loadGLTF("../assets/models/test/playerArea.glb"));
+  // var mapCollider = await renderer.loadGLTF("../assets/models/test/playerArea.glb");
+  var map = await renderer.loadGLTF("../assets/models/gunTestRoom/gunTestRoom.glb", { loadMaterials: true, maxTextureSize: 1024 });
   // scene.add(renderer.BatchGameObject(map));
   scene.add(map);
   // map.getChild("Plane").meshRenderer.materials[0].setUniform("doNoTiling", 1);
 
   loadingStatus.innerText = "Generating collider";
-  var mapCollider = await renderer.loadGLTF("./assets/models/gunTestRoom/gunTestRoom.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
+  var mapCollider = await renderer.loadGLTF("../assets/models/gunTestRoom/collider.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
 
   physicsEngine = new PhysicsEngine(scene);
   physicsEngine.addMeshCollider(mapCollider);
@@ -374,7 +394,7 @@ async function setup() {
   enemies.push(new Enemy(map.getChild("Target.001", true)));
   enemies.push(new Enemy(map.getChild("Target.002", true)));
 
-  // var soldier = scene.add(await renderer.loadGLTF("./assets/models/lowpolySoldier.glb", { disableAnimations: true }));
+  // var soldier = scene.add(await renderer.loadGLTF("../assets/models/lowpolySoldier.glb", { disableAnimations: true }));
   // soldier.transform.scale = Vector.fill(0.067);
   // soldier.transform.position.z = 7;
 
@@ -420,20 +440,20 @@ async function setup() {
   // // enemies.push(new Enemy(sc));
   // enemies.push(new Enemy(soldier));
 
-  // var t = scene.add(await renderer.loadGLTF("./assets/models/test/transformHirTest.glb"));
+  // var t = scene.add(await renderer.loadGLTF("../assets/models/test/transformHirTest.glb"));
   // t.getChild("red", true).transform.worldMatrix = Matrix.identity();
   // t.getChild("green", true).transform.matrix = Matrix.identity();
 
-  // var rock = (await CreateGameObjectFromGLTF("./assets/models/rock.glb"))[0];
+  // var rock = (await CreateGameObjectFromGLTF("../assets/models/rock.glb"))[0];
   // rock.position = new Vector(4, 0, 0);
   // rock.scale = new Vector(2, 2, 4);
   // scene.add(rock);
 
   // Parallax mapping
-  // var s = await renderer.loadGLTF("./assets/models/ironPlane.glb");
+  // var s = await renderer.loadGLTF("../assets/models/ironPlane.glb");
 
   // var mat = s.children[0].meshRenderer.materials[0];
-  // mat.textures.push(renderer.loadTexture("./assets/textures/rustyIron/heightmap.png"));
+  // mat.textures.push(renderer.loadTexture("../assets/textures/rustyIron/heightmap.png"));
   // mat.createUniform("heightmapTexture", "1i", [mat.textures.length - 1]);
   // mat.setProgram(litParallax);
 
@@ -442,7 +462,7 @@ async function setup() {
   // scene.add(s);
 
   // Rigidbody sphere
-  // var ball = (await CreateGameObjectFromGLTF("./assets/models/primitives/uvSphere.glb"))[0];
+  // var ball = (await CreateGameObjectFromGLTF("../assets/models/primitives/uvSphere.glb"))[0];
   // ball.children[0].meshRenderer.materials[0].uniforms.find((u) => u.name == "albedo").arguments = [1, 1, 1];
   // ball.children[0].meshRenderer.materials[0].uniforms.find((u) => u.name == "roughness").arguments[0] = 0.01;
   // ball.children[0].meshRenderer.materials[0].uniforms.find((u) => u.name == "metallic").arguments[0] = 0.99;
@@ -452,23 +472,23 @@ async function setup() {
   // scene.add(ball);
 
   // Vegetation
-  var bush = scene.add(await renderer.loadGLTF("./assets/models/bush.glb"));
+  var bush = scene.add(await renderer.loadGLTF("../assets/models/bush.glb"));
   bush.transform.position.x = 10;
   bush.transform.scale = Vector.fill(1.3);
   bush.children[0].meshRenderer.materials[0] = foliageMat;
 
-  var tree = scene.add(await renderer.loadGLTF("./assets/models/tree.glb"));
+  var tree = scene.add(await renderer.loadGLTF("../assets/models/tree.glb"));
   tree.transform.position = new Vector(-13, 0, 0);
   tree.children[0].children[0].meshRenderer.materials[0] = tree.children[0].children[1].meshRenderer.materials[0] = foliageMat;
 
-  var hedge = scene.add(await renderer.loadGLTF("./assets/models/hedge.glb"));
+  var hedge = scene.add(await renderer.loadGLTF("../assets/models/hedge.glb"));
   hedge.transform.position = {x: -5, y: 0, z: 14};
   hedge.children[0].meshRenderer.materials[0] = foliageMat;
 
   // Metal plane
-  // var albedo = renderer.loadTexture("./assets/textures/MetalPanelRectangular001/METALNESS/1K/MetalPanelRectangular001_COL_1K_METALNESS.jpg", {internalFormat: renderer.gl.SRGB8_ALPHA8});
-  // var normal = renderer.loadTexture("./assets/textures/MetalPanelRectangular001/METALNESS/1K/MetalPanelRectangular001_NRM_1K_METALNESS.jpg");
-  // var metalRoughness = renderer.loadMetalRoughness("./assets/textures/MetalPanelRectangular001/METALNESS/1K/MetalPanelRectangular001_METALNESS_1K_METALNESS.jpg", "./assets/textures/MetalPanelRectangular001/METALNESS/1K/MetalPanelRectangular001_ROUGHNESS_1K_METALNESS.jpg");
+  // var albedo = renderer.loadTexture("../assets/textures/MetalPanelRectangular001/METALNESS/1K/MetalPanelRectangular001_COL_1K_METALNESS.jpg", {internalFormat: renderer.gl.SRGB8_ALPHA8});
+  // var normal = renderer.loadTexture("../assets/textures/MetalPanelRectangular001/METALNESS/1K/MetalPanelRectangular001_NRM_1K_METALNESS.jpg");
+  // var metalRoughness = renderer.loadMetalRoughness("../assets/textures/MetalPanelRectangular001/METALNESS/1K/MetalPanelRectangular001_METALNESS_1K_METALNESS.jpg", "../assets/textures/MetalPanelRectangular001/METALNESS/1K/MetalPanelRectangular001_ROUGHNESS_1K_METALNESS.jpg");
   
   // var material = renderer.CreateLitMaterial({
   //   albedoTexture: albedo,
@@ -487,7 +507,7 @@ async function setup() {
   // Reflection probe
   // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 4, 0));
   // window.reflectionCubemap = cubemap;
-  // var mat = new renderer.Material(await renderer.createProgramFromFile("./assets/shaders/cubemapVis"), [
+  // var mat = new renderer.Material(await renderer.createProgramFromFile("../assets/shaders/cubemapVis"), [
   //   {type: "1i", name: "cubemap", arguments: [0]}
   // ], [{type: renderer.gl.TEXTURE_CUBE_MAP, texture: cubemap}]);
 
@@ -500,11 +520,11 @@ async function setup() {
   // scene.add(cube);
   
   // Skinning
-  swat = await renderer.loadGLTF("./assets/models/lowpolySoldier.glb");
+  swat = await renderer.loadGLTF("../assets/models/lowpolySoldier.glb");
   swat.transform.scale = Vector.fill(0.067);
   swat.animationController.loop = true;
 
-  // var dancingMonster = scene.add(await renderer.loadGLTF("./assets/models/dancingMonster.glb"));
+  // var dancingMonster = scene.add(await renderer.loadGLTF("../assets/models/dancingMonster.glb"));
   // dancingMonster.animationController.loop = true;
   // Matrix.transform([
   //   ["translate", {x: 0, y: 0, z: 5}]
@@ -533,26 +553,26 @@ async function setup() {
   loadingStatus.innerText = "Loading weapons";
 
   var weaponModels = {
-    pistol: scene.add(await renderer.loadGLTF("./assets/models/pistolSuppressor.glb", {gameObjectOptions: {castShadows: false}})),
-    AK12: scene.add(await renderer.loadGLTF("./assets/models/weapons/AK12.glb", { gameObjectOptions: {castShadows: false}})),
-    sniper: scene.add(renderer.BatchGameObject(await renderer.loadGLTF("./assets/models/weapons/sniper.glb", {gameObjectOptions: {castShadows: false}}))),
+    pistol: scene.add(await renderer.loadGLTF("../assets/models/pistolSuppressor.glb", {gameObjectOptions: {castShadows: false}})),
+    AK12: scene.add(await renderer.loadGLTF("../assets/models/weapons/AK12.glb", { gameObjectOptions: {castShadows: false}})),
+    sniper: scene.add(renderer.BatchGameObject(await renderer.loadGLTF("../assets/models/weapons/sniper.glb", {gameObjectOptions: {castShadows: false}}))),
 
-    // ak47: scene.add(await renderer.loadGLTF("./assets/models/ak47Hands.glb", { loadMaterials: true, maxTextureSize: 256, gameObjectOptions: {castShadows: false}})),
-    shotgun: scene.add(await renderer.loadGLTF("./assets/models/shotgun.glb", {gameObjectOptions: {castShadows: false}})),
-    // sks: scene.add(await renderer.loadGLTF("./assets/models/sks.glb", { loadMaterials: false, gameObjectOptions: {castShadows: false}}))
+    // ak47: scene.add(await renderer.loadGLTF("../assets/models/ak47Hands.glb", { loadMaterials: true, maxTextureSize: 256, gameObjectOptions: {castShadows: false}})),
+    shotgun: scene.add(await renderer.loadGLTF("../assets/models/shotgun.glb", {gameObjectOptions: {castShadows: false}})),
+    // sks: scene.add(await renderer.loadGLTF("../assets/models/sks.glb", { loadMaterials: false, gameObjectOptions: {castShadows: false}}))
   };
 
-  for (var key in weaponModels) {
-    var w = weaponModels[key];
-    w.setLayer(1, true);
-    w.visible = false;
+  // for (var key in weaponModels) {
+  //   var w = weaponModels[key];
+  //   w.setLayer(1, true);
+  //   w.visible = false;
 
-    // Red dot
-    var s = w.getChild("Reddot", true);
-    if (s) {
-      s.meshRenderer.materials[0] = reddotMaterial;
-    }
-  }
+  //   // Red dot
+  //   var s = w.getChild("Reddot", true);
+  //   if (s) {
+  //     s.meshRenderer.materials[0] = reddotMaterial;
+  //   }
+  // }
   
   for (var animation of weaponModels.pistol.animationController.animations) {
     if (animation.name.indexOf("Reload") != -1) {
@@ -599,7 +619,7 @@ async function setup() {
         magSize: 30,
         fireMode: WEAPONENUMS.FIREMODES.AUTO,
         roundsPerSecond: 10,
-        fireSound: "./assets/sound/AK12/fire.wav",
+        fireSound: "../assets/sound/AK12/fire.wav",
         recoil: function() {
           var m = (1 - player.crouching * 0.5);
           return {
@@ -665,9 +685,9 @@ async function setup() {
         recoil: function() {
           return {x: -5, y: (Math.random() - 0.5) * 0.2, z: 0};
         },
-        fireSound: "./assets/sound/shotgun/fire.wav",
-        reloadSound: "./assets/sound/shotgun/insertShell.wav",
-        doneReloadingSound: "./assets/sound/shotgun/reloadEnd.wav"
+        fireSound: "../assets/sound/shotgun/fire.wav",
+        reloadSound: "../assets/sound/shotgun/insertShell.wav",
+        doneReloadingSound: "../assets/sound/shotgun/reloadEnd.wav"
       });
 
       return w;
@@ -696,11 +716,13 @@ async function setup() {
   /*
     Player setup
   */
-  player = new Player({x: 10, y: 3, z: 10});
+ // {x: 10, y: 3, z: 10}
+  player = new Player();
+  player.physicsEngine = physicsEngine;
   player.setWeapons([
+    weapons.shotgun(),
     weapons.AK12(),
     weapons.sniper(),
-    weapons.shotgun(),
     weapons.pistol()
   ]);
 
@@ -711,11 +733,11 @@ async function setup() {
   });
 
   loadingStatus.innerText = "Connecting";
-  ws = new WebSocket("ws://localhost:8080");
+  ws = new WebSocket(`ws://${location.hostname}:8080`);
 
   ws.onopen = function() {
     console.log("Connected to server");
-    sendMessage("login");
+    sendMessage("login", { username: localStorage.getItem(LS_USERNAME) });
     // sendMessage("login", {id: playerId});
   }
 
@@ -735,22 +757,22 @@ async function setup() {
   SetupEvents();
 
   sendDataInterval = setInterval(function() {
-    if (ws.readyState == ws.OPEN) {
-      sendMessage("actionQueue", {
-        id: oldActionQueues.length,
-        actionQueue
-      });
-      oldActionQueues.push(actionQueue);
-      actionQueue = [];
+    // if (ws.readyState == ws.OPEN) {
+    //   sendMessage("actionQueue", {
+    //     id: oldActionQueues.length,
+    //     actionQueue
+    //   });
+    //   oldActionQueues.push(actionQueue);
+    //   actionQueue = [];
 
-      // if (player) {
-      //   sendMessage("updatePlayer", {
-      //     position: player.position,
-      //     angle: player.getHeadRotation().y
-      //   });
-      // }
+    //   // if (player) {
+    //   //   sendMessage("updatePlayer", {
+    //   //     position: player.position,
+    //   //     angle: player.getHeadRotation().y
+    //   //   });
+    //   // }
       sendMessage("getAllPlayers");
-    }
+    // }
   }, 1000 / SERVER_SEND_FPS);
 
   // hasLoaded = true;
@@ -758,6 +780,8 @@ async function setup() {
   if (!disconnected) {
     hideElement(loadingDiv);
     running = true;
+
+    showElement(lobbyUI);
 
     window.renderer = renderer;
     window.scene = scene;
@@ -832,7 +856,12 @@ async function setup() {
   
     crosshair.spacing = clamp(Vector.length(player.velocity) * 10, 25, 80);
   
-    renderer.render(mainCamera, [weaponCamera]);
+    if (player.isPlaying) {
+      renderer.render(mainCamera, [weaponCamera]);
+    }
+    else {
+      renderer.render(mainCamera);
+    }
     // renderer.render(orbitCamera.camera);
     renderUI(frameTime);
   
@@ -843,55 +872,57 @@ async function setup() {
 function renderUI(dt) {
   ui.clearScreen();
 
-  if (player.closestZone) {
-    captureZoneManager.renderZoneUI(player.closestZone);
+  if (player.isPlaying) {
+    if (player.closestZone) {
+      captureZoneManager.renderZoneUI(player.closestZone);
+    }
+
+    var currentWeapon = player.getCurrentWeapon();
+    if (currentWeapon) {
+      if (currentWeapon.mode != WEAPONENUMS.GUNMODES.ADS) {
+        crosshair.render();
+      }
+
+      if (currentWeapon.mode == WEAPONENUMS.GUNMODES.ADS && currentWeapon.scope.sniperScope) {
+        ui.save();
+        ui.background("black");
+        ui.ctx.beginPath();
+        ui.ctx.arc(ui.width / 2, ui.height / 2, ui.height * 0.45, 0, Math.PI * 2);
+        ui.ctx.clip();
+        ui.clearScreen();
+
+        var middleRadius = ui.height / 7;
+        ui.line(ui.width / 2, 0, ui.width / 2, ui.height, "black", 1);
+        ui.line(ui.width / 2, 0, ui.width / 2, ui.height / 2 - middleRadius, "black", 6);
+        ui.line(ui.width / 2, ui.height, ui.width / 2, ui.height / 2 + middleRadius, "black", 6);
+
+        ui.line(0, ui.height / 2, ui.width, ui.height / 2, "black", 1);
+        ui.line(0, ui.height / 2, ui.width / 2 - middleRadius, ui.height / 2, "black", 6);
+        ui.line(ui.width, ui.height / 2, ui.width / 2 + middleRadius, ui.height / 2, "black", 6);
+        ui.restore();
+      }
+
+      if (currentWeapon.roundsInMag <= 0) {
+        ammoCounter.querySelector(".current").classList.add("emptyMag");
+      }
+      else {
+        ammoCounter.querySelector(".current").classList.remove("emptyMag");
+      }
+
+      ammoCounter.querySelector(".current").innerText = currentWeapon.roundsInMag;
+      ammoCounter.querySelector(".max").innerText = currentWeapon.magSize;
+      // ammoCounter.innerText = `${currentWeapon.roundsInMag} / ${currentWeapon.magSize}`;
+
+      // ui.text(`${currentWeapon.roundsInMag} / ${currentWeapon.magSize}`, 10, ui.height - 10, 60, "white", "black", 1);
+    }
+
+    for (var i = 0; i < player.weapons.length; i++) {
+      ui.rectangle(ui.width - 120, ui.height - 100 - (player.weapons.length - 1 - i) * 40, 100, 30, i == player.currentWeapon ? "lime" : "red");
+    }
+
+    hitmarker.render();
+    killfeed.render();
   }
-
-  var currentWeapon = player.getCurrentWeapon();
-  if (currentWeapon) {
-    if (currentWeapon.mode != WEAPONENUMS.GUNMODES.ADS) {
-      crosshair.render();
-    }
-
-    if (currentWeapon.mode == WEAPONENUMS.GUNMODES.ADS && currentWeapon.scope.sniperScope) {
-      ui.save();
-      ui.background("black");
-      ui.ctx.beginPath();
-      ui.ctx.arc(ui.width / 2, ui.height / 2, ui.height * 0.45, 0, Math.PI * 2);
-      ui.ctx.clip();
-      ui.clearScreen();
-
-      var middleRadius = ui.height / 7;
-      ui.line(ui.width / 2, 0, ui.width / 2, ui.height, "black", 1);
-      ui.line(ui.width / 2, 0, ui.width / 2, ui.height / 2 - middleRadius, "black", 6);
-      ui.line(ui.width / 2, ui.height, ui.width / 2, ui.height / 2 + middleRadius, "black", 6);
-
-      ui.line(0, ui.height / 2, ui.width, ui.height / 2, "black", 1);
-      ui.line(0, ui.height / 2, ui.width / 2 - middleRadius, ui.height / 2, "black", 6);
-      ui.line(ui.width, ui.height / 2, ui.width / 2 + middleRadius, ui.height / 2, "black", 6);
-      ui.restore();
-    }
-
-    if (currentWeapon.roundsInMag <= 0) {
-      ammoCounter.querySelector(".current").classList.add("emptyMag");
-    }
-    else {
-      ammoCounter.querySelector(".current").classList.remove("emptyMag");
-    }
-
-    ammoCounter.querySelector(".current").innerText = currentWeapon.roundsInMag;
-    ammoCounter.querySelector(".max").innerText = currentWeapon.magSize;
-    // ammoCounter.innerText = `${currentWeapon.roundsInMag} / ${currentWeapon.magSize}`;
-
-    // ui.text(`${currentWeapon.roundsInMag} / ${currentWeapon.magSize}`, 10, ui.height - 10, 60, "white", "black", 1);
-  }
-
-  for (var i = 0; i < player.weapons.length; i++) {
-    ui.rectangle(ui.width - 120, ui.height - 100 - (player.weapons.length - 1 - i) * 40, 100, 30, i == player.currentWeapon ? "lime" : "red");
-  }
-
-  hitmarker.render();
-  killfeed.render();
 
   // Stats
   ui.setFont("monospace");
@@ -985,7 +1016,7 @@ function Hitmarker() {
   }
 }
 
-function Enemy(gameObject) {
+function Enemy(gameObject, name = "Enemy") {
   function Collider(bl, tr, gameObject, type) {
     this.type = type ?? Collider.TYPES.BODY;
     this.gameObject = gameObject;
@@ -1028,14 +1059,14 @@ function Enemy(gameObject) {
   this.maxHealth = 100;
   this.health = this.maxHealth;
   this.headshotMultiplier = 1.75;
-  this.name = "Enemy";
+  this.name = name;
 
   this.onDeath = () => {};
 
   var meshData = renderer.getParticleMeshData();
   var material = renderer.CreateLitMaterial({
     opaque: false,
-    albedoTexture: createTextTexture("PLAYER NAME", 256)
+    albedoTexture: createTextTexture(this.name, 256)
   }, renderer.programContainers.litBillboard);
 
   material.doubleSided = true;
@@ -1093,6 +1124,7 @@ function Enemy(gameObject) {
   this.die = function() {
     this.dead = true;
     this.gameObject.visible = false;
+
     player.enemyKilled(this);
     this.onDeath();
 
@@ -1108,164 +1140,128 @@ function Enemy(gameObject) {
   }
 }
 
-function Player(pos = Vector.zero()) {
-  this.id = null;
-  this.name = null;
+function deploy() {
+  lobbyUI.querySelector(".navigation").classList.add("slideOut");
 
-  this.rotation = Vector.zero();
-  this.position = pos;
-  this.startPosition = pos;
-  this.velocity = Vector.zero();
+  setTimeout(function() {
+    sendMessage("deploy");
+  }, 500);
+}
 
-  this.crouching = false;
-  this.standHeight = 2;
-  this.crouchHeight = 1.1;
-  var targetHeight = this.standHeight;
-  var visualHeight = this.standHeight;
-  this.height = targetHeight;
-  this.colliderRadius = 0.5;
+class Player extends PlayerPhysicsBase {
+  constructor(pos = Vector.zero()) {
+    super(pos);
 
-  this.walkSpeed = 5;
+    this.id = null;
+    this.name = null;
 
-  this.walkAcceleration = 150 * 0.3;
-  this.runningAcceleration = 225 * 0.3;
-  this.friction = 10;
+    this.targetHeight = this.standHeight;
+    this.visualHeight = this.standHeight;
 
-  this.coyoteTime = 0.11;
-  this.jumpBuffering = 0.08;
-  var groundCounter = 0;
-  var jumpCounter = 0;
+    this.weapons = [];
+    this.currentWeapon = 0;
 
-  this.collisionIterations = 3;
-  this.grounded = false;
-  this.fakeGroundNormal = Vector.zero();
-  this.realGroundNormal = Vector.zero();
+    this.handRotation = this.rotation;
 
-  this.weapons = [];
-  this.currentWeapon = 0;
+    this.handOffset = {x: 0.3, y: -0.25, z: -0.5};
+    this.handRotOffset = {x: 0, y: 0.1 * 0, z: 0};
 
-  this.handRotation = this.rotation;
+    // Head bobbing
+    this.headBobStrength = 0.06;
+    this.headBobSpeed = 0.25;
+    this.walkTime = 0;
 
-  this.handOffset = {x: 0.3, y: -0.25, z: -0.5};
-  this.handRotOffset = {x: 0, y: 0.1 * 0, z: 0};
+    this.killedBy = null;
+    this.killcamDir = null;
 
-  // Head bobbing
-  this.headBobStrength = 0.06;
-  this.headBobSpeed = 0.25;
-  this.walkTime = 0;
+    this.killTimer = 0;
+    this.streakNames = ["", "Doublekill", "Triplekill", "Quadkill", "Megakill"];
 
-  // Health
-  this.maxHealth = 100;
-  var _health = this.maxHealth;
-  Object.defineProperty(this, "health", {
-    get: function() {
-      return _health;
-    },
-    set: function(val) {
-      _health = val;
-      setHealth(_health / this.maxHealth);
-    }
-  });
+    this.leaderboardEntry = null;
 
-  Object.defineProperty(this, "dead", {
-    get: function() {
-      return _health <= 0;
-    }
-  });
+    var _health = this.health;
+    Object.defineProperty(this, "health", {
+      get: function() {
+        return _health;
+      },
+      set: function(val) {
+        _health = val;
+        setHealth(_health / this.maxHealth);
+      }
+    });
 
-  this.killedBy = null;
-  var killcamDir = null;
+    var _state = this.state;
+    Object.defineProperty(this, "state", {
+      get: () => {
+        return _state;
+      },
+      set: (val) => {
+        _state = val;
 
-  // Kills
-  this.kills = 0;
-  this.deaths = 0;
+        if (this.state == this.STATES.IN_LOBBY) {
+          showElement(lobbyUI);
+          lobbyUI.querySelector(".navigation").classList.remove("slideOut");
 
-  this.killStreak = 0;
-  this.killTimer = 0;
-  this.streakNames = ["", "Doublekill", "Triplekill", "Quadkill", "Megakill"];
+          hideElement(gameUI);
+          hideElement(deathScreen);
+        }
+        else if (this.state == this.STATES.PLAYING) {
+          showElement(gameUI);
+          hideElement(lobbyUI);
+        }
+        else if (this.state == this.STATES.DEAD) {
+          showElement(gameUI);
+          showElement(deathScreen);
+          hideElement(lobbyUI);
+        }
+      }
+    });
 
-  var leaderboardEntry = null;
+    Object.defineProperty(this, "isPlaying", {
+      get: () => {
+        return this.state == this.STATES.PLAYING;
+      }
+    });
+  }
 
-  // this.getHandMatrix = function(t = 0) {
-  //   var rot = this.getHeadRotation();
-  //   var ops = [
-  //     ["translate", Vector.add(this.position, new Vector(0, this.height - 0.1, 0))],
-  //     ["rz", -rot.z],
-  //     ["ry", -rot.y],
-  //     ["rx", -rot.x],
-  //     // ["translate", Vector.multiply(this.getCurrentWeapon().weaponObject.children[0].getChild("ADSOffset").position, -1 / 10)],
-  //     // ["translate", {x: 0, y: 0, z: -0.1}]
-  //     ["translate", Vector.multiply(this.handOffset, t)],
-  //     ["rz", this.handRotOffset.z * t],
-  //     ["ry", this.handRotOffset.y * t],
-  //     ["rx", this.handRotOffset.x * t],
-  //     // ["translate", adsTranslate]
-  //   ];
-
-  //   // ops.push(["translate", Vector.multiply({x: 0.11, y: -0.1, z: -0.2}, t)]);
-
-  //   // ops = ops.concat([
-  //   //   ["rz", -(this.handRotation.z - rot.z) * t],
-  //   //   ["ry", -(this.handRotation.y - rot.y) * t],
-  //   //   ["rx", -(this.handRotation.x - rot.x) * t]
-  //   // ]);
-
-  //   var m = Matrix.transform(ops);
-
-  //   var adsObject = this.getCurrentWeapon().weaponObject.getChild("ADSOffset", true);
-  //   if (adsObject && t < 0.5) {
-  //     // var weaponMatrix = this.getCurrentWeapon().weaponObject.getWorldMatrix();
-  //     // var adsPos = Matrix.getPosition(adsObject.getWorldMatrix());
-  //     // var localADSOffset = Matrix.transformVector(Matrix.inverse(weaponMatrix), adsPos);
-
-  //     // m = Matrix.transform([["translate", new Vector(0, 0, -0.15)]], m);
-  //     var localADSOffset = Matrix.inverse(adsObject.transform.getWorldMatrix(this.getCurrentWeapon().weaponObject));
-  //     localADSOffset[12] *= 0.1;
-  //     localADSOffset[13] *= 0.1;
-  //     localADSOffset[14] *= 0.1;
-  //     Matrix.setRotation(localADSOffset, Matrix.identity());
-  //     m = Matrix.multiply(m, localADSOffset);
-
-  //     // adsTranslate = Vector.add(Vector.multiply(localADSOffset, -0.1), new Vector(0, 0, -0.15));
-  //     // adsTranslate = Vector.multiply(adsTranslate, 1 - t);
-  //   }
-
-  //   return m;
-  // }
-
-  this.loginResponse = function(data) {
+  loginResponse(data) {
     this.id = data.id;
     this.name = data.name;
 
-    leaderboardEntry = leaderboard.addPlayer();
-    leaderboard.setItem(leaderboardEntry, ".name", this.name);
+    this.leaderboardEntry = leaderboard.addPlayer();
+    leaderboard.setItem(this.leaderboardEntry, ".name", this.name);
   }
 
-  this.die = function() {
+  die() {
+    this.state = this.STATES.DEAD;
     this.health = 0;
-    killcamDir = Matrix.getForward(Matrix.fromQuaternion(Quaternion.eulerVector(Vector.negate(this.getHeadRotation()))));
+
+    this.killcamDir = Matrix.getForward(Matrix.fromQuaternion(Quaternion.eulerVector(Vector.negate(this.getHeadRotation()))));
 
     deathScreen.querySelector(".player").innerText = getPlayerNameByID(this.killedBy);
-    showElement(deathScreen);
 
-    setTimeout(() => {
-      this.health = this.maxHealth;
-      hideElement(deathScreen);
-    }, 3000);
+    // setTimeout(() => {
+    //   this.respawn();
+    // }, 3000);
   }
 
-  this.enemyKilled = function(enemy) {
+  gotoLobby() {
+    this.state = this.STATES.IN_LOBBY;
+    this.health = this.maxHealth;
+  }
+
+  enemyKilled(enemy) {
     this.killStreak++;
     this.killTimer = 3;
     this.kills++;
     showKillAlert(enemy.name, this.streakNames[Math.min(this.streakNames.length - 1, this.killStreak - 1)]);
 
-    if (leaderboardEntry) leaderboard.setItem(leaderboardEntry, ".kills", this.kills);
+    // if (leaderboardEntry) leaderboard.setItem(leaderboardEntry, ".kills", this.kills);
     killsSpans[0].innerText = this.kills + " kills";
     killsSpans[1].innerText = this.kills + " kills";
   }
 
-  this.setWeapons = function(weapons) {
+  setWeapons(weapons) {
     this.weapons = weapons;
 
     for (var weapon of this.weapons) {
@@ -1284,12 +1280,12 @@ function Player(pos = Vector.zero()) {
     }
   }
 
-  this.getCurrentWeapon = function() {
+  getCurrentWeapon() {
     return this.weapons[this.currentWeapon];
   }
 
-  this.switchWeapon = function(index) {
-    if (this.dead) {
+  switchWeapon(index) {
+    if (!this.isPlaying) {
       return;
     }
 
@@ -1324,11 +1320,11 @@ function Player(pos = Vector.zero()) {
     }
   }
 
-  this.getHeadPos = function() {
-    return Vector.add(this.position, {x: 0, y: this.standHeight / 2 + visualHeight / 2 - 0.1 + Math.sin(this.walkTime) * this.headBobStrength, z: 0});
+  getHeadPos() {
+    return Vector.add(this.position, {x: 0, y: this.standHeight / 2 + this.visualHeight / 2 - 0.1 + Math.sin(this.walkTime) * this.headBobStrength, z: 0});
   }
 
-  this.getHeadRotation = function() {
+  getHeadRotation() {
     if (this.getCurrentWeapon()) {
       return Vector.add(this.rotation, this.getCurrentWeapon().recoilOffset);
     }
@@ -1336,29 +1332,34 @@ function Player(pos = Vector.zero()) {
     return this.rotation;
   }
 
-  this.Fire = function() {
-    if (!this.dead && this.getCurrentWeapon()) {
+  Fire() {
+    if (this.isPlaying && this.getCurrentWeapon()) {
       this.weapons[this.currentWeapon].fire();
     }
   }
 
-  this.update = function(dt) {
-    if (this.dead) {
+  update(dt) {
+    if (this.state == this.STATES.IN_LOBBY) {
+      var a = physicsEngine.time * 0.1 + Math.PI;
+      var r = 40;
+
+      mainCamera.setFOV(30);
+      mainCamera.transform.matrix = Matrix.lookAt(new Vector(Math.cos(a) * r, 20, Math.sin(a) * r), Vector.zero());
+    }
+    else if (this.state == this.STATES.DEAD) {
       // mainCamera.setFOV(20);
       var m = multiplayerCharacters[this.killedBy];
       if (m && m.gameObject) {
-        var m = Matrix.lookAt(this.getHeadPos(), m.gameObject.transform.position, Vector.up());
-        killcamDir = Vector.slerp(killcamDir, Matrix.getForward(m), 0.1);
-        mainCamera.transform.matrix = Matrix.lookAt(this.getHeadPos(), Vector.add(this.getHeadPos(), killcamDir));
+        var m = Matrix.lookAt(this.getHeadPos(), Vector.add(m.gameObject.transform.position, new Vector(0, 1.8, 0)), Vector.up());
+        this.killcamDir = Vector.slerp(this.killcamDir, Matrix.getForward(m), 0.1);
+        mainCamera.transform.matrix = Matrix.lookAt(this.getHeadPos(), Vector.add(this.getHeadPos(), this.killcamDir));
       }
     }
-    else {
-      this.crouching = renderer.getKey(16);
-
-      targetHeight = this.crouching ? this.crouchHeight : this.standHeight;
-      this.height = targetHeight;
+    else if (this.state == this.STATES.PLAYING) {
+      this.targetHeight = this.crouching ? this.crouchHeight : this.standHeight;
+      this.height = this.targetHeight;
       // this.height += (targetHeight - this.height) * 0.6;
-      visualHeight += (this.height - visualHeight) * 0.4;
+      this.visualHeight += (this.height - this.visualHeight) * 0.4;
 
       if (renderer.getKeyDown(16) && this.grounded) {
         this.position.y -= 0.5;
@@ -1397,176 +1398,553 @@ function Player(pos = Vector.zero()) {
     }
   }
 
-  // bruh 200kb memory
-  this.fixedUpdate = function(dt) {
-    if (!this.dead) {
-      // this.handRotation.x += Math.sign(this.handRotation.x - this.getHeadRotation().x) * 0.01;
-      // this.handRotation.y += Math.sign(this.handRotation.y - this.getHeadRotation().y) * 0.01;
-      // this.handRotation = Vector.lerp(this.handRotation, this.getHeadRotation(), 0.8);
-      // this.handRotation = Vector.add(this.handRotation, Vector.multiply(Vector.subtract(this.getHeadRotation(), this.handRotation), 0.9));
-      this.handRotation = this.getHeadRotation();
+  fixedUpdate(dt) {
+    var inputs = {
+      forward: renderer.getKey(87),
+      back: renderer.getKey(83),
+      left: renderer.getKey(65),
+      right: renderer.getKey(68),
+      jump: renderer.getKey(32),
+      crouching: renderer.getKey(16)
+    };
 
-      // Gravity
-      this.velocity.y -= 18 * dt;
+    this.handRotation = this.getHeadRotation();
 
-      var vertical = (renderer.getKey(87) || 0) - (renderer.getKey(83) || 0);
-      var horizontal = (renderer.getKey(65) || 0) - (renderer.getKey(68) || 0);
+    this.applyInputs(inputs, dt);
+    this.simulatePhysicsStep(dt);
 
-      if (vertical || horizontal) {
-        var direction = Vector.rotateAround({
-          x: vertical,
-          y: 0,
-          z: -horizontal
-        }, {x: 0, y: 1, z: 0}, -this.rotation.y + Math.PI / 2);
-
-        if (this.grounded) {
-          direction = Vector.normalize(Vector.projectOnPlane(direction, this.realGroundNormal));
-        }
-
-        var currentAcceleration = this.runningAcceleration;//renderer.getKey(16) ? this.runningAcceleration : this.walkAcceleration;
-        currentAcceleration *= (this.grounded ? this.crouching ? 0.5 : 1 : 0.1);
-        if (this.getCurrentWeapon()) {
-          currentAcceleration *= this.getCurrentWeapon().getSpeed();
-        }
-
-        if (this.grounded) {
-          this.walkTime += currentAcceleration * this.headBobSpeed * dt;
-        }
-
-        actionQueue.push({type: "movement", time: new Date().getTime(), direction: direction, speed: this.walkSpeed, dt: dt});
-        
-        this.position = Vector.add(this.position, Vector.multiply(direction, this.walkSpeed * dt));
-        // this.velocity = Vector.add(this.velocity, Vector.multiply(direction, currentAcceleration * dt));
-      }
-      else {
-        this.walkTime += (roundNearest(this.walkTime, Math.PI) - this.walkTime) * 0.1;
-      }
-
-      // Jumping
-      if (this.grounded) {
-        groundCounter = this.coyoteTime;
-      }
-
-      if (renderer.getKeyDown(32)) {
-        jumpCounter = this.jumpBuffering;
-      }
-
-      if (renderer.getKey(32) && jumpCounter > 0 && groundCounter > 0) {
-        this.velocity.y = 6;
-        this.position.y += 0.05;
-
-        jumpCounter = 0;
-        groundCounter = 0;
-
-        actionQueue.push({type: "jump", time: new Date().getTime()});
-      }
-
-      groundCounter -= dt;
-      jumpCounter -= dt;
-
-      // Ground friction/drag
-      if (this.grounded) {
-        var projectedVelocity = Vector.projectOnPlane(this.velocity, this.fakeGroundNormal);//{x: this.velocity.x, y: 0, z: this.velocity.z};
-        var speed = Vector.length(projectedVelocity);
-        this.velocity = Vector.add(this.velocity, Vector.multiply(Vector.normalize(projectedVelocity), -speed * dt * this.friction));
-
-        // Sliding / turning
-        if (this.crouching && speed > 10) {
-          var v = Vector.rotateAround({
-            x: Vector.length(Vector.projectOnPlane(this.velocity, this.fakeGroundNormal)),
-            y: 0,
-            z: 0
-          }, this.fakeGroundNormal, -this.rotation.y + Math.PI / 2);
-          
-          this.velocity.x = v.x;
-          this.velocity.z = v.z;
-        }
-      }
-
-      this.position = Vector.add(this.position, Vector.multiply(this.velocity, dt));
-
-      Player.solveCollisions(this);
-
-      // // Extend grounded collision
-      // if (!this.grounded) {
-      //   var hit = physicsEngine.Raycast(this.position, Vector.down());
-      //   if (hit && hit.firstHit && hit.firstHit.distance < this.height / 2 + 0.01) {
-      //     this.grounded = true;
-      //     this.realGroundNormal = hit.firstHit.normal;
-
-      //     // bruh copy code
-      //     var dp = Vector.dot(Vector.up(), this.realGroundNormal);
-      //     var normal = dp > 0.8 ? Vector.up() : this.realGroundNormal;
-      //     this.fakeGroundNormal = normal;
-      //   }
-      // }
-
-      // Reset when out-of-bounds
-      if (this.position.y < -30) {
-        this.position = this.startPosition;
-        this.velocity = Vector.zero();
-      }
-
-      if (this.getCurrentWeapon()) {
-        this.getCurrentWeapon().fixedUpdate(dt);
-      }
-
-      currentFov += (targetFov - currentFov) / 3;
-      currentWeaponFov += (targetWeaponFov - currentWeaponFov) / 3;
+    if (this.getCurrentWeapon()) {
+      this.getCurrentWeapon().fixedUpdate(dt);
     }
+
+    currentFov += (targetFov - currentFov) / 3;
+    currentWeaponFov += (targetWeaponFov - currentWeaponFov) / 3;
+
+    /*
+      Send to server
+    */
+
+    var yRotation = this.rotation.y;
+
+    inputBuffer[tick] = {
+      localTime: new Date().getTime(),
+      tick,
+      inputs,
+      yRotation
+    };
+    stateBuffer[tick] = {
+      position: this.position,
+      velocity: this.velocity
+    };
+
+    sendMessage("inputs", inputBuffer[tick]);
+
+    tick++;
   }
 
-  this.clampRotation = function() {
+  clampRotation() {
     var w = this.getCurrentWeapon();
     var ro = w ? w.recoilOffset : 0;
     this.rotation.x = clamp(this.rotation.x, -Math.PI / 2 - ro.x, Math.PI / 2 - ro.x);
   }
 }
-Player.solveCollisions = function(player) {
-  player.grounded = false;
 
-  var radiusOffset = new Vector(0, player.colliderRadius, 0);
-  var playerAABB = new AABB(
-    {x: player.position.x - player.colliderRadius * 2, y: player.position.y - player.colliderRadius * 2,                 z: player.position.z - player.colliderRadius * 2},
-    {x: player.position.x + player.colliderRadius * 2, y: player.position.y + player.colliderRadius * 2 + player.height, z: player.position.z + player.colliderRadius * 2}
-  );
-  var q = physicsEngine.octree.queryAABB(playerAABB);
+// function PlayerOld(pos = Vector.zero()) {
+//   this.id = null;
+//   this.name = null;
 
-  for (var iter = 0; iter < player.collisionIterations; iter++) {
-    if (q) {
-      for (var k = 0; k < q.length; k++) {
-        if (!AABBTriangleToAABB(q[k][0], q[k][1], q[k][2], playerAABB)) { // bruh redundant?
-          continue;
-        }
+//   this.rotation = Vector.zero();
+//   this.position = pos;
+//   this.startPosition = pos;
+//   this.velocity = Vector.zero();
 
-        var col = capsuleToTriangle(
-          Vector.add(player.position, new Vector(0, player.standHeight / 2 - player.height * 0.5 + player.colliderRadius, 0)),
-          Vector.subtract(Vector.add(player.position, new Vector(0, player.standHeight / 2 + player.height / 2, 0)), radiusOffset),
-          player.colliderRadius,
-          q[k][0], q[k][1], q[k][2],
-          true
-        );
-        // var col = capsuleToTriangle(Vector.add(this.position, radiusOffset), Vector.subtract(Vector.add(this.position, new Vector(0, this.height, 0)), radiusOffset), this.colliderRadius, q[k][0], q[k][1], q[k][2], true);
+//   this.crouching = false;
+//   this.standHeight = 2;
+//   this.crouchHeight = 1.1;
+//   var targetHeight = this.standHeight;
+//   var visualHeight = this.standHeight;
+//   this.height = targetHeight;
+//   this.colliderRadius = 0.5;
+
+//   this.walkSpeed = 5;
+
+//   this.walkAcceleration = 150 * 0.3;
+//   this.runningAcceleration = 225 * 0.3;
+//   this.friction = 10;
+
+//   this.coyoteTime = 0.11;
+//   this.jumpBuffering = 0.08;
+//   this.groundCounter = 0;
+//   this.jumpCounter = 0;
+
+//   this.collisionIterations = 3;
+//   this.grounded = false;
+//   this.fakeGroundNormal = Vector.zero();
+//   this.realGroundNormal = Vector.zero();
+
+//   this.weapons = [];
+//   this.currentWeapon = 0;
+
+//   this.handRotation = this.rotation;
+
+//   this.handOffset = {x: 0.3, y: -0.25, z: -0.5};
+//   this.handRotOffset = {x: 0, y: 0.1 * 0, z: 0};
+
+//   // Head bobbing
+//   this.headBobStrength = 0.06;
+//   this.headBobSpeed = 0.25;
+//   this.walkTime = 0;
+
+//   // Health
+//   this.maxHealth = 100;
+//   var _health = this.maxHealth;
+//   Object.defineProperty(this, "health", {
+//     get: function() {
+//       return _health;
+//     },
+//     set: function(val) {
+//       _health = val;
+//       setHealth(_health / this.maxHealth);
+//     }
+//   });
+
+//   Object.defineProperty(this, "dead", {
+//     get: function() {
+//       return _health <= 0;
+//     }
+//   });
+
+//   this.killedBy = null;
+//   var killcamDir = null;
+
+//   // Kills
+//   this.kills = 0;
+//   this.deaths = 0;
+
+//   this.killStreak = 0;
+//   this.killTimer = 0;
+//   this.streakNames = ["", "Doublekill", "Triplekill", "Quadkill", "Megakill"];
+
+//   var leaderboardEntry = null;
+
+//   // this.getHandMatrix = function(t = 0) {
+//   //   var rot = this.getHeadRotation();
+//   //   var ops = [
+//   //     ["translate", Vector.add(this.position, new Vector(0, this.height - 0.1, 0))],
+//   //     ["rz", -rot.z],
+//   //     ["ry", -rot.y],
+//   //     ["rx", -rot.x],
+//   //     // ["translate", Vector.multiply(this.getCurrentWeapon().weaponObject.children[0].getChild("ADSOffset").position, -1 / 10)],
+//   //     // ["translate", {x: 0, y: 0, z: -0.1}]
+//   //     ["translate", Vector.multiply(this.handOffset, t)],
+//   //     ["rz", this.handRotOffset.z * t],
+//   //     ["ry", this.handRotOffset.y * t],
+//   //     ["rx", this.handRotOffset.x * t],
+//   //     // ["translate", adsTranslate]
+//   //   ];
+
+//   //   // ops.push(["translate", Vector.multiply({x: 0.11, y: -0.1, z: -0.2}, t)]);
+
+//   //   // ops = ops.concat([
+//   //   //   ["rz", -(this.handRotation.z - rot.z) * t],
+//   //   //   ["ry", -(this.handRotation.y - rot.y) * t],
+//   //   //   ["rx", -(this.handRotation.x - rot.x) * t]
+//   //   // ]);
+
+//   //   var m = Matrix.transform(ops);
+
+//   //   var adsObject = this.getCurrentWeapon().weaponObject.getChild("ADSOffset", true);
+//   //   if (adsObject && t < 0.5) {
+//   //     // var weaponMatrix = this.getCurrentWeapon().weaponObject.getWorldMatrix();
+//   //     // var adsPos = Matrix.getPosition(adsObject.getWorldMatrix());
+//   //     // var localADSOffset = Matrix.transformVector(Matrix.inverse(weaponMatrix), adsPos);
+
+//   //     // m = Matrix.transform([["translate", new Vector(0, 0, -0.15)]], m);
+//   //     var localADSOffset = Matrix.inverse(adsObject.transform.getWorldMatrix(this.getCurrentWeapon().weaponObject));
+//   //     localADSOffset[12] *= 0.1;
+//   //     localADSOffset[13] *= 0.1;
+//   //     localADSOffset[14] *= 0.1;
+//   //     Matrix.setRotation(localADSOffset, Matrix.identity());
+//   //     m = Matrix.multiply(m, localADSOffset);
+
+//   //     // adsTranslate = Vector.add(Vector.multiply(localADSOffset, -0.1), new Vector(0, 0, -0.15));
+//   //     // adsTranslate = Vector.multiply(adsTranslate, 1 - t);
+//   //   }
+
+//   //   return m;
+//   // }
+
+//   this.loginResponse = function(data) {
+//     this.id = data.id;
+//     this.name = data.name;
+
+//     leaderboardEntry = leaderboard.addPlayer();
+//     leaderboard.setItem(leaderboardEntry, ".name", this.name);
+//   }
+
+//   this.die = function() {
+//     this.health = 0;
+//     killcamDir = Matrix.getForward(Matrix.fromQuaternion(Quaternion.eulerVector(Vector.negate(this.getHeadRotation()))));
+
+//     deathScreen.querySelector(".player").innerText = getPlayerNameByID(this.killedBy);
+//     showElement(deathScreen);
+
+//     setTimeout(() => {
+//       this.health = this.maxHealth;
+//       hideElement(deathScreen);
+//     }, 3000);
+//   }
+
+//   this.enemyKilled = function(enemy) {
+//     this.killStreak++;
+//     this.killTimer = 3;
+//     this.kills++;
+//     showKillAlert(enemy.name, this.streakNames[Math.min(this.streakNames.length - 1, this.killStreak - 1)]);
+
+//     // if (leaderboardEntry) leaderboard.setItem(leaderboardEntry, ".kills", this.kills);
+//     killsSpans[0].innerText = this.kills + " kills";
+//     killsSpans[1].innerText = this.kills + " kills";
+//   }
+
+//   this.setWeapons = function(weapons) {
+//     this.weapons = weapons;
+
+//     for (var weapon of this.weapons) {
+//       weapon.onFire = (data) => {
+//         sendMessage("playerAction", {
+//           action: "fireWeapon",
+//           origin: data.origin,
+//           direction: data.direction,
+//           trailHealth: data.trailHealth
+//         });
+//       }
+//     }
+
+//     if (this.getCurrentWeapon()) {
+//       this.getCurrentWeapon().weaponObject.visible = true;
+//     }
+//   }
+
+//   this.getCurrentWeapon = function() {
+//     return this.weapons[this.currentWeapon];
+//   }
+
+//   this.switchWeapon = function(index) {
+//     if (this.dead) {
+//       return;
+//     }
+
+//     if (index >= 0 && index < this.weapons.length) {
+//       if (index != this.currentWeapon) {
+//         var oldWeapon = this.weapons[this.currentWeapon];
+
+//         clearTimeout(oldWeapon.fireTimeout);
+//         oldWeapon.isFiring = false;
+//         oldWeapon.cancelReload();
+//         oldWeapon.mode = oldWeapon.GunModes.DEFAULT;
+//         targetFov = defaultFov;
+
+//         this.rotation = Vector.add(this.rotation, oldWeapon.recoilOffset);
+//         oldWeapon.recoilOffset = Vector.zero();
+//         oldWeapon.recoilOffsetTarget = Vector.zero();
+
+//         if (oldWeapon.weaponObject) {
+//           oldWeapon.weaponObject.visible = false;
+//         }
         
-        if (col && !Vector.equal(col.normal, Vector.zero(), 0.001)) {
-          var dp = Vector.dot(Vector.up(), col.normal);
-          var normal = dp > 0.85 ? Vector.up() : col.normal;
-          var depth = col.depth / Vector.dot(normal, col.normal);
+//         var newWeapon = this.weapons[index];
+//         newWeapon.reloadAnimationTime = 1;
+//         newWeapon.fireAnimationTime = 1;
+//         if (newWeapon.weaponObject) {
+//           newWeapon.weaponObject.visible = true;
+//         }
+//         crosshair.type = newWeapon.crosshairType;
+//       }
+    
+//       this.currentWeapon = index;
+//     }
+//   }
 
-          player.position = Vector.add(player.position, Vector.multiply(normal, depth));
-          player.velocity = Vector.projectOnPlane(player.velocity, normal);
+//   this.getHeadPos = function() {
+//     return Vector.add(this.position, {x: 0, y: this.standHeight / 2 + visualHeight / 2 - 0.1 + Math.sin(this.walkTime) * this.headBobStrength, z: 0});
+//   }
 
-          var isGround = Vector.dot(normal, Vector.up()) > 0.7;
-          if (isGround) {
-            player.fakeGroundNormal = normal;
-            player.realGroundNormal = col.normal;
-            player.grounded = true;
-          }
-        }
-      }
-    }
-  }
-}
+//   this.getHeadRotation = function() {
+//     if (this.getCurrentWeapon()) {
+//       return Vector.add(this.rotation, this.getCurrentWeapon().recoilOffset);
+//     }
+    
+//     return this.rotation;
+//   }
+
+//   this.Fire = function() {
+//     if (!this.dead && this.getCurrentWeapon()) {
+//       this.weapons[this.currentWeapon].fire();
+//     }
+//   }
+
+//   this.update = function(dt) {
+//     if (this.dead) {
+//       // mainCamera.setFOV(20);
+//       var m = multiplayerCharacters[this.killedBy];
+//       if (m && m.gameObject) {
+//         var m = Matrix.lookAt(this.getHeadPos(), m.gameObject.transform.position, Vector.up());
+//         killcamDir = Vector.slerp(killcamDir, Matrix.getForward(m), 0.1);
+//         mainCamera.transform.matrix = Matrix.lookAt(this.getHeadPos(), Vector.add(this.getHeadPos(), killcamDir));
+//       }
+//     }
+//     else {
+//       targetHeight = this.crouching ? this.crouchHeight : this.standHeight;
+//       this.height = targetHeight;
+//       // this.height += (targetHeight - this.height) * 0.6;
+//       visualHeight += (this.height - visualHeight) * 0.4;
+
+//       if (renderer.getKeyDown(16) && this.grounded) {
+//         this.position.y -= 0.5;
+//       }
+
+//       if (this.getCurrentWeapon()) {
+//         this.getCurrentWeapon().update(dt);
+//       }
+
+//       this.clampRotation();
+
+//       mainCamera.setFOV(currentFov);
+//       weaponCamera.setFOV(currentWeaponFov);
+
+//       mainCamera.transform.rotation = Quaternion.eulerVector(Vector.negate(this.getHeadRotation()));
+//       mainCamera.transform.position = this.getHeadPos();//Vector.add(this.position, {x: 0, y: this.height - 0.1, z: 0});
+//       // mainCamera.transform.position = Vector.add(Vector.compMultiply(this.position, {x: 1, y: 1, z: -1}), {x: 0, y: 1.6, z: 0});
+
+//       weaponCamera.transform.position = mainCamera.transform.position;
+//       weaponCamera.transform.rotation = mainCamera.transform.rotation;
+
+//       // var rot = this.getHeadRotation();
+//       // var m = Matrix.transform([
+//       //   ["translate", this.getHeadPos()],
+//       //   ["rz", -rot.z],
+//       //   ["ry", -rot.y],
+//       //   ["rx", -rot.x]
+//       // ]);
+//       // audioListener.setDirection(Matrix.getForward(m), Vector.up());
+//       // audioListener.setPosition(this.position);
+
+//       this.killTimer -= dt;
+//       if (this.killTimer <= 0) {
+//         this.killStreak = 0;
+//       }
+//     }
+//   }
+
+//   // bruh 200kb memory
+//   this.fixedUpdate = function(dt) {
+//     if (!this.dead) {
+//       var inputs = {
+//         forward: renderer.getKey(87),
+//         back: renderer.getKey(83),
+//         left: renderer.getKey(65),
+//         right: renderer.getKey(68),
+//         jump: renderer.getKey(32),
+//         crouching: renderer.getKey(16)
+//       };
+
+//       // this.handRotation.x += Math.sign(this.handRotation.x - this.getHeadRotation().x) * 0.01;
+//       // this.handRotation.y += Math.sign(this.handRotation.y - this.getHeadRotation().y) * 0.01;
+//       // this.handRotation = Vector.lerp(this.handRotation, this.getHeadRotation(), 0.8);
+//       // this.handRotation = Vector.add(this.handRotation, Vector.multiply(Vector.subtract(this.getHeadRotation(), this.handRotation), 0.9));
+//       this.handRotation = this.getHeadRotation();
+
+//       Player.applyInputs(this, inputs, dt);
+//       this.simulatePhysicsStep(dt);
+
+//       if (this.getCurrentWeapon()) {
+//         this.getCurrentWeapon().fixedUpdate(dt);
+//       }
+
+//       /*
+//         Send to server
+//       */
+
+//       var yRotation = this.rotation.y;
+
+//       inputBuffer[tick] = {
+//         tick,
+//         inputs,
+//         yRotation
+//       };
+//       stateBuffer[tick] = {
+//         position: this.position,
+//         velocity: this.velocity
+//       };
+
+//       sendMessage("inputs", inputBuffer[tick]);
+
+//       tick++;
+//     }
+//   }
+
+//   this.simulatePhysicsStep = function(dt) {
+//     // Gravity
+//     this.velocity.y -= 18 * dt;
+
+//     // Jumping
+//     if (this.grounded) {
+//       player.groundCounter = this.coyoteTime;
+//     }
+
+//     player.groundCounter -= dt;
+//     player.jumpCounter -= dt;
+
+//     // Ground friction/drag
+//     if (this.grounded) {
+//       var projectedVelocity = Vector.projectOnPlane(this.velocity, this.fakeGroundNormal);//{x: this.velocity.x, y: 0, z: this.velocity.z};
+//       var speed = Vector.length(projectedVelocity);
+//       this.velocity = Vector.add(this.velocity, Vector.multiply(Vector.normalize(projectedVelocity), -speed * dt * this.friction));
+
+//       // Sliding / turning
+//       if (this.crouching && speed > 10) {
+//         var v = Vector.rotateAround({
+//           x: Vector.length(Vector.projectOnPlane(this.velocity, this.fakeGroundNormal)),
+//           y: 0,
+//           z: 0
+//         }, this.fakeGroundNormal, -this.rotation.y + Math.PI / 2);
+        
+//         this.velocity.x = v.x;
+//         this.velocity.z = v.z;
+//       }
+//     }
+
+//     this.position = Vector.add(this.position, Vector.multiply(this.velocity, dt));
+
+//     Player.solveCollisions(this);
+
+//     // // Extend grounded collision
+//     // if (!this.grounded) {
+//     //   var hit = physicsEngine.Raycast(this.position, Vector.down());
+//     //   if (hit && hit.firstHit && hit.firstHit.distance < this.height / 2 + 0.01) {
+//     //     this.grounded = true;
+//     //     this.realGroundNormal = hit.firstHit.normal;
+
+//     //     // bruh copy code
+//     //     var dp = Vector.dot(Vector.up(), this.realGroundNormal);
+//     //     var normal = dp > 0.8 ? Vector.up() : this.realGroundNormal;
+//     //     this.fakeGroundNormal = normal;
+//     //   }
+//     // }
+
+//     // Reset when out-of-bounds
+//     if (this.position.y < -30) {
+//       this.position = this.startPosition;
+//       this.velocity = Vector.zero();
+//     }
+
+//     currentFov += (targetFov - currentFov) / 3;
+//     currentWeaponFov += (targetWeaponFov - currentWeaponFov) / 3;
+//   }
+
+//   this.clampRotation = function() {
+//     var w = this.getCurrentWeapon();
+//     var ro = w ? w.recoilOffset : 0;
+//     this.rotation.x = clamp(this.rotation.x, -Math.PI / 2 - ro.x, Math.PI / 2 - ro.x);
+//   }
+// }
+// Player.applyInputs = function(player, inputs, dt) {
+//   var vertical = (inputs.forward || 0) - (inputs.back || 0);
+//   var horizontal = (inputs.left || 0) - (inputs.right || 0);
+
+//   if (vertical || horizontal) {
+//     var direction = Vector.rotateAround({
+//       x: vertical,
+//       y: 0,
+//       z: -horizontal
+//     }, {x: 0, y: 1, z: 0}, -player.rotation.y + Math.PI / 2);
+
+//     if (player.grounded) {
+//       direction = Vector.normalize(Vector.projectOnPlane(direction, player.realGroundNormal));
+//     }
+
+//     var currentAcceleration = player.runningAcceleration;//renderer.getKey(16) ? this.runningAcceleration : this.walkAcceleration;
+//     currentAcceleration *= (player.grounded ? player.crouching ? 0.5 : 1 : 0.1);
+//     if (player.getCurrentWeapon()) {
+//       currentAcceleration *= player.getCurrentWeapon().getSpeed();
+//     }
+
+//     if (player.grounded) {
+//       player.walkTime += currentAcceleration * player.headBobSpeed * dt;
+//     }
+
+//     // actionQueue.push({type: "movement", time: new Date().getTime(), direction: direction, speed: this.walkSpeed, dt: dt});
+    
+//     player.position = Vector.add(player.position, Vector.multiply(direction, player.walkSpeed * dt));
+//     // player.velocity = Vector.add(player.velocity, Vector.multiply(direction, currentAcceleration * dt));
+//   }
+//   else {
+//     player.walkTime += (roundNearest(player.walkTime, Math.PI) - player.walkTime) * 0.1;
+//   }
+
+//   // Jumping
+//   // if (renderer.getKeyDown(32)) {
+//   if (inputs.jump) {
+//     player.jumpCounter = player.jumpBuffering;
+//   }
+
+//   if (inputs.jump && player.jumpCounter > 0 && player.groundCounter > 0) {
+//     player.velocity.y = 6;
+//     player.position.y += 0.05;
+
+//     player.jumpCounter = 0;
+//     player.groundCounter = 0;
+//   }
+
+//   // Crouching
+//   player.crouching = inputs.crouching;
+// }
+
+// Player.solveCollisions = function(player) {
+//   player.grounded = false;
+
+//   var radiusOffset = new Vector(0, player.colliderRadius, 0);
+//   var playerAABB = new AABB(
+//     {x: player.position.x - player.colliderRadius * 2, y: player.position.y - player.colliderRadius * 2,                 z: player.position.z - player.colliderRadius * 2},
+//     {x: player.position.x + player.colliderRadius * 2, y: player.position.y + player.colliderRadius * 2 + player.height, z: player.position.z + player.colliderRadius * 2}
+//   );
+//   var q = physicsEngine.octree.queryAABB(playerAABB);
+
+//   for (var iter = 0; iter < player.collisionIterations; iter++) {
+//     if (q) {
+//       for (var k = 0; k < q.length; k++) {
+//         if (!AABBTriangleToAABB(q[k][0], q[k][1], q[k][2], playerAABB)) { // bruh redundant?
+//           continue;
+//         }
+
+//         var col = capsuleToTriangle(
+//           Vector.add(player.position, new Vector(0, player.standHeight / 2 - player.height * 0.5 + player.colliderRadius, 0)),
+//           Vector.subtract(Vector.add(player.position, new Vector(0, player.standHeight / 2 + player.height / 2, 0)), radiusOffset),
+//           player.colliderRadius,
+//           q[k][0], q[k][1], q[k][2],
+//           true
+//         );
+//         // var col = capsuleToTriangle(Vector.add(this.position, radiusOffset), Vector.subtract(Vector.add(this.position, new Vector(0, this.height, 0)), radiusOffset), this.colliderRadius, q[k][0], q[k][1], q[k][2], true);
+        
+//         if (col && !Vector.equal(col.normal, Vector.zero(), 0.001)) {
+//           var dp = Vector.dot(Vector.up(), col.normal);
+//           var normal = dp > 0.85 ? Vector.up() : col.normal;
+//           var depth = col.depth / Vector.dot(normal, col.normal);
+
+//           player.position = Vector.add(player.position, Vector.multiply(normal, depth));
+//           player.velocity = Vector.projectOnPlane(player.velocity, normal);
+
+//           var isGround = Vector.dot(normal, Vector.up()) > 0.7;
+//           if (isGround) {
+//             player.fakeGroundNormal = normal;
+//             player.realGroundNormal = col.normal;
+//             player.grounded = true;
+//           }
+//         }
+//       }
+//     }
+//   }
+// }
 
 function MultiplayerCharacter(gameObject) {
   this.id = -1;
@@ -1582,7 +1960,7 @@ function MultiplayerCharacter(gameObject) {
         // console.log(data);
 
         this.gameObject.transform.position = data.position;
-        this.gameObject.transform.rotation = Quaternion.euler(0, -data.angle + Math.PI, 0);
+        this.gameObject.transform.rotation = Quaternion.euler(0, -data.rotation.y + Math.PI, 0);
       }
     }
   }
@@ -1635,7 +2013,7 @@ function MultiplayerCharacter(gameObject) {
         }
 
         var sub = Vector.subtract(neighbors[0].data.position, neighbors[1].data.position);
-        var forward = Vector.rotateAround({x: 0, y: 0, z: 1}, Vector.up(), lerpedData.angle + Math.PI);
+        var forward = Vector.rotateAround({x: 0, y: 0, z: 1}, Vector.up(), lerpedData.yRotation + Math.PI);
         var speed = Vector.length({x: sub.x, y: 0, z: sub.z}) / ((neighbors[0].timestamp - neighbors[1].timestamp) / 1000) / 4;
         lerpedData.currentSpeed = speed * Math.sign(Vector.dot(forward, sub));
 
@@ -1699,10 +2077,10 @@ function CaptureZone(position = Vector.zero(), zoneInstance) {
       this.gameObject = scene.add(zoneInstance.copy());
     }
     else {
-      this.gameObject = scene.add(await renderer.loadGLTF("./assets/models/captureZone.glb"));
+      this.gameObject = scene.add(await renderer.loadGLTF("../assets/models/captureZone.glb"));
       this.gameObject.children[0].castShadows = false;
 
-      var zoneProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/captureZone"));
+      var zoneProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/captureZone"));
       var mat = this.gameObject.children[0].meshRenderer.materials[0] = new renderer.Material(zoneProgram);
       mat.setUniform("color", [5, 5, 5]);
       mat.doubleSided = true;
@@ -1721,7 +2099,7 @@ function CaptureZone(position = Vector.zero(), zoneInstance) {
   this.update = function(dt) {
     var playerTeam = player.team ?? 1;
 
-    if (Vector.distanceSqr(player.position, this.gameObject.transform.position) < this.radius * this.radius) {
+    if (player.isPlaying && Vector.distanceSqr(player.position, this.gameObject.transform.position) < this.radius * this.radius) {
       if (this.noTeamHolding()) {
         if (teamHoldingTimer == playerTeam) {
           this.timer += this.captureSpeed * dt;
@@ -1931,8 +2309,28 @@ function Leaderboard(element) {
     return clone;
   }
 
+  this.incrementPlayerStat = function(playerName, stat, inc = 1) {
+    var row = this.getPlayerRow(playerName);
+    this.setItem(row, stat, parseFloat(this.getItem(row, stat)) + inc);
+  }
+
+  this.setPlayerStat = function(playerName, stat, value) {
+    var row = this.getPlayerRow(playerName);
+    this.setItem(row, stat, value);
+  }
+
+  this.getPlayerRow = function(playerName) {
+    var xpath = `//span[text()='${playerName}']`;
+    var matchingElement = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+    return matchingElement.parentElement;
+  }
+
   this.setItem = function(element, selector, value) {
     element.querySelector(selector).innerText = value;
+  }
+
+  this.getItem = function(element, selector) {
+    return element.querySelector(selector).innerText;
   }
 
   this.show = function() {
@@ -2040,6 +2438,13 @@ function showKillAlert(player, special = "") {
   }, 2000);
 }
 
+window.flashButton = function(element) {
+  element.classList.remove("flashButton");
+  setTimeout(function() {
+    element.classList.add("flashButton");
+  });
+}
+
 // WebSocket
 function sendMessage(type, data = null) {
   if (ws.readyState == ws.OPEN) {
@@ -2086,6 +2491,18 @@ function websocketOnMessage(msg) {
           console.error("Error loggin in!");
         }
       }
+      else if (parsed.type == "deploy") {
+        if (parsed.data.status == "success") {
+          player.state = player.STATES.PLAYING;
+        }
+        else {
+          console.error("Could not deploy!");
+          lobbyUI.querySelector(".navigation").classList.remove("slideOut");
+        }
+      }
+      else if (parsed.type == "gotoLobby") {
+        player.gotoLobby();
+      }
       else if (parsed.type == "playerAction") {
         // console.log(parsed);
         if (parsed.data.action == "joined") {
@@ -2121,6 +2538,9 @@ function websocketOnMessage(msg) {
           killer: getPlayerNameByID(parsed.data.killer),
           killed: getPlayerNameByID(parsed.data.killed)
         });
+
+        leaderboard.incrementPlayerStat(getPlayerNameByID(parsed.data.killer), ".kills", 1);
+        leaderboard.incrementPlayerStat(getPlayerNameByID(parsed.data.killed), ".deaths", 1);
       }
       else if (parsed.type == "getAllPlayers") {
         //if (!snapshotHistory[snapshotHistory.length - 1] || new Date(parsed.timestamp) > snapshotHistory[snapshotHistory.length - 1].serverTimestamp) {
@@ -2137,7 +2557,7 @@ function websocketOnMessage(msg) {
               found.name = entity.name;
               multiplayerCharacters[entity.id] = found;
 
-              var enemy = new Enemy(gameObject);
+              var enemy = new Enemy(gameObject, found.name);
               enemy.onDeath = () => {
                 sendMessage("killPlayer", {
                   clientID: found.id
@@ -2157,7 +2577,7 @@ function websocketOnMessage(msg) {
                 serverTimestamp: new Date(parsed.serverTimestamp),
                 // timestamp: parsed.serverTimestamp,
                 rawTimestamp: t,
-                timestamp: new Date(parsed.serverTimestamp),//new Date(t),
+                timestamp: new Date(t),
                 data: entity.data
               });
 
@@ -2171,20 +2591,94 @@ function websocketOnMessage(msg) {
       else if (parsed.type == "getSelf") {
         var dt = physicsEngine.dt;
 
-        var playerCopy = {
-          colliderRadius: 0.5,
-          standHeight: 2,
-          height: 2,
-          collisionIterations: 3,
+        var playerCopy = new PlayerPhysicsBase(player.startPosition);
+        playerCopy.physicsEngine = physicsEngine;
+        playerCopy.position = {...parsed.data.gameData.position},
+        playerCopy.velocity = {...parsed.data.gameData.velocity},
+        playerCopy.grounded = parsed.data.gameData.isGrounded;
 
-          position: {...parsed.data.gameData.position},
-          velocity: {...parsed.data.gameData.velocity},
-          grounded: parsed.data.gameData.isGrounded
+        // var playerCopy = {
+        //   colliderRadius: 0.5,
+        //   standHeight: 2,
+        //   height: 2,
+        //   collisionIterations: 3,
+        //   walkSpeed: 5,
+        //   friction: 10,
+
+        //   fakeGroundNormal: Vector.up(),
+        //   realGroundNormal: Vector.up(),
+
+        //   coyoteTime: 0.11,
+        //   jumpBuffering: 0.08,
+        //   groundCounter: 0,
+        //   jumpCounter: 0,
+
+        //   position: {...parsed.data.gameData.position},
+        //   velocity: {...parsed.data.gameData.velocity},
+        //   grounded: parsed.data.gameData.isGrounded
+        // }
+
+        var positionError = Vector.distance(stateBuffer[parsed.data.lastProcessedTick].position, playerCopy.position);
+        if (positionError > 0.0001) {
+          for (var rewindTick = parsed.data.lastProcessedTick + 1; rewindTick < tick; rewindTick++) {
+            var inputs = inputBuffer[rewindTick];
+
+            stateBuffer[rewindTick].position = playerCopy.position;
+            stateBuffer[rewindTick].velocity = playerCopy.velocity;
+
+            playerCopy.rotation.y = inputs.yRotation;
+            playerCopy.applyInputs(inputs.inputs, dt);
+            playerCopy.simulatePhysicsStep(dt);
+
+            // applyInputs(playerCopy, inputs.inputs, inputs.yRotation, dt);
+            // runSimulation(dt);
+          }
+
+          var smoothing = true;
+          if (smoothing) {
+            player.position = Vector.lerp(player.position, playerCopy.position, 0.5);
+          }
+          else {
+            player.position = playerCopy.position;
+          }
+
+          player.velocity = playerCopy.velocity;
+          player.grounded = playerCopy.grounded;
         }
 
-        // player.position = playerCopy.position;
-        // player.velocity = playerCopy.velocity;
-        // return;
+        return;
+
+        function applyInputs(playerObject, inputs, yRotation, dt) {
+          var vertical = (inputs.forward || 0) - (inputs.back || 0);
+          var horizontal = (inputs.left || 0) - (inputs.right || 0);
+
+          if (vertical || horizontal) {
+            var direction = Vector.rotateAround({
+              x: vertical,
+              y: 0,
+              z: -horizontal
+            }, {x: 0, y: 1, z: 0}, -yRotation + Math.PI / 2);
+
+            if (playerObject.grounded) {
+              direction = Vector.normalize(Vector.projectOnPlane(direction, playerObject.realGroundNormal));
+            }
+
+            playerObject.position = Vector.add(playerObject.position, Vector.multiply(direction, playerObject.walkSpeed * dt));
+          }
+
+          // Jumping
+          if (inputs.jump) {
+            playerCopy.jumpCounter = playerCopy.jumpBuffering;
+          }
+
+          if (inputs.jump && playerCopy.jumpCounter > 0 && playerCopy.groundCounter > 0) {
+            playerCopy.velocity.y = 6;
+            playerCopy.position.y += 0.05;
+
+            playerCopy.jumpCounter = 0;
+            playerCopy.groundCounter = 0;
+          }
+        }
 
         function solveCollision() {
           Player.solveCollisions(playerCopy);
@@ -2194,6 +2688,32 @@ function websocketOnMessage(msg) {
           // for (var k = 0; k < CORRECTION_SIM_STEPS; k++) {
             playerCopy.velocity.y -= 18 * dt;
 
+            // Jumping
+            if (playerCopy.grounded) {
+              playerCopy.groundCounter = playerCopy.coyoteTime;
+            }
+
+            playerCopy.groundCounter -= dt;
+            playerCopy.jumpCounter -= dt;
+
+            if (playerCopy.grounded) {
+              var projectedVelocity = Vector.projectOnPlane(playerCopy.velocity, playerCopy.fakeGroundNormal);//{x: this.velocity.x, y: 0, z: this.velocity.z};
+              var speed = Vector.length(projectedVelocity);
+              playerCopy.velocity = Vector.add(playerCopy.velocity, Vector.multiply(Vector.normalize(projectedVelocity), -speed * dt * playerCopy.friction));
+          
+              // // Sliding / turning
+              // if (this.crouching && speed > 10) {
+              //   var v = Vector.rotateAround({
+              //     x: Vector.length(Vector.projectOnPlane(this.velocity, this.fakeGroundNormal)),
+              //     y: 0,
+              //     z: 0
+              //   }, this.fakeGroundNormal, -this.rotation.y + Math.PI / 2);
+                
+              //   this.velocity.x = v.x;
+              //   this.velocity.z = v.z;
+              // }
+            }
+
             solveCollision();
 
             playerCopy.position = Vector.add(playerCopy.position, Vector.multiply(playerCopy.velocity, dt));
@@ -2201,20 +2721,22 @@ function websocketOnMessage(msg) {
         }
 
         function simulateToTime(tStart, tEnd) {
-          var t = tStart;
-          while (t < tEnd) {
-            runSimulation(dt);
-            t += dt * 1000;
+          if (tEnd > tStart) {
+            var t = tStart;
+            while (t < tEnd) {
+              runSimulation(dt);
+              t += dt * 1000;
 
-            if (t > tEnd) {
-              t -= dt * 1000;
-              break;
+              if (t > tEnd) {
+                t -= dt * 1000;
+                break;
+              }
             }
-          }
 
-          var leftOverTime = tEnd - t;
-          if (leftOverTime > 0) {
-            runSimulation(leftOverTime / 1000);
+            var leftOverTime = tEnd - t;
+            if (leftOverTime > 0) {
+              runSimulation(leftOverTime / 1000);
+            }
           }
         }
 
@@ -2222,9 +2744,9 @@ function websocketOnMessage(msg) {
         
         // console.log(queues);
 
-        console.log("Start", "-------------", parsed.data.lastActionId, queues.length);
+        // console.log("Start", "-------------", parsed.data.lastActionId, queues.length);
 
-        var lastTime = new Date(parsed.data.serverTime).getTime();;//queues[parsed.data.lastActionId][0] ? queues[parsed.data.lastActionId][0].time : new Date(parsed.data.serverTime).getTime();//queues[parsed.data.lastActionId][0].time;// = new Date(parsed.data.serverTime).getTime();
+        var lastTime = new Date(parsed.data.currentSimTime).getTime();;//queues[parsed.data.lastActionId][0] ? queues[parsed.data.lastActionId][0].time : new Date(parsed.data.serverTime).getTime();//queues[parsed.data.lastActionId][0].time;// = new Date(parsed.data.serverTime).getTime();
         for (var i = parsed.data.lastActionId + 1; i < queues.length; i++) {
           var currentActionQueue = queues[i];
 
@@ -2255,6 +2777,8 @@ function websocketOnMessage(msg) {
                 playerCopy.position.y += 0.05;
                 playerCopy.grounded = false;
               }
+
+              // console.log(action.type, actionQueue);
 
               // collision detection + resolve
               solveCollision();
@@ -2301,7 +2825,7 @@ function websocketOnMessage(msg) {
         console.log("I got hit by " + parsed.data.by);
       }
     }
-   }, SIMULATED_PING());
+  }, SIMULATED_PING());
 }
 
 function displayWSError() {
@@ -2334,18 +2858,18 @@ function SetupEvents() {
   // }
 
   renderer.on("mousedown", function(e) {
-    if (running) {
-      renderer.lockPointer();
+    if (running && player) {
+      if (player.isPlaying) {
+        renderer.lockPointer();
+      }
 
       if (renderer.isPointerLocked()) {
         switch (e.button) {
           case 0:
-            if (player) {
-              player.Fire();
-            }
+            player.Fire();
             break;
           case 2:
-            if (player && !player.dead && player.getCurrentWeapon()) {
+            if (player.isPlaying && player.getCurrentWeapon()) {
               player.getCurrentWeapon().ADS();
             }
             break;
@@ -2368,7 +2892,7 @@ function SetupEvents() {
     if (running) {
       switch (e.button) {
         case 2:
-          if (player && !player.dead && player.getCurrentWeapon()) {
+          if (player && player.isPlaying && player.getCurrentWeapon()) {
             player.getCurrentWeapon().unADS();
           }
           break;
@@ -2379,7 +2903,7 @@ function SetupEvents() {
   var lastMovement = {x: 0, y: 0};
 
   renderer.on("mousemove", function(e) {
-    if (running && player && !player.dead && renderer.isPointerLocked()) {
+    if (running && player && player.isPlaying && renderer.isPointerLocked()) {
       var currentWeapon = player.getCurrentWeapon();
       var weaponSens = currentWeapon ? currentWeapon.getCurrentSensitivity() : 1;
 
@@ -2397,7 +2921,7 @@ function SetupEvents() {
 
   renderer.on("keydown", function(e) {
     if (running) {
-      if (player && !player.dead) {
+      if (player && player.isPlaying) {
         if (player.getCurrentWeapon() && e.keyCode == 82) {
           player.getCurrentWeapon().reload();
         }
@@ -2426,7 +2950,7 @@ function SetupEvents() {
 
   document.onwheel = function(e) {
     if (running) {
-      if (player && !player.dead && canScroll) {
+      if (player && player.isPlaying && canScroll) {
         function wrapAround(t, m) {
           return (m + t) % m;
         }
