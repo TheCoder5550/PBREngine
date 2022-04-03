@@ -8,6 +8,7 @@
 
   <link rel="preconnect" href="https://fonts.gstatic.com">
   <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 
   <link rel="stylesheet" href="style.css">
 </head>
@@ -16,9 +17,9 @@
     <h1>Long Game Title</h1>
     <div class="navigation">
       <div>
-        <a href="#">Loadout</a>
-        <a href="#">Shop</a>
-        <a href="#">Item</a>
+        <a onclick="openLoadout()" href="#" class="glass">Loadout</a>
+        <!-- <a href="#" class="glass">Shop</a>
+        <a href="#" class="glass">Item</a> -->
       </div>
       <div>
         <input id="username" placeholder="Username" />
@@ -26,6 +27,56 @@
       </div>
     </div>
   </div>
+
+  <div class="loadout UI hidden">
+    <button onclick="closeLoadout()" class="backButton glass">Back</button>
+    <div>
+      <div class="classSelect">
+      </div>
+      <div class="classContainer">
+        <span class="className">Class Name</span>
+        <div class="weapons">
+          <div class="slot">
+            <span>Primary weapon</span>
+          </div>
+          <div class="slot">
+            <span>Secondary weapon</span>
+          </div>
+        </div>
+        <button class="selectClass">Select class</button>
+      </div>
+    </div>
+  </div>
+
+  <template id="weaponTemplate">
+    <div class="weapon">
+      <img class="weaponImage" src="https://via.placeholder.com/128/128" />
+      <div>
+        <span class="weaponTitle">Wepaon name</span>
+        <div class="statGrid">
+          <span>
+            <span class="material-icons">replay</span>
+            <span class="reloadTimeStat">0</span>
+            s
+          </span>
+          <span>
+            <img src="../assets/textures/bullets.png" />
+            <span class="magSizeStat">0</span>
+            r
+          </span>
+          <span>
+            <img src="../assets/textures/damageIcon.png" />
+            <span class="damageStat">0</span>
+          </span>
+          <span>
+            <img src="../assets/textures/firerateIcon.png" />
+            <span class="firerateStat">0</span>
+            r/s
+          </span>
+        </div>
+      </div>
+    </div>
+  </template>
 
   <div class="gameUI hidden">
     <div class="bottomLeft">

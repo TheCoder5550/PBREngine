@@ -5,7 +5,7 @@ layout (location = 0) out vec4 fragColor;
 
 in vec2 vUV;
 
-uniform vec3 color;
+uniform vec3 zoneColor;
 
 void main() {
   float x = mod(vUV.x * 30., 1.);
@@ -13,6 +13,6 @@ void main() {
     discard;
   }
 
-  fragColor = vec4(mix(color, color * 10., pow(vUV.y, 8.)), vUV.y);
+  fragColor = vec4(mix(zoneColor, zoneColor * 10., pow(vUV.y, 8.)), vUV.y);
   return;
 }

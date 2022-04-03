@@ -8,6 +8,7 @@ import Vector from "../engine/vector.mjs";
 import Quaternion from "../engine/quaternion.mjs";
 import Matrix from "../engine/matrix.mjs";
 import {
+  roundToPlaces,
   mapValue,
   clamp,
   lerp,
@@ -17,7 +18,8 @@ import {
   hideElement,
   showElement,
   roundNearest,
-  resetAnimations
+  resetAnimations,
+  cloneTemplate
 } from "../engine/helper.mjs";
 import {
   AABBToAABB,
@@ -44,13 +46,30 @@ var perlin = new Perlin();
 
 https://wickedengine.net/2020/04/26/capsule-collision-detection/
 
+Multiplayer:
+https://github.com/MFatihMAR/Game-Networking-Resources
+https://developer.valvesoftware.com/wiki/Source_Multiplayer_Networking
+https://www.gabrielgambetta.com/client-side-prediction-server-reconciliation.html
+https://www.codersblock.org/blog/client-side-prediction-in-unity-2018
+https://github.com/spectre1989/unity_physics_csp/blob/d0a1f2e5642e5833d373d8b2c1ce2ac5eb438b3b/Assets/Logic.cs#L314
+https://gafferongames.com/post/networked_physics_2004/
+
+Database security:
+https://www.vaadata.com/blog/how-to-securely-store-passwords-in-database/
+
+Inspiration:
+https://www.youtube.com/watch?v=flf20FZHT3M&t=8s
+
+
 */
 
 /* HTML */
 
 // var fc = new FakeConsole();
 
-var LS_USERNAME = "com.tc5550.webgl.username";
+var LS_BASE = "com.tc5550.webgl";
+var LS_USERNAME = LS_BASE + ".username";
+var LS_SELECTEDCLASS = LS_BASE + ".selectedClass";
 
 console.log("Page loaded");
 
@@ -63,6 +82,15 @@ usernameInput.value = localStorage.getItem(LS_USERNAME);
 usernameInput.addEventListener("input", function() {
   localStorage.setItem(LS_USERNAME, usernameInput.value);
 });
+
+var loadoutUI = document.querySelector(".loadout");
+var selectClassButton = loadoutUI.querySelector(".selectClass");
+selectClassButton.addEventListener("click", function() {
+  var c = selectClassButton.getAttribute("data-targetClass");
+  if (c) {
+    selectClass(c);
+  }
+})
 
 var gameUI = document.querySelector(".gameUI");
 
@@ -175,7 +203,7 @@ if (false) {
 
 /* ---------------------------------------- */
 
-var running = false;
+var running = true;
 var disconnected = false;
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -183,14 +211,15 @@ const urlParams = new URLSearchParams(window.location.search);
 
 // Settings
 var LERP_DELAY = 200 * 3;
-var SERVER_SEND_FPS = 15;
+var SERVER_SEND_FPS = 5;
 // var CORRECTION_SIM_STEPS = 5;
-var SIMULATED_PING = () => 0;//Math.random() * 30 + 30;
+var SIMULATED_PING = () => Math.random() * 50 + 50;
 //
 
 var ws;
 var stateBuffer = [];
 var inputBuffer = [];
+var inputsToSend = [];
 var tick = 0;
 
 // var actionQueue = [];
@@ -227,6 +256,8 @@ var currentWeaponFov = defaultWeaponFov;
 var crosshair = new Crosshair();
 window.hitmarker = new Hitmarker();
 window.player = null;
+var classes;
+var selectedClass;
 window.enemies = [];
 
 // var physicsEngine = new PhysicsEngine(scene, new AABB({x: -100, y: -50.33, z: -150}, {x: 100, y: 50, z: 300})); // city collider size 
@@ -268,12 +299,12 @@ async function setup() {
   console.time("loadEnvironment");
   // scene.skyboxVisible = false;
   // scene.smoothSkybox = true;
-  scene.environmentIntensity = 0.4;
-  scene.sunIntensity = Vector.fill(4);
+  scene.environmentIntensity = 0.9//0.4;
+  scene.sunIntensity = Vector.fill(5);
   renderer.add(scene);
   // await scene.loadEnvironment();
-  // await scene.loadEnvironment({ hdrFolder: "./assets/hdri/sky_only" });
-  await scene.loadEnvironment({ hdrFolder: "../assets/hdri/wide_street_01_1k_precomputed" });
+  await scene.loadEnvironment({ hdrFolder: "../assets/hdri/sky_only" });
+  // await scene.loadEnvironment({ hdrFolder: "../assets/hdri/wide_street_01_1k_precomputed" });
   console.timeEnd("loadEnvironment");
 
   window.glDebugger = new GLDebugger();
@@ -306,7 +337,7 @@ async function setup() {
   var reddotMaterial = new renderer.Material(reddotProgram);
   reddotMaterial.setUniform("albedoTexture", reddotTexture);
   reddotMaterial.setUniform("textureScale", 0.2);
-  reddotMaterial.setUniform("color", [20, 0.1, 0.1]);
+  reddotMaterial.setUniform("scopeColor", [20, 0.1, 0.1]);
 
   var foliageMat = new renderer.Material(foliage);
   foliageMat.doubleSided = true;
@@ -350,13 +381,13 @@ async function setup() {
   // var mapCollider = await renderer.loadGLTF("../assets/models/city/collider.glb");
   // var map = scene.add(await renderer.loadGLTF("../assets/models/test/playerArea.glb"));
   // var mapCollider = await renderer.loadGLTF("../assets/models/test/playerArea.glb");
-  var map = await renderer.loadGLTF("../assets/models/gunTestRoom/gunTestRoom.glb", { loadMaterials: true, maxTextureSize: 1024 });
+  var map = await renderer.loadGLTF("../assets/models/maps/1/model.glb", { loadMaterials: true, maxTextureSize: 1024 });
   // scene.add(renderer.BatchGameObject(map));
   scene.add(map);
   // map.getChild("Plane").meshRenderer.materials[0].setUniform("doNoTiling", 1);
 
   loadingStatus.innerText = "Generating collider";
-  var mapCollider = await renderer.loadGLTF("../assets/models/gunTestRoom/collider.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
+  var mapCollider = await renderer.loadGLTF("../assets/models/maps/1/model.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
 
   physicsEngine = new PhysicsEngine(scene);
   physicsEngine.addMeshCollider(mapCollider);
@@ -553,7 +584,7 @@ async function setup() {
   loadingStatus.innerText = "Loading weapons";
 
   var weaponModels = {
-    pistol: scene.add(await renderer.loadGLTF("../assets/models/pistolSuppressor.glb", {gameObjectOptions: {castShadows: false}})),
+    pistol: scene.add(await renderer.loadGLTF("../assets/models/weapons/pistolSuppressor.glb", {gameObjectOptions: {castShadows: false}})),
     AK12: scene.add(await renderer.loadGLTF("../assets/models/weapons/AK12.glb", { gameObjectOptions: {castShadows: false}})),
     sniper: scene.add(renderer.BatchGameObject(await renderer.loadGLTF("../assets/models/weapons/sniper.glb", {gameObjectOptions: {castShadows: false}}))),
 
@@ -562,17 +593,20 @@ async function setup() {
     // sks: scene.add(await renderer.loadGLTF("../assets/models/sks.glb", { loadMaterials: false, gameObjectOptions: {castShadows: false}}))
   };
 
-  // for (var key in weaponModels) {
-  //   var w = weaponModels[key];
-  //   w.setLayer(1, true);
-  //   w.visible = false;
+  for (var key in weaponModels) {
+    var w = weaponModels[key];
+    w.setLayer(1, true);
+    w.visible = false;
 
-  //   // Red dot
-  //   var s = w.getChild("Reddot", true);
-  //   if (s) {
-  //     s.meshRenderer.materials[0] = reddotMaterial;
-  //   }
-  // }
+    // Red dot
+    var s = w.getChild("Reddot", true);
+    if (s) {
+      s.meshRenderer.materials[0] = reddotMaterial;
+    }
+  }
+
+  // weaponModels.shotgun.transform.rotation = Quaternion.euler(0, Math.PI, 0);
+  weaponModels.shotgun.animationController.speed = 2.5;
   
   for (var animation of weaponModels.pistol.animationController.animations) {
     if (animation.name.indexOf("Reload") != -1) {
@@ -589,8 +623,6 @@ async function setup() {
   // ak47.children[0].transform.rotation = Quaternion.euler(0, Math.PI, 0);
   // ak47.transform.scale = Vector.fill(2 / 20);
   // ak47.animationController.speed = 2.5;
-
-  // shotgun.animationController.speed = 2.5;
 
   /*
     Weapon settings
@@ -613,6 +645,7 @@ async function setup() {
       var w = new Weapon({
         weaponObject: weaponModels.AK12,
         scope: scopes.reddot,
+        weaponModelOffset: new Vector(-0.1, 0, 0),
         weaponModelADSOffset: Vector.zero(),
         bulletDamage: 26,
         reloadTime: 1500,
@@ -629,6 +662,7 @@ async function setup() {
           };
         }
       });
+      w.name = "AK12";
 
       // w.modelRecoil.fireTorque.z = 3;
 
@@ -638,8 +672,10 @@ async function setup() {
       var w = new Weapon({
         weaponObject: weaponModels.pistol,
         reloadTime: 1200,
-        weaponModelOffset: new Vector(-0.15, 0.1, 0.25)
+        weaponModelOffset: new Vector(-0.15, 0.1, 0.25),
+        weaponModelADSOffset: new Vector(0, -0.08, -0.2)
       });
+      w.name = "Pistol";
 
       w.scope.ADSWepaonFOV = 32;
       w.modelRecoil.fireForce = Vector.zero();
@@ -661,6 +697,7 @@ async function setup() {
           return {x: -3, y: (Math.random() - 0.5) * 0.1, z: 0};
         }
       });
+      w.name = "Sniper";
 
       w.modelRecoil.fireForce.z = 10;
       w.modelRecoil.translationReturn = -200;
@@ -689,6 +726,7 @@ async function setup() {
         reloadSound: "../assets/sound/shotgun/insertShell.wav",
         doneReloadingSound: "../assets/sound/shotgun/reloadEnd.wav"
       });
+      w.name = "Shotgun";
 
       return w;
     }
@@ -712,6 +750,46 @@ async function setup() {
     // }}),
   };
 
+  classes = {
+    AR: {
+      name: "Pew pew pew",
+      weapons: [
+        weapons.AK12(),
+        weapons.pistol()
+      ]
+    },
+    sniper: {
+      name: "Quickscope",
+      weapons: [
+        weapons.sniper(),
+        weapons.pistol()
+      ],
+    },
+    shotgun: {
+      name: "Toxic",
+      weapons: [
+        weapons.shotgun(),
+        weapons.pistol()
+      ]
+    }
+  }
+
+  selectedClass = getSavedSelectedClass();
+
+  for (var key in classes) {
+    var button = document.createElement("button");
+    button.setAttribute("data-className", key);
+    button.innerText = classes[key].name;
+    button.onclick = (function(button) {
+      return () => {
+        updateClassPreview(button);
+      };
+    })(button);
+
+    loadoutUI.querySelector(".classSelect").appendChild(button);
+  }
+
+  updateClassPreview(selectedClass);
 
   /*
     Player setup
@@ -719,12 +797,7 @@ async function setup() {
  // {x: 10, y: 3, z: 10}
   player = new Player();
   player.physicsEngine = physicsEngine;
-  player.setWeapons([
-    weapons.shotgun(),
-    weapons.AK12(),
-    weapons.sniper(),
-    weapons.pistol()
-  ]);
+  player.setWeapons(classes[selectedClass].weapons);
 
   scene.root.traverse(function(gameObject) {
     if (gameObject.meshRenderer && gameObject.meshRenderer.skin) {
@@ -733,31 +806,43 @@ async function setup() {
   });
 
   loadingStatus.innerText = "Connecting";
-  ws = new WebSocket(`ws://${location.hostname}:8080`);
 
-  ws.onopen = function() {
-    console.log("Connected to server");
-    sendMessage("login", { username: localStorage.getItem(LS_USERNAME) });
-    // sendMessage("login", {id: playerId});
-  }
+  try {
+    ws = new WebSocket(`ws://${location.hostname}:8080`);
 
-  ws.onerror = function() {
-    // setup();
-    // displayWSError();
-  }
-
-  ws.onclose = function() {
-    if (running) {
-      displayWSError();
+    ws.onopen = function() {
+      console.log("Connected to server");
+      sendMessage("login", { username: localStorage.getItem(LS_USERNAME) });
+      // sendMessage("login", {id: playerId});
     }
-  }
 
-  ws.onmessage = websocketOnMessage;
+    ws.onerror = function() {
+      // setup();
+      // displayWSError();
+    }
+
+    ws.onclose = function() {
+      if (running) {
+        displayWSError();
+      }
+    }
+
+    ws.onmessage = websocketOnMessage;
+  }
+  catch (e) {
+    console.warn("Failed to construct WebSocket!");
+    console.error(e);
+  }
 
   SetupEvents();
 
   sendDataInterval = setInterval(function() {
-    // if (ws.readyState == ws.OPEN) {
+    sendMessage("inputs", inputsToSend);
+    inputsToSend = [];
+
+    sendMessage("getAllPlayers");
+
+    // if (wsIsOpen(ws)) {
     //   sendMessage("actionQueue", {
     //     id: oldActionQueues.length,
     //     actionQueue
@@ -771,7 +856,7 @@ async function setup() {
     //   //     angle: player.getHeadRotation().y
     //   //   });
     //   // }
-      sendMessage("getAllPlayers");
+    //   sendMessage("getAllPlayers");
     // }
   }, 1000 / SERVER_SEND_FPS);
 
@@ -834,9 +919,9 @@ async function setup() {
     // soldier.transform.position.x = Math.sin(timeSinceStart) * 4;
     // soldier.transform.rotation = Quaternion.euler(0, timeSinceStart, 0);
 
-    enemies[1].gameObject.transform.position.z = 6;
-    enemies[2].gameObject.transform.position.z = -6;
-    enemies[0].gameObject.transform.position.z = Math.sin(timeSinceStart * 2.5) * 3;
+    if (enemies[1].gameObject) enemies[1].gameObject.transform.position.z = 6;
+    if (enemies[2].gameObject) enemies[2].gameObject.transform.position.z = -6;
+    if (enemies[0].gameObject) enemies[0].gameObject.transform.position.z = Math.sin(timeSinceStart * 2.5) * 3;
   
     physicsEngine.update();
 
@@ -856,11 +941,14 @@ async function setup() {
   
     crosshair.spacing = clamp(Vector.length(player.velocity) * 10, 25, 80);
   
-    if (player.isPlaying) {
+    if (player.state == player.STATES.PLAYING) {
       renderer.render(mainCamera, [weaponCamera]);
     }
-    else {
+    else if (player.state == player.STATES.DEAD) {
       renderer.render(mainCamera);
+    }
+    else if (player.state == player.STATES.IN_LOBBY) {
+      renderer.render(weaponCamera);
     }
     // renderer.render(orbitCamera.camera);
     renderUI(frameTime);
@@ -872,7 +960,7 @@ async function setup() {
 function renderUI(dt) {
   ui.clearScreen();
 
-  if (player.isPlaying) {
+  if (player.state != player.STATES.IN_LOBBY) {
     if (player.closestZone) {
       captureZoneManager.renderZoneUI(player.closestZone);
     }
@@ -1028,31 +1116,33 @@ function Enemy(gameObject, name = "Enemy") {
   this.gameObject = gameObject;
   this.colliders = [];
 
-  var goColliders = this.gameObject.getChildren("Collider", true, false);
-  if (goColliders.length > 0) {
-    for (var g of goColliders) {
-      var mr = g.meshRenderer;
-      if (mr) {
-        var aabb = new AABB();
+  if (this.gameObject) {
+    var goColliders = this.gameObject.getChildren("Collider", true, false);
+    if (goColliders.length > 0) {
+      for (var g of goColliders) {
+        var mr = g.meshRenderer;
+        if (mr) {
+          var aabb = new AABB();
 
-        var md = mr.meshData[0];
-        var buffer = md.data.position.bufferData;
-        for (var i = 0; i < buffer.length; i += md.data.position.size) {
-          var v = new Vector(buffer[i], buffer[i + 1], buffer[i + 2]);
-          aabb.extend(v);
+          var md = mr.meshData[0];
+          var buffer = md.data.position.bufferData;
+          for (var i = 0; i < buffer.length; i += md.data.position.size) {
+            var v = new Vector(buffer[i], buffer[i + 1], buffer[i + 2]);
+            aabb.extend(v);
+          }
+
+          this.colliders.push(new Collider(aabb.bl, aabb.tr, g, g.name.indexOf("Head") !== -1 ? Collider.TYPES.HEAD : Collider.TYPES.BODY));
         }
 
-        this.colliders.push(new Collider(aabb.bl, aabb.tr, g, g.name.indexOf("Head") !== -1 ? Collider.TYPES.HEAD : Collider.TYPES.BODY));
+        g.visible = false;
       }
-
-      g.visible = false;
     }
-  }
-  else {
-    this.colliders = [
-      new Collider(new Vector(-0.5, 0, -0.05), new Vector(0.5, 1.4, 0.05), null, Collider.TYPES.BODY),
-      new Collider(new Vector(-0.25, 1.4, -0.05), new Vector(0.25, 2, 0.05), null, Collider.TYPES.HEAD)
-    ];
+    else {
+      this.colliders = [
+        new Collider(new Vector(-0.5, 0, -0.05), new Vector(0.5, 1.4, 0.05), null, Collider.TYPES.BODY),
+        new Collider(new Vector(-0.25, 1.4, -0.05), new Vector(0.25, 2, 0.05), null, Collider.TYPES.HEAD)
+      ];
+    }
   }
 
   this.dead = false;
@@ -1063,20 +1153,26 @@ function Enemy(gameObject, name = "Enemy") {
 
   this.onDeath = () => {};
 
-  var meshData = renderer.getParticleMeshData();
-  var material = renderer.CreateLitMaterial({
-    opaque: false,
-    albedoTexture: createTextTexture(this.name, 256)
-  }, renderer.programContainers.litBillboard);
+  var createBillboard = () => {
+    if (this.gameObject) {
+      var meshData = renderer.getParticleMeshData();
+      var material = renderer.CreateLitMaterial({
+        opaque: false,
+        albedoTexture: createTextTexture(this.name, 256)
+      }, renderer.programContainers.litBillboard);
 
-  material.doubleSided = true;
-  var meshRenderer = new renderer.MeshRenderer(material, meshData);
-  // meshRenderer.addInstance(Matrix.identity());
+      material.doubleSided = true;
+      var meshRenderer = new renderer.MeshRenderer(material, meshData);
+      // meshRenderer.addInstance(Matrix.identity());
 
-  var billboard = new GameObject("Billboard");
-  billboard.meshRenderer = meshRenderer;
-  this.gameObject.addChild(billboard);
-  billboard.transform.position.y = 35;
+      var billboard = new GameObject("Billboard");
+      billboard.meshRenderer = meshRenderer;
+      this.gameObject.addChild(billboard);
+      billboard.transform.position.y = 35;
+    }
+  }
+
+  createBillboard();
 
   this.fireBullet = function(weapon, origin, direction, maxDistance = Infinity) {
     if (!this.dead) {
@@ -1127,10 +1223,6 @@ function Enemy(gameObject, name = "Enemy") {
 
     player.enemyKilled(this);
     this.onDeath();
-
-    setTimeout(() => {
-      this.respawn();
-    }, 3000);
   }
 
   this.respawn = function() {
@@ -1144,6 +1236,11 @@ function deploy() {
   lobbyUI.querySelector(".navigation").classList.add("slideOut");
 
   setTimeout(function() {
+    if (!wsIsOpen(ws)) {
+      player.state = player.STATES.PLAYING;
+      return;
+    }
+
     sendMessage("deploy");
   }, 500);
 }
@@ -1155,7 +1252,6 @@ class Player extends PlayerPhysicsBase {
     this.id = null;
     this.name = null;
 
-    this.targetHeight = this.standHeight;
     this.visualHeight = this.standHeight;
 
     this.weapons = [];
@@ -1200,6 +1296,7 @@ class Player extends PlayerPhysicsBase {
 
         if (this.state == this.STATES.IN_LOBBY) {
           showElement(lobbyUI);
+          lobbyUI.querySelector("#deploy").classList.remove("flashButton");
           lobbyUI.querySelector(".navigation").classList.remove("slideOut");
 
           hideElement(gameUI);
@@ -1208,6 +1305,7 @@ class Player extends PlayerPhysicsBase {
         else if (this.state == this.STATES.PLAYING) {
           showElement(gameUI);
           hideElement(lobbyUI);
+          hideElement(loadoutUI);
         }
         else if (this.state == this.STATES.DEAD) {
           showElement(gameUI);
@@ -1262,6 +1360,12 @@ class Player extends PlayerPhysicsBase {
   }
 
   setWeapons(weapons) {
+    for (var weapon of this.weapons) {
+      if (weapon.weaponObject) {
+        weapon.weaponObject.visible = false;
+      }
+    }
+
     this.weapons = weapons;
 
     for (var weapon of this.weapons) {
@@ -1340,9 +1444,12 @@ class Player extends PlayerPhysicsBase {
 
   update(dt) {
     if (this.state == this.STATES.IN_LOBBY) {
+      this.getCurrentWeapon().weaponObject.transform.rotation = Quaternion.euler(0, physicsEngine.time, 0);
+      weaponCamera.transform.position = new Vector(0, 0, -2);
+      weaponCamera.transform.rotation = Quaternion.euler(0, Math.PI, 0);
+
       var a = physicsEngine.time * 0.1 + Math.PI;
       var r = 40;
-
       mainCamera.setFOV(30);
       mainCamera.transform.matrix = Matrix.lookAt(new Vector(Math.cos(a) * r, 20, Math.sin(a) * r), Vector.zero());
     }
@@ -1356,14 +1463,7 @@ class Player extends PlayerPhysicsBase {
       }
     }
     else if (this.state == this.STATES.PLAYING) {
-      this.targetHeight = this.crouching ? this.crouchHeight : this.standHeight;
-      this.height = this.targetHeight;
-      // this.height += (targetHeight - this.height) * 0.6;
       this.visualHeight += (this.height - this.visualHeight) * 0.4;
-
-      if (renderer.getKeyDown(16) && this.grounded) {
-        this.position.y -= 0.5;
-      }
 
       if (this.getCurrentWeapon()) {
         this.getCurrentWeapon().update(dt);
@@ -1399,47 +1499,68 @@ class Player extends PlayerPhysicsBase {
   }
 
   fixedUpdate(dt) {
-    var inputs = {
-      forward: renderer.getKey(87),
-      back: renderer.getKey(83),
-      left: renderer.getKey(65),
-      right: renderer.getKey(68),
-      jump: renderer.getKey(32),
-      crouching: renderer.getKey(16)
-    };
+    if (this.state == this.STATES.PLAYING) {
+      var inputs = {
+        forward: renderer.getKey(87),
+        back: renderer.getKey(83),
+        left: renderer.getKey(65),
+        right: renderer.getKey(68),
+        jump: renderer.getKey(32),
+        crouching: renderer.getKey(16)
+      };
 
-    this.handRotation = this.getHeadRotation();
+      this.handRotation = this.getHeadRotation();
 
-    this.applyInputs(inputs, dt);
-    this.simulatePhysicsStep(dt);
+      var oldPosition = Vector.copy(this.position);
 
-    if (this.getCurrentWeapon()) {
-      this.getCurrentWeapon().fixedUpdate(dt);
+      this.applyInputs(inputs, dt);
+      this.simulatePhysicsStep(dt);
+
+      if (this.getCurrentWeapon()) {
+        this.getCurrentWeapon().fixedUpdate(dt);
+      }
+
+      if (this.grounded && (inputs.forward || inputs.back || inputs.left || inputs.right)) {
+        var deltaPosition = Vector.distance(oldPosition, this.position);
+        deltaPosition = clamp(deltaPosition / dt, 0, 1);
+
+        var currentAcceleration = this.runningAcceleration;
+        currentAcceleration *= (this.grounded ? this.crouching ? 0.5 : 1 : 0.1);
+        if (this.getCurrentWeapon()) {
+          currentAcceleration *= this.getCurrentWeapon().getSpeed();
+        }
+
+        this.walkTime += deltaPosition * currentAcceleration * this.headBobSpeed * dt;
+      }
+      else {
+        this.walkTime += (roundNearest(this.walkTime, Math.PI) - this.walkTime) * 0.1;
+      }
+
+      currentFov += (targetFov - currentFov) / 3;
+      currentWeaponFov += (targetWeaponFov - currentWeaponFov) / 3;
+
+      /*
+        Send to server
+      */
+
+      var yRotation = this.rotation.y;
+
+      inputBuffer[tick] = {
+        localTime: new Date().getTime(),
+        tick,
+        inputs,
+        yRotation
+      };
+      stateBuffer[tick] = {
+        position: this.position,
+        velocity: this.velocity
+      };
+
+      inputsToSend.push({...inputBuffer[tick]});
+      // sendMessage("inputs", inputBuffer[tick]);
+
+      tick++;
     }
-
-    currentFov += (targetFov - currentFov) / 3;
-    currentWeaponFov += (targetWeaponFov - currentWeaponFov) / 3;
-
-    /*
-      Send to server
-    */
-
-    var yRotation = this.rotation.y;
-
-    inputBuffer[tick] = {
-      localTime: new Date().getTime(),
-      tick,
-      inputs,
-      yRotation
-    };
-    stateBuffer[tick] = {
-      position: this.position,
-      velocity: this.velocity
-    };
-
-    sendMessage("inputs", inputBuffer[tick]);
-
-    tick++;
   }
 
   clampRotation() {
@@ -2082,7 +2203,7 @@ function CaptureZone(position = Vector.zero(), zoneInstance) {
 
       var zoneProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/captureZone"));
       var mat = this.gameObject.children[0].meshRenderer.materials[0] = new renderer.Material(zoneProgram);
-      mat.setUniform("color", [5, 5, 5]);
+      mat.setUniform("zoneColor", [5, 5, 5]);
       mat.doubleSided = true;
       mat.opaque = false;
 
@@ -2145,7 +2266,7 @@ function CaptureZone(position = Vector.zero(), zoneInstance) {
     var color = teamColors[teamHolding];
 
     var mat = this.gameObject.children[0].meshRenderer.materials[0];
-    mat.setUniform("color", getRingColor(color));
+    mat.setUniform("zoneColor", getRingColor(color));
 
     var l = this.gameObject.getChild("Light", true) || this.gameObject.getChild("Light (Copy)", true);
     l.getComponents()[0].color = color;
@@ -2445,9 +2566,99 @@ window.flashButton = function(element) {
   });
 }
 
+window.openLoadout = function() {
+  showElement(loadoutUI);
+  hideElement(lobbyUI);
+}
+
+window.closeLoadout = function() {
+  hideElement(loadoutUI);
+  showElement(lobbyUI);
+}
+
+function getSavedSelectedClass() {
+  var l = localStorage.getItem(LS_SELECTEDCLASS);
+  if (l) {
+    return l;
+  }
+
+  if (!classes) {
+    return;
+  }
+
+  return Object.keys(classes)[0];
+}
+
+function selectClass(name) {
+  if (name in classes) {
+    selectedClass = name;
+    player.setWeapons(classes[name].weapons);
+    localStorage.setItem(LS_SELECTEDCLASS, name);
+    updateSelectClassButton();
+
+    return;
+  }
+
+  console.error("Not a valid class!", name);
+}
+
+window.updateClassPreview = function(buttonOrName) {
+  var className = buttonOrName instanceof HTMLElement ? buttonOrName.getAttribute("data-className") : buttonOrName;
+  var clss = classes[className];
+
+  loadoutUI.querySelector(".className").innerText = clss.name;
+
+  selectClassButton.setAttribute("data-targetClass", className);
+  updateSelectClassButton();
+
+  for (var i = 0; i < clss.weapons.length; i++) {
+    var weapon = clss.weapons[i];
+    var div = createWeaponStatDiv(weapon);
+    var slot = document.querySelectorAll(".classContainer .slot")[i];
+    if (slot.childElementCount > 1) {
+      slot.removeChild(slot.lastElementChild);
+    }
+    slot.appendChild(div);
+  }
+}
+
+function createWeaponStatDiv(weapon) {
+  var weaponTemplate = document.querySelector("#weaponTemplate");
+  var weaponElement = cloneTemplate(weaponTemplate);
+
+  weaponElement.querySelector(".weaponTitle").innerText = weapon.name;
+  weaponElement.querySelector(".reloadTimeStat").innerText = roundToPlaces(weapon.reloadTime / 1000, 2);
+  weaponElement.querySelector(".magSizeStat").innerText = weapon.magSize;
+  weaponElement.querySelector(".damageStat").innerText = weapon.bulletDamage;
+  weaponElement.querySelector(".firerateStat").innerText = weapon.roundsPerSecond;
+
+  return weaponElement;
+}
+
+function updateSelectClassButton() {
+  if (selectedClass == selectClassButton.getAttribute("data-targetClass")) {
+    selectClassButton.classList.add("classIsSelected");
+  }
+  else {
+    selectClassButton.classList.remove("classIsSelected");
+  }
+
+  for (var elm of document.querySelectorAll(`.classSelect > button`)) {
+    elm.classList.remove("classIsSelected");
+  }
+
+  var button = document.querySelector(`.classSelect > button[data-className=${selectedClass}]`);
+  button.classList.add("classIsSelected");
+}
+
 // WebSocket
+
+function wsIsOpen(ws) {
+  return ws && ws.readyState == ws.OPEN;
+}
+
 function sendMessage(type, data = null) {
-  if (ws.readyState == ws.OPEN) {
+  if (wsIsOpen(ws)) {
     ws.send(JSON.stringify({
       type: type,
       data: data,
@@ -2467,7 +2678,8 @@ function websocketOnMessage(msg) {
     }
 
     if (parsed.clientSendTime) {
-      latencies.push(new Date() - new Date(parsed.clientSendTime));
+      var ping = new Date() - new Date(parsed.clientSendTime);
+      latencies.push(ping);
       if (latencies.length > 50) {
         latencies.shift();
       }
@@ -2498,6 +2710,12 @@ function websocketOnMessage(msg) {
         else {
           console.error("Could not deploy!");
           lobbyUI.querySelector(".navigation").classList.remove("slideOut");
+        }
+      }
+      else if (parsed.type == "deployOther") {
+        var m = multiplayerCharacters[parsed.data.clientID];
+        if (m) {
+          m.enemy.respawn();
         }
       }
       else if (parsed.type == "gotoLobby") {
@@ -2597,27 +2815,6 @@ function websocketOnMessage(msg) {
         playerCopy.velocity = {...parsed.data.gameData.velocity},
         playerCopy.grounded = parsed.data.gameData.isGrounded;
 
-        // var playerCopy = {
-        //   colliderRadius: 0.5,
-        //   standHeight: 2,
-        //   height: 2,
-        //   collisionIterations: 3,
-        //   walkSpeed: 5,
-        //   friction: 10,
-
-        //   fakeGroundNormal: Vector.up(),
-        //   realGroundNormal: Vector.up(),
-
-        //   coyoteTime: 0.11,
-        //   jumpBuffering: 0.08,
-        //   groundCounter: 0,
-        //   jumpCounter: 0,
-
-        //   position: {...parsed.data.gameData.position},
-        //   velocity: {...parsed.data.gameData.velocity},
-        //   grounded: parsed.data.gameData.isGrounded
-        // }
-
         var positionError = Vector.distance(stateBuffer[parsed.data.lastProcessedTick].position, playerCopy.position);
         if (positionError > 0.0001) {
           for (var rewindTick = parsed.data.lastProcessedTick + 1; rewindTick < tick; rewindTick++) {
@@ -2629,13 +2826,10 @@ function websocketOnMessage(msg) {
             playerCopy.rotation.y = inputs.yRotation;
             playerCopy.applyInputs(inputs.inputs, dt);
             playerCopy.simulatePhysicsStep(dt);
-
-            // applyInputs(playerCopy, inputs.inputs, inputs.yRotation, dt);
-            // runSimulation(dt);
           }
 
           var smoothing = true;
-          if (smoothing) {
+          if (smoothing && positionError < 2) {
             player.position = Vector.lerp(player.position, playerCopy.position, 0.5);
           }
           else {
@@ -2645,181 +2839,6 @@ function websocketOnMessage(msg) {
           player.velocity = playerCopy.velocity;
           player.grounded = playerCopy.grounded;
         }
-
-        return;
-
-        function applyInputs(playerObject, inputs, yRotation, dt) {
-          var vertical = (inputs.forward || 0) - (inputs.back || 0);
-          var horizontal = (inputs.left || 0) - (inputs.right || 0);
-
-          if (vertical || horizontal) {
-            var direction = Vector.rotateAround({
-              x: vertical,
-              y: 0,
-              z: -horizontal
-            }, {x: 0, y: 1, z: 0}, -yRotation + Math.PI / 2);
-
-            if (playerObject.grounded) {
-              direction = Vector.normalize(Vector.projectOnPlane(direction, playerObject.realGroundNormal));
-            }
-
-            playerObject.position = Vector.add(playerObject.position, Vector.multiply(direction, playerObject.walkSpeed * dt));
-          }
-
-          // Jumping
-          if (inputs.jump) {
-            playerCopy.jumpCounter = playerCopy.jumpBuffering;
-          }
-
-          if (inputs.jump && playerCopy.jumpCounter > 0 && playerCopy.groundCounter > 0) {
-            playerCopy.velocity.y = 6;
-            playerCopy.position.y += 0.05;
-
-            playerCopy.jumpCounter = 0;
-            playerCopy.groundCounter = 0;
-          }
-        }
-
-        function solveCollision() {
-          Player.solveCollisions(playerCopy);
-        }
-
-        function runSimulation(dt) {
-          // for (var k = 0; k < CORRECTION_SIM_STEPS; k++) {
-            playerCopy.velocity.y -= 18 * dt;
-
-            // Jumping
-            if (playerCopy.grounded) {
-              playerCopy.groundCounter = playerCopy.coyoteTime;
-            }
-
-            playerCopy.groundCounter -= dt;
-            playerCopy.jumpCounter -= dt;
-
-            if (playerCopy.grounded) {
-              var projectedVelocity = Vector.projectOnPlane(playerCopy.velocity, playerCopy.fakeGroundNormal);//{x: this.velocity.x, y: 0, z: this.velocity.z};
-              var speed = Vector.length(projectedVelocity);
-              playerCopy.velocity = Vector.add(playerCopy.velocity, Vector.multiply(Vector.normalize(projectedVelocity), -speed * dt * playerCopy.friction));
-          
-              // // Sliding / turning
-              // if (this.crouching && speed > 10) {
-              //   var v = Vector.rotateAround({
-              //     x: Vector.length(Vector.projectOnPlane(this.velocity, this.fakeGroundNormal)),
-              //     y: 0,
-              //     z: 0
-              //   }, this.fakeGroundNormal, -this.rotation.y + Math.PI / 2);
-                
-              //   this.velocity.x = v.x;
-              //   this.velocity.z = v.z;
-              // }
-            }
-
-            solveCollision();
-
-            playerCopy.position = Vector.add(playerCopy.position, Vector.multiply(playerCopy.velocity, dt));
-          // }
-        }
-
-        function simulateToTime(tStart, tEnd) {
-          if (tEnd > tStart) {
-            var t = tStart;
-            while (t < tEnd) {
-              runSimulation(dt);
-              t += dt * 1000;
-
-              if (t > tEnd) {
-                t -= dt * 1000;
-                break;
-              }
-            }
-
-            var leftOverTime = tEnd - t;
-            if (leftOverTime > 0) {
-              runSimulation(leftOverTime / 1000);
-            }
-          }
-        }
-
-        var queues = oldActionQueues.concat([actionQueue]);
-        
-        // console.log(queues);
-
-        // console.log("Start", "-------------", parsed.data.lastActionId, queues.length);
-
-        var lastTime = new Date(parsed.data.currentSimTime).getTime();;//queues[parsed.data.lastActionId][0] ? queues[parsed.data.lastActionId][0].time : new Date(parsed.data.serverTime).getTime();//queues[parsed.data.lastActionId][0].time;// = new Date(parsed.data.serverTime).getTime();
-        for (var i = parsed.data.lastActionId + 1; i < queues.length; i++) {
-          var currentActionQueue = queues[i];
-
-          // currentActionQueue.sort((a, b) => {
-          //   return a.time - b.time; // oldest first
-          // });
-
-          if (currentActionQueue) {
-            for (var j = 0; j < currentActionQueue.length; j++) {
-              var action = currentActionQueue[j];
-
-              // var dt = (new Date(action.time) - (lastTime ? lastTime : new Date(parsed.data.serverTime))) / 1000 / CORRECTION_SIM_STEPS;
-              // lastTime = new Date(action.time);
-
-              if (!lastTime) {
-                lastTime = action.time;
-              }
-
-              simulateToTime(lastTime, action.time);
-
-              lastTime = action.time;
-
-              if (action.type == "movement") {
-                playerCopy.position = Vector.add(playerCopy.position, Vector.multiply(Vector.normalize(action.direction), action.speed * action.dt));
-              }
-              else if (action.type == "jump" && playerCopy.grounded) {
-                playerCopy.velocity.y = 6;
-                playerCopy.position.y += 0.05;
-                playerCopy.grounded = false;
-              }
-
-              // console.log(action.type, actionQueue);
-
-              // collision detection + resolve
-              solveCollision();
-            }
-          }
-          else {
-            console.warn("Not a queue?", currentActionQueue);
-          }
-        }
-
-        simulateToTime(lastTime, new Date().getTime());
-
-        // var tStart = lastTime;
-        // var tEnd = new Date().getTime();
-        // var t = tStart;
-
-        // console.log(tEnd - tStart);
-
-        // while (t < tEnd) {
-        //   runSimulation(dt);
-        //   t += dt * 1000;
-        // }
-        // t -= dt * 1000;
-
-        // var leftOverTime = tEnd - t;
-        // if (leftOverTime > 0) {
-        //   runSimulation(leftOverTime / 1000);
-        // }
-
-        // console.log(new Date() - (lastTime ? lastTime : new Date(parsed.data.serverTime)));
-
-
-
-        // var dt = (new Date() - (lastTime ? lastTime : new Date(parsed.data.serverTime))) / 1000 / CORRECTION_SIM_STEPS;
-        // runSimulation(dt);
-
-        // console.log(player.velocity);
-
-        player.position = playerCopy.position;
-        player.velocity = playerCopy.velocity;
-        player.grounded = playerCopy.grounded;
       }
       else if (parsed.type == "hit") {
         console.log("I got hit by " + parsed.data.by);
@@ -2836,7 +2855,7 @@ function displayWSError() {
   }
 
   disconnected = true;
-  running = false;
+  // running = false;
   showElement(loadingStatus);
   // loadingDiv.style.removeProperty("display");
 }
@@ -2928,6 +2947,15 @@ function SetupEvents() {
 
         if (e.keyCode >= 49 && e.keyCode <= 57) {
           player.switchWeapon(e.keyCode - 49);
+        }
+      }
+
+      if (player && player.state == player.STATES.IN_LOBBY) {
+        if (e.keyCode == 32) { // Space
+          deployButton.click();
+        }
+        if (e.keyCode == 27) { // Esc
+          closeLoadout();
         }
       }
 

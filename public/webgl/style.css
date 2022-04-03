@@ -62,7 +62,49 @@ body {
   overflow: hidden;
 }
 
+/* Custom scrollbars */
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+  /* background: #f1f1f1; */
+  background: none;
+}
+ 
+/* Handle */
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 5px;
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+  background: #555; 
+}
+
 /* UI */
+
+.glass {
+  box-shadow: 0 0 1rem 0 rgba(0, 0, 0, .2);
+  background-color: rgba(255, 255, 255, .25);
+  backdrop-filter: blur(5px);
+  border: none;
+}
+
+.UI {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.UI a,
+.UI button,
+.UI input {
+  pointer-events: all;
+}
 
 .ingameUI {
   pointer-events: none;
@@ -79,7 +121,7 @@ body {
   right: 0;
   z-index: 10;
   padding: 50px;
-  padding-top: 0;
+  padding-top: 25px;
 
   display: flex;
   flex-direction: column;
@@ -103,7 +145,8 @@ body {
   flex-direction: column;
   justify-content: space-between;
 
-  transition: transform 500ms;
+  transition: all 500ms;
+  transition-property: transform, opacity;
 }
 
 .navigation > div {
@@ -126,13 +169,6 @@ body {
   padding: 1.25em 1em;
   text-decoration: none;
   color: var(--black);
-  /* background: white;
-  border: 4px solid white; */
-
-  box-shadow: 0 0 1rem 0 rgba(0, 0, 0, .2); 
-  /* border-radius: 5px; */
-  background-color: rgba(255, 255, 255, .25);
-  backdrop-filter: blur(5px);
 
   user-select: none;
   -webkit-user-drag: none;
@@ -172,7 +208,157 @@ body {
 }
 
 .lobbyUI .slideOut {
-  transform: translateX(-100%);
+  transform: translateX(-200%);
+  opacity: 0;
+}
+
+/* Loadout */
+
+.loadout {
+  z-index: 1000;
+  padding: 5px;
+
+  color: white;
+}
+
+.loadout > .backButton {
+  cursor: pointer;
+  padding: 1em;
+  margin-bottom: 5px;
+  color: var(--black);
+  font-weight: bold;
+  width: 200px;
+}
+
+.loadout > div {
+  height: calc(100% - 30px);
+  display: flex;
+  flex-direction: row;
+}
+
+.loadout .classSelect {
+  pointer-events: all;
+  height: 100%;
+  width: 200px;
+  padding: 5px;
+  margin-right: 5px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.loadout .classSelect > button {
+  position: relative;
+
+  display: block;
+  width: 100%;
+  height: 80px;
+
+  font-size: 1.25em;
+  font-weight: bold;
+  border: none;
+  background: white;
+
+  margin-bottom: 5px;
+  cursor: pointer;
+}
+
+.loadout .classSelect > button:hover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.loadout .classContainer {
+  /* flex-grow: 1; */
+  pointer-events: all;
+  width: 300px;
+  height: 100%;
+  padding: 1em;
+
+  background: var(--team);
+}
+
+.loadout .classContainer .className {
+  font-size: 2em;
+  font-weight: bold;
+}
+
+.loadout .classContainer .weapons {
+  /* display: flex;
+  flex-direction: column; */
+}
+
+.loadout .classContainer .weapons .slot {
+  /* border: 1px solid blue; */
+  /* display: inline-block; */
+  /* width: 100%; */
+  margin-bottom: 1em;
+}
+
+.loadout .classContainer .weapons .slot .weapon {
+  background: black;
+  color: white;
+
+  display: flex;
+  flex-direction: row;
+  
+  width: 100%;
+  height: 100px;
+  padding: 5px;
+  /* aspect-ratio: 1 / 1; */
+}
+
+.loadout .classContainer .weapons .slot .weapon img {
+  aspect-ratio: 1 / 1;
+  height: 100%;
+}
+
+.loadout .classContainer .weapons .slot .weapon > div {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 5px;
+}
+
+.loadout .classContainer .weapons .slot .weapon .weaponTitle {
+  font-weight: bold;
+}
+
+.loadout .classContainer .weapons .slot .weapon .statGrid {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+
+  font-size: 1.25em;
+  width: 100%;
+}
+
+.loadout .classContainer .weapons .slot .weapon .statGrid .material-icons {
+  font-size: 1em;
+}
+
+.loadout .classContainer .weapons .slot .weapon .statGrid img {
+  height: 1em;
+}
+
+.loadout .classContainer .selectClass {
+  width: 100%;
+  padding: 1em;
+  border: 2px solid white;
+  background: white;
+  font-weight: bold;
+  font-size: 1em;
+  cursor: pointer;
+}
+
+.classIsSelected {
+  border-color: var(--black) !important;
+  background: none !important;
+  cursor: default !important;
+}
+
+.loadout .classSelect > button.classIsSelected {
+  background: var(--team) !important;
 }
 
 /* */

@@ -23,6 +23,12 @@ function roundNearest(value, nearest)  {
   return Math.round(value / nearest) * nearest;
 }
 
+function roundToPlaces(value, decimalPlaces) {
+  var tenExp = Math.pow(10, decimalPlaces);
+  var m = Number((Math.abs(value) * tenExp).toPrecision(15));
+  return Math.round(m) / tenExp * Math.sign(value);
+}
+
 function mapValue(x, in_min, in_max, out_min, out_max) {
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
@@ -148,12 +154,17 @@ function resetAnimations(element) {
   element.style.animation = null; 
 }
 
+function cloneTemplate(template) {
+  return template.content.cloneNode(true);
+}
+
 export {
   xor,
   clamp,
   lerp,
   inverseLerp,
   roundNearest,
+  roundToPlaces,
   mapValue,
   Float32ToFloat16,
   Uint8ToUint32,
@@ -163,5 +174,6 @@ export {
   fadeOutElement,
   hideElement,
   showElement,
-  resetAnimations
+  resetAnimations,
+  cloneTemplate
 };

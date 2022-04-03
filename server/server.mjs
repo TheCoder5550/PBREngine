@@ -2,22 +2,28 @@ import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 
 import Vector from '../public/engine/vector.mjs';
-import LoadCollider from "./loadCollider.mjs";
-import { AABB } from '../public/engine/physics.mjs';
+import LoadCollider, { CreateGameObjectFromGLTF } from "./loadCollider.mjs";
+import { PhysicsEngine, AABB } from '../public/engine/physics.mjs';
 import { lerp, inverseLerp } from '../public/engine/helper.mjs';
 import { AABBTriangleToAABB, capsuleToTriangle } from '../public/engine/algebra.mjs';
 import PlayerPhysicsBase from '../public/playerPhysicsBase.mjs';
 
+console.log("Starting server...");
+
 const WebSocket = require('ws');
+
+var colliderPath = "../public/assets/models/gunTestRoom/collider.glb";
 
 var octree;
 var physicsEngine;
 
-var SIMULATED_PING = 0;
+var SIMULATED_PING = 50;
 
 (async function setup() {
-  octree = await LoadCollider("../public/assets/models/gunTestRoom/collider.glb");
+  octree = await LoadCollider(colliderPath);
   physicsEngine = { octree }; // Fixing call structure (fancy words :))
+
+  console.log("Setup done!");
 
   loop();
 })();
@@ -109,6 +115,9 @@ wss.on('connection', ws => {
             send("deploy", {
               status: "success"
             });
+            broadcast("deployOther", {
+              clientID: ws.id
+            }, [ ws ]);
           }
           else {
             send("deploy", {
@@ -122,7 +131,14 @@ wss.on('connection', ws => {
           ws.gameData.localUpdatedTime = parsed.clientSendTime;
         }
         else if (parsed.type == "inputs") {
-          ws.inputQueue.push(parsed.data);
+          if (ws.gameData.state == ws.gameData.STATES.PLAYING) {
+            if (Array.isArray(parsed.data)) {
+              ws.inputQueue = ws.inputQueue.concat(parsed.data);
+            }
+            else {
+              ws.inputQueue.push(parsed.data);
+            }
+          }
         }
         else if (parsed.type == "actionQueue") {
           // ws.actionQueue = parsed.data;
@@ -258,7 +274,7 @@ wss.on('connection', ws => {
 });
 
 var fixedDeltaTime = 1 / 60;
-const loopFPS = 60;
+const loopFPS = 15;
 let tickLengthMs = 1000 / loopFPS;
 let previous = hrtimeMs();
 
@@ -268,6 +284,7 @@ function loop() {
   // let delta = (now - previous) / 1000;
   // previous = now;
 
+  // console.time("Frame");
   var smallClients = {};
   for (var key in connectedClients) {
     var client = connectedClients[key];
@@ -289,7 +306,12 @@ function loop() {
       }
 
       sendGlobal(client, "getSelf", {
-        gameData: {...client.gameData},
+        gameData: {
+          position: client.gameData.position,
+          velocity: client.gameData.velocity,
+          isGrounded: client.gameData.isGrounded
+        },
+        // gameData: {...client.gameData},
         // currentSimTime: client.currentSimTime,
         lastProcessedTick: client.inputQueue[client.inputQueue.length - 1].tick
       });
@@ -406,11 +428,15 @@ function loop() {
     }*/
   }
 
-  clientHistory.push({
-    timestamp: new Date().getTime(),
-    clientPositions: smallClients
-  });
-  if (clientHistory.length > 500) clientHistory.shift();
+  // console.timeEnd("Frame");
+
+  // console.log("loop")
+
+  // clientHistory.push({
+  //   timestamp: new Date().getTime(),
+  //   clientPositions: smallClients
+  // });
+  // if (clientHistory.length > 500) clientHistory.shift();
 
 }
 

@@ -54,6 +54,12 @@ function Weapon(settings = {}) {
   this.reloadAnimationTime = 0;
 
   this.weaponObject = def(settings.weaponObject, null);
+
+  var initialWeaponScale;
+  if (this.weaponObject) {
+    initialWeaponScale = Vector.copy(this.weaponObject?.transform?.scale);
+  }
+
   this.muzzleObject = this.weaponObject ? this.weaponObject.getChild("MuzzleOffset", true) : null;
   this.adsObject = this.weaponObject ? this.weaponObject.getChild("ADSOffset", true) : null;
 
@@ -105,8 +111,7 @@ function Weapon(settings = {}) {
   this.crosshairType = def(settings.crosshairType, 0);
 
   this.weaponModelOffset = def(settings.weaponModelOffset, Vector.zero());
-  // this.weaponModelOffset = def(settings.weaponModelOffset, {x: 0.11, y: -0.1, z: -0.2});
-  this.weaponModelADSOffset = def(settings.weaponModelADSOffset, {x: 0, y: -0.08, z: -0.2});
+  this.weaponModelADSOffset = def(settings.weaponModelADSOffset, Vector.zero());
   this.swayTime = 0;
   var currentPlayerVelYOffset = 0;
   this.swayRotation = {x: 0, y: 0, z: 0};
@@ -435,16 +440,16 @@ function Weapon(settings = {}) {
         Matrix.transform([["translate", new Vector(0, 0, this.scope.adsDepth * (1 - adsT))]], baseMatrix);
 
         var localADSOffset = Matrix.inverse(this.adsObject.transform.getWorldMatrix(this.weaponObject));
-        localADSOffset[12] *= this.weaponObject.transform.scale.x;
-        localADSOffset[13] *= this.weaponObject.transform.scale.y;
-        localADSOffset[14] *= this.weaponObject.transform.scale.z;
+        localADSOffset[12] *= initialWeaponScale.x;
+        localADSOffset[13] *= initialWeaponScale.y;
+        localADSOffset[14] *= initialWeaponScale.z;
         Matrix.lerp(localADSOffset, Matrix.identity(), adsT, localADSOffset);
 
         baseMatrix = Matrix.multiply(baseMatrix, localADSOffset);
       }
 
       Matrix.transform([
-        ["scale", this.weaponObject.transform.scale]
+        ["scale", initialWeaponScale]
       ], baseMatrix);
 
       this.weaponObject.transform.matrix = baseMatrix;

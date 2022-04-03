@@ -57,6 +57,8 @@ class PlayerPhysicsBase {
   }
 
   simulatePhysicsStep(dt) {
+    this.height = this.crouching ? this.crouchHeight : this.standHeight;
+
     // Gravity
     this.velocity.y -= 18 * dt;
 
@@ -162,15 +164,15 @@ class PlayerPhysicsBase {
         direction = Vector.normalize(direction);
       }
 
-      this.position = Vector.add(this.position, Vector.multiply(direction, this.walkSpeed * dt));
+      // this.position = Vector.add(this.position, Vector.multiply(direction, this.walkSpeed * dt));
   
-      // var currentAcceleration = this.runningAcceleration;//renderer.getKey(16) ? this.runningAcceleration : this.walkAcceleration;
-      // currentAcceleration *= (this.grounded ? this.crouching ? 0.5 : 1 : 0.1);
+      var currentAcceleration = this.runningAcceleration;//renderer.getKey(16) ? this.runningAcceleration : this.walkAcceleration;
+      currentAcceleration *= (this.grounded ? this.crouching ? 0.5 : 1 : 0.1);
       // if (this.getCurrentWeapon()) {
       //   currentAcceleration *= this.getCurrentWeapon().getSpeed();
       // }
 
-      // this.velocity = Vector.add(this.velocity, Vector.multiply(direction, currentAcceleration * dt));
+      this.velocity = Vector.add(this.velocity, Vector.multiply(direction, currentAcceleration * dt));
     }
   
     // Jumping
@@ -188,6 +190,10 @@ class PlayerPhysicsBase {
     }
   
     // Crouching
+    if (inputs.crouching && !this.crouching && this.grounded) {
+      this.position.y -= 0.5;
+    }
+
     this.crouching = inputs.crouching;
   }
 }

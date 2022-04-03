@@ -1426,7 +1426,8 @@ function Renderer() {
         errorMessage += "\nFragment:\n" + fragmentError;
       }
 
-      console.log({vertexSource, fragmentSource});
+      console.log(vertexSource);
+      console.log(fragmentSource);
       throw new Error(errorMessage);
     }
     else {
@@ -4322,6 +4323,13 @@ function Renderer() {
             (deltaPos1[2] * deltaUV2[1] - deltaPos2[2] * deltaUV1[1]) * r
           ];
         }
+
+        // tangents = Vector.toArray(Vector.normalize(Vector.fromArray(tangents)));
+
+        var epsilon = 0.01;
+        tangent[0] += epsilon;
+        tangent[1] += epsilon;
+        tangent[2] += epsilon;
 
         tangents[i0 * 3] = tangent[0];
         tangents[i0 * 3 + 1] = tangent[1];

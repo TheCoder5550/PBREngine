@@ -333,7 +333,8 @@ function Octree(aabb, maxDepth = 5) {
   // }
 
   this.addTriangles = function(arr) {
-    window.aabbcalls = 0;
+    if (typeof window !== 'undefined') window.aabbcalls = 0;
+
     this.trianglesArray = arr;
     for (var i = 0; i < this.trianglesArray.length; i += 9) {
       var v1 = {x: this.trianglesArray[i + 0], y: this.trianglesArray[i + 1], z: this.trianglesArray[i + 2]};
@@ -412,7 +413,7 @@ function Octree(aabb, maxDepth = 5) {
 }
 
 function SimpleAABB(bl, tr) {
-  window.aabbcalls++;
+  if (typeof window !== 'undefined') window.aabbcalls++;
   this.bl = bl;
   this.tr = tr;
 }

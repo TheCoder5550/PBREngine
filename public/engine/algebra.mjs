@@ -231,7 +231,7 @@ var aabbEdges = [
 
 /* Bruh - Slow? Prolly */
 function AABBToTriangle(box, triangle) {
-  window.AABBToTriangleCalls++;
+  if (typeof window != "undefined") window.AABBToTriangleCalls++;
 
   // Triangle vertices
   for (var i = 0; i < 3; i++) {
