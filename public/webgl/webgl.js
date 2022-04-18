@@ -39,6 +39,7 @@ import {
 import { WEAPONENUMS, updateBulletTrails, Weapon, Scope, BulletTrail, bulletTrails } from "./weapon.js";
 import OrbitCamera from "../engine/orbitCamera.mjs";
 import PlayerPhysicsBase from "../playerPhysicsBase.mjs";
+import * as brokenPlasterSource from "../assets/shaders/custom/brokenPlaster.glsl.js";
 
 var perlin = new Perlin();
 
@@ -304,7 +305,10 @@ async function setup() {
   renderer.add(scene);
   // await scene.loadEnvironment();
   await scene.loadEnvironment({ hdrFolder: "../assets/hdri/sky_only" });
-  // await scene.loadEnvironment({ hdrFolder: "../assets/hdri/wide_street_01_1k_precomputed" });
+  var oldSkybox = scene.skyboxCubemap;
+  await scene.loadEnvironment({ hdrFolder: "../assets/hdri/wide_street_01_1k_precomputed" });
+  scene.skyboxCubemap = oldSkybox;
+
   console.timeEnd("loadEnvironment");
 
   window.glDebugger = new GLDebugger();
@@ -324,6 +328,7 @@ async function setup() {
   var litParallax = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/litParallax"));
   var solidColorInstanceProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/solidColor"));
   var foliage = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/foliage"));
+  var brokenPlasterProgram = new renderer.ProgramContainer(await renderer.createProgram(brokenPlasterSource.webgl2.vertex, brokenPlasterSource.webgl2.fragment));
   // var waterShader = await createProgram("./assets/shaders/water");
 
   loadingStatus.innerText = "Loading textures";
@@ -509,12 +514,34 @@ async function setup() {
   bush.children[0].meshRenderer.materials[0] = foliageMat;
 
   var tree = scene.add(await renderer.loadGLTF("../assets/models/tree.glb"));
-  tree.transform.position = new Vector(-13, 0, 0);
+  tree.transform.position = new Vector(17, 0, 3);
   tree.children[0].children[0].meshRenderer.materials[0] = tree.children[0].children[1].meshRenderer.materials[0] = foliageMat;
 
   var hedge = scene.add(await renderer.loadGLTF("../assets/models/hedge.glb"));
   hedge.transform.position = {x: -5, y: 0, z: 14};
   hedge.children[0].meshRenderer.materials[0] = foliageMat;
+
+  // // Broken plaster
+  // var gl = renderer.gl;
+  // var sRGBInternalFormat = renderer.version == 1 ? (renderer.sRGBExt && (renderer.floatTextures || renderer.textureHalfFloatExt) ? renderer.sRGBExt.SRGB_ALPHA_EXT : gl.RGBA) : gl.SRGB8_ALPHA8;
+  // var sRGBFormat = renderer.version == 1 ? (renderer.sRGBExt && (renderer.floatTextures || renderer.textureHalfFloatExt) ? renderer.sRGBExt.SRGB_ALPHA_EXT : gl.RGBA) : gl.RGBA;
+  
+  // var plasterAlbedo = await renderer.loadTextureAsync("../assets/textures/plaster17/Plaster17_COL_VAR2_3K.jpg", {internalFormat: sRGBInternalFormat, format: sRGBFormat});
+  // var plasterNormal = await renderer.loadTextureAsync("../assets/textures/plaster17/Plaster17_NRM_3K.jpg");
+
+  // var brickAlbedo = await renderer.loadTextureAsync("../assets/textures/bricks01/Bricks01_COL_VAR1_3K.jpg", {internalFormat: sRGBInternalFormat, format: sRGBFormat});
+  // var brickNormal = await renderer.loadTextureAsync("../assets/textures/bricks01/Bricks01_NRM_3K.jpg");
+
+  // var cube = scene.add(await renderer.loadGLTF("../assets/models/maps/1/brokenPlasterPillar.glb"));
+  // cube.transform.position.z -= 3.4;
+
+  // var plasterMat = renderer.CreateLitMaterial({}, brokenPlasterProgram);
+  // plasterMat.setUniform("roughness", 1);
+  // plasterMat.setUniform("albedoTextures[0]", [ plasterAlbedo, brickAlbedo ]);
+  // plasterMat.setUniform("normalTextures[0]", [ plasterNormal, brickNormal ]);
+
+  // // map.getChild("Ground", true).meshRenderer.materials[0] = plasterMat;
+  // cube.children[0].meshRenderer.materials[0] = plasterMat;
 
   // Metal plane
   // var albedo = renderer.loadTexture("../assets/textures/MetalPanelRectangular001/METALNESS/1K/MetalPanelRectangular001_COL_1K_METALNESS.jpg", {internalFormat: renderer.gl.SRGB8_ALPHA8});

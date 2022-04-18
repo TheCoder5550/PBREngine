@@ -12,7 +12,8 @@ console.log("Starting server...");
 
 const WebSocket = require('ws');
 
-var colliderPath = "../public/assets/models/gunTestRoom/collider.glb";
+// var colliderPath = "../public/assets/models/gunTestRoom/collider.glb";
+var colliderPath = "../public/assets/models/maps/1/model.glb";
 
 var octree;
 var physicsEngine;

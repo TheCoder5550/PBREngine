@@ -26,7 +26,8 @@ void main() {
   }
 
   vec3 color = vec3(172, 227, 32) / 255.;
-  vec3 shadowColor = vec3(38, 74, 31) / 255.;
+  // vec3 shadowColor = vec3(38, 74, 31) / 255.;
+  vec3 shadowColor = vec3(18, 60, 22) / 255.;
 
   float diffuse = clamp(dot(sunDirection, vNormal), 0., 1.);
 

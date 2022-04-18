@@ -849,6 +849,7 @@ var webgl2 = {
 
 export {
   shaderBase,
+  litBase,
   webgl1,
   webgl2
 };
