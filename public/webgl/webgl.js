@@ -3252,8 +3252,8 @@ function SetupEvents() {
       lastMovement.y = e.movementY;
     }
 
-    mouse.movementX = e.movementX;
-    mouse.movementY = e.movementY;
+    mouse.movementX += (e.movementX- mouse.movementX) * 0.3;
+    mouse.movementY += (e.movementY- mouse.movementY) * 0.3;
   });
 
   renderer.on("keydown", function(e) {
