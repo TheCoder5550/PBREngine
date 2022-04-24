@@ -347,7 +347,7 @@ function Weapon(settings = {}) {
     if (this.mode != this.GunModes.ADS && !this.isReloading) {
       this.mode = this.GunModes.ADS;
       targetFov = this.scope.ADSFOV;
-      targetWeaponFov = this.scope.ADSWepaonFOV;
+      targetWeaponFov = this.scope.ADSWeaponFOV;
 
       if (this.scope.sniperScope && this.weaponObject) {
         this.weaponObject.visible = false;
@@ -495,7 +495,7 @@ function Scope(settings = {}) {
   this.scopeDelay = def(settings.scopeDelay, 0);
 
   this.adsDepth = def(settings.adsDepth, -0.2);
-  this.ADSWepaonFOV = def(settings.ADSWepaonFOV, 20);
+  this.ADSWeaponFOV = def(settings.ADSWeaponFOV, 20);
   this.ADSFOV = def(settings.ADSFOV, 25);
   this.ADSMouseSensitivity = def(settings.ADSMouseSensitivity, 0.75);
 }

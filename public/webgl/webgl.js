@@ -19,7 +19,8 @@ import {
   showElement,
   roundNearest,
   resetAnimations,
-  cloneTemplate
+  cloneTemplate,
+  removeChildren
 } from "../engine/helper.mjs";
 import {
   AABBToAABB,
@@ -71,8 +72,11 @@ https://www.youtube.com/watch?v=flf20FZHT3M&t=8s
 var LS_BASE = "com.tc5550.webgl";
 var LS_USERNAME = LS_BASE + ".username";
 var LS_SELECTEDCLASS = LS_BASE + ".selectedClass";
+var LS_SETTINGS = LS_BASE + ".settings";
 
 console.log("Page loaded");
+
+var lobbyTabs = document.querySelectorAll(".lobbyUI input[type='radio']");
 
 var lobbyUI = document.querySelector(".lobbyUI");
 var deployButton = lobbyUI.querySelector("#deploy");
@@ -235,6 +239,7 @@ var swat;
 var audioListener = new AudioListener3D();
 var leaderboard = new Leaderboard(document.querySelector(".leaderboard"));
 var killfeed = new Killfeed();
+var settings = new Settings();
 
 // var source = new AudioSource3D(audioListener, "./assets/sound/drumGun.wav");
 // source.audioElement.loop = true;
@@ -245,6 +250,7 @@ var scene = new Scene("Main scene");
 var orbitCamera;
 var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0});
 var weaponCamera = new Camera({near: 0.005, far: 20, layer: 1, fov: 23});
+var lobbyWeaponCamera;
 
 var defaultFov = 40;//45;//37;
 window.targetFov = defaultFov;
@@ -282,6 +288,7 @@ async function setup() {
   console.time("renderer.setup");
   await renderer.setup({
     version: 2,
+    clearColor: [0.02, 0.02, 0.02, 1],
     shadowSizes: [4, 30],
     shadowBiases: [-0.0003, -0.001],
     renderScale: 1,
@@ -314,6 +321,10 @@ async function setup() {
   window.glDebugger = new GLDebugger();
 
   // orbitCamera = new OrbitCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 23});
+  lobbyWeaponCamera = new OrbitCamera(renderer, {near: 0.005, far: 20, layer: 1, fov: 20}, { translate: false, scale: true, stylePointer: false });
+  lobbyWeaponCamera.distance = 3;
+  lobbyWeaponCamera.rotation = new Vector(0, -Math.PI / 2, 0);
+  lobbyWeaponCamera.setCenter(new Vector(0, 0, -0.7));
 
   var resizeEvent = function() {
     mainCamera.setAspect(renderer.aspect);
@@ -334,14 +345,14 @@ async function setup() {
   loadingStatus.innerText = "Loading textures";
   var bulletHole = renderer.loadTexture("../assets/textures/bullethole.png");
   var bulletTrail = renderer.loadTexture("../assets/textures/bulletTrail.png");
-  var reddotTexture = renderer.loadTexture("../assets/textures/reddot.png", { TEXTURE_WRAP_S: renderer.gl.CLAMP_TO_EDGE, TEXTURE_WRAP_T: renderer.gl.CLAMP_TO_EDGE });
+  var reddotTexture = renderer.loadTexture("../assets/textures/reddot2.png", { TEXTURE_WRAP_S: renderer.gl.CLAMP_TO_EDGE, TEXTURE_WRAP_T: renderer.gl.CLAMP_TO_EDGE });
   var leaves = renderer.loadTexture("../assets/textures/leaves.png");
   // var waterNormal = loadTexture("../assets/textures/water-normal.png");
 
   // Materials
   var reddotMaterial = new renderer.Material(reddotProgram);
   reddotMaterial.setUniform("albedoTexture", reddotTexture);
-  reddotMaterial.setUniform("textureScale", 0.2);
+  reddotMaterial.setUniform("textureScale", 0.2 * 0.3);
   reddotMaterial.setUniform("scopeColor", [20, 0.1, 0.1]);
 
   var foliageMat = new renderer.Material(foliage);
@@ -429,6 +440,12 @@ async function setup() {
   enemies.push(new Enemy(map.getChild("Target", true)));
   enemies.push(new Enemy(map.getChild("Target.001", true)));
   enemies.push(new Enemy(map.getChild("Target.002", true)));
+
+  // Loadout light
+  var lightObject = scene.add(new GameObject("Light"));
+  lightObject.transform.position = new Vector(1, 0.1, 1);
+  var light = lightObject.addComponent(new Light());
+  light.color = [50, 34, 20];
 
   // var soldier = scene.add(await renderer.loadGLTF("../assets/models/lowpolySoldier.glb", { disableAnimations: true }));
   // soldier.transform.scale = Vector.fill(0.067);
@@ -624,6 +641,7 @@ async function setup() {
     var w = weaponModels[key];
     w.setLayer(1, true);
     w.visible = false;
+    w.setReceiveShadows(false, true);
 
     // Red dot
     var s = w.getChild("Reddot", true);
@@ -657,7 +675,9 @@ async function setup() {
   var scopes = {
     reddot: new Scope({
       ADSFOV: 30,
-      ADSMouseSensitivity: 0.8
+      ADSMouseSensitivity: 0.8,
+
+      ADSWeaponFOV: 5
     }),
 
     sniper: new Scope({
@@ -673,7 +693,7 @@ async function setup() {
         weaponObject: weaponModels.AK12,
         scope: scopes.reddot,
         weaponModelOffset: new Vector(-0.1, 0, 0),
-        weaponModelADSOffset: Vector.zero(),
+        weaponModelADSOffset: new Vector(0, 0, -0.7),
         bulletDamage: 26,
         reloadTime: 1500,
         magSize: 30,
@@ -691,6 +711,8 @@ async function setup() {
       });
       w.name = "AK12";
 
+      // w.modelRecoil.fireForce = new Vector(0, 0, 4);
+      // w.modelRecoil.fireTorque = Vector.zero();
       // w.modelRecoil.fireTorque.z = 3;
 
       return w;
@@ -823,6 +845,7 @@ async function setup() {
   */
  // {x: 10, y: 3, z: 10}
   player = new Player();
+  player.state = player.STATES.IN_LOBBY;
   player.physicsEngine = physicsEngine;
   player.setWeapons(classes[selectedClass].weapons);
 
@@ -975,7 +998,7 @@ async function setup() {
       renderer.render(mainCamera);
     }
     else if (player.state == player.STATES.IN_LOBBY) {
-      renderer.render(weaponCamera);
+      renderer.render(lobbyWeaponCamera.camera);
     }
     // renderer.render(orbitCamera.camera);
     renderUI(frameTime);
@@ -1328,16 +1351,22 @@ class Player extends PlayerPhysicsBase {
 
           hideElement(gameUI);
           hideElement(deathScreen);
+
+          scene.skyboxVisible = false;
         }
         else if (this.state == this.STATES.PLAYING) {
           showElement(gameUI);
           hideElement(lobbyUI);
           hideElement(loadoutUI);
+
+          scene.skyboxVisible = true;
         }
         else if (this.state == this.STATES.DEAD) {
           showElement(gameUI);
           showElement(deathScreen);
           hideElement(lobbyUI);
+
+          scene.skyboxVisible = true;
         }
       }
     });
@@ -1471,14 +1500,14 @@ class Player extends PlayerPhysicsBase {
 
   update(dt) {
     if (this.state == this.STATES.IN_LOBBY) {
-      this.getCurrentWeapon().weaponObject.transform.rotation = Quaternion.euler(0, physicsEngine.time, 0);
-      weaponCamera.transform.position = new Vector(0, 0, -2);
-      weaponCamera.transform.rotation = Quaternion.euler(0, Math.PI, 0);
+      // this.getCurrentWeapon().weaponObject.transform.rotation = Quaternion.euler(0, physicsEngine.time, 0);
+      // weaponCamera.transform.position = new Vector(0, 0, -2);
+      // weaponCamera.transform.rotation = Quaternion.euler(0, Math.PI, 0);
 
-      var a = physicsEngine.time * 0.1 + Math.PI;
-      var r = 40;
-      mainCamera.setFOV(30);
-      mainCamera.transform.matrix = Matrix.lookAt(new Vector(Math.cos(a) * r, 20, Math.sin(a) * r), Vector.zero());
+      // var a = physicsEngine.time * 0.1 + Math.PI;
+      // var r = 40;
+      // mainCamera.setFOV(30);
+      // mainCamera.transform.matrix = Matrix.lookAt(new Vector(Math.cos(a) * r, 20, Math.sin(a) * r), Vector.zero());
     }
     else if (this.state == this.STATES.DEAD) {
       // mainCamera.setFOV(20);
@@ -1536,6 +1565,10 @@ class Player extends PlayerPhysicsBase {
         crouching: renderer.getKey(16)
       };
 
+      if (this.getCurrentWeapon()) {
+        this.getCurrentWeapon().fixedUpdate(dt);
+      }
+
       this.handRotation = this.getHeadRotation();
 
       var oldPosition = Vector.copy(this.position);
@@ -1543,9 +1576,9 @@ class Player extends PlayerPhysicsBase {
       this.applyInputs(inputs, dt);
       this.simulatePhysicsStep(dt);
 
-      if (this.getCurrentWeapon()) {
-        this.getCurrentWeapon().fixedUpdate(dt);
-      }
+      // if (this.getCurrentWeapon()) {
+      //   this.getCurrentWeapon().fixedUpdate(dt);
+      // }
 
       if (this.grounded && (inputs.forward || inputs.back || inputs.left || inputs.right)) {
         var deltaPosition = Vector.distance(oldPosition, this.position);
@@ -2435,6 +2468,246 @@ function LayeredNoise(x, y, octaves = 4) {
   return noise;
 }
 
+function Settings() {
+  var defaultSettings = {
+    // "Master volume": new Slider(0.5, 0, 1),
+    // "FOV": new Slider(70, 50, 90),
+    // "Colorblindness mode": new Dropdown(0, ["First", "second", "third"]),
+    // "Toggle": new Toggle(true)
+  }
+
+  var _settings = copySettings(defaultSettings);
+
+  this.getSetting = function(setting) {
+    return _settings[setting]?.value;
+  }
+
+  function copySettings(settings) {
+    var newSettings = {};
+    for (var key in settings) {
+      newSettings[key] = settings[key].copy();
+    }
+
+    return newSettings;
+  }
+
+  function resetSettings() {
+    _settings = copySettings(defaultSettings);
+    localStorage.removeItem(LS_SETTINGS);
+  }
+
+  function loadSettings() {
+    var saved = localStorage.getItem(LS_SETTINGS);
+    if (saved) {
+      try {
+        saved = JSON.parse(saved);
+  
+        for (var key in _settings) {
+          if (key in saved) {
+            _settings[key].value = _settings[key].validate(saved[key]);
+          }
+        }
+      }
+      catch (e) {
+        console.error(e);
+        console.warn("Invalid settings in local storage!");
+      }
+    }
+  }
+
+  function saveSettings() {
+    var saveObject = {};
+    for (var key in _settings) {
+      saveObject[key] = _settings[key].value;
+    }
+
+    localStorage.setItem(LS_SETTINGS, JSON.stringify(saveObject));
+  }
+
+  var createSettingsElement = () => {
+    var settingsList = document.querySelector(".settingsList");
+    removeChildren(settingsList);
+
+    for (var key in _settings) {
+      var value = _settings[key];
+
+      var item = settingsList.appendChild(document.createElement("div"));
+      item.classList.add("item");
+
+      var keyDiv = item.appendChild(document.createElement("div"));
+      keyDiv.innerText = key;
+
+      var valueDiv = item.appendChild(document.createElement("div"));
+      value.createInputElement(valueDiv);
+    }
+
+    var resetButton = settingsList.appendChild(document.createElement("button"));
+    resetButton.innerText = "Reset settings";
+    resetButton.onclick = function() {
+      if (confirm("Are you sure you want to reset all settings to their default values?")) {
+        resetSettings();
+        createSettingsElement();
+      }
+    }
+  }
+
+  function Toggle(value) {
+    this.value = value;
+
+    this.createInputElement = function(parent) {
+      var toggleElement = document.createElement("label");
+      toggleElement.classList.add("toggle");
+
+      var checkbox = toggleElement.appendChild(document.createElement("input"));
+      checkbox.setAttribute("type", "checkbox");
+      checkbox.checked = this.value;
+
+      var span = toggleElement.appendChild(document.createElement("span"));
+      span.classList.add("slider", "round");
+
+      parent.appendChild(toggleElement);
+
+      checkbox.onchange = () => {
+        this.value = checkbox.checked;
+
+        saveSettings();
+      }
+    }
+
+    this.validate = function(v) {
+      return !!v;
+    }
+
+    this.copy = function() {
+      return new Toggle(this.value);
+    }
+  }
+
+  function Dropdown(currentIndex = 0, options = []) {
+    this.currentIndex = currentIndex;
+    this.options = options;
+    this.value = this.options[this.currentIndex];
+
+    this.createInputElement = function(parent) {
+      var selectElement = document.createElement("select");
+
+      for (var option of this.options) {
+        var optionElement = document.createElement("option");
+        optionElement.value = option;
+        optionElement.innerText = option;
+        selectElement.appendChild(optionElement);
+      }
+
+      var ind = this.options.indexOf(this.value);
+      ind = Math.max(ind, 0);
+      selectElement.selectedIndex = ind;
+      this.currentIndex = ind;
+
+      parent.appendChild(selectElement);
+
+      selectElement.onchange = () => {
+        this.value = this.options[selectElement.selectedIndex];
+        this.currentIndex = selectElement.selectedIndex;
+
+        saveSettings();
+      }
+    }
+
+    this.validate = function(v) {
+      return v;
+    }
+
+    this.copy = function() {
+      return new Dropdown(this.currentIndex, this.options);
+    }
+  }
+
+  function Slider(current, min, max, step = 0.1) {
+    this.value = current;
+    this.min = min;
+    this.max = max;
+    this.step = step;
+
+    this.createInputElement = function(parent) {
+      var slider = document.createElement("input");
+      slider.setAttribute("type", "range");
+      slider.setAttribute("min", this.min);
+      slider.setAttribute("max", this.max);
+      slider.setAttribute("step", this.step);
+      slider.value = this.value;
+
+      var minSpan = document.createElement("span");
+      minSpan.style = `
+        display: inline-block;
+        width: 30px;
+        text-align: right;
+        padding-right: 0.5em;
+      `;
+      minSpan.innerText = this.min;
+
+      var maxSpan = document.createElement("span");
+      maxSpan.style = `
+        display: inline-block;
+        width: 30px;
+        padding-left: 0.5em;
+      `;
+      maxSpan.innerText = this.max;
+
+      var currentValueInput = document.createElement("input");
+      currentValueInput.value = this.value;
+
+      parent.appendChild(minSpan);
+      parent.appendChild(slider);
+      parent.appendChild(maxSpan);
+
+      parent.appendChild(currentValueInput);
+
+      var setValues = (input) => {
+        var v = this.validate(input);
+
+        slider.value = v;
+        currentValueInput.value = v;
+        this.value = v;
+
+        saveSettings();
+      }
+
+      slider.onchange = () => {
+        setValues(slider.value);
+      }
+
+      currentValueInput.onchange = () => {
+        setValues(currentValueInput.value);
+      }
+    }
+
+    this.validate = function(v) {
+      if (typeof v == "string") {
+        v = v.replace(",", ".");
+      }
+
+      v = parseFloat(v);
+
+      if (isNaN(v)) {
+        v = this.min;
+      }
+
+      v = clamp(v, this.min, this.max);
+      v = roundNearest(v, this.step);
+      v = roundToPlaces(v, 9);
+
+      return v;
+    }
+
+    this.copy = function() {
+      return new Slider(this.value, this.min, this.max, this.step);
+    }
+  }
+
+  loadSettings();
+  createSettingsElement();
+}
+
 function Leaderboard(element) {
   this.element = element;
   var list = this.element.querySelector(".list");
@@ -2593,15 +2866,15 @@ window.flashButton = function(element) {
   });
 }
 
-window.openLoadout = function() {
-  showElement(loadoutUI);
-  hideElement(lobbyUI);
-}
+// window.openLoadout = function() {
+//   showElement(loadoutUI);
+//   hideElement(lobbyUI);
+// }
 
-window.closeLoadout = function() {
-  hideElement(loadoutUI);
-  showElement(lobbyUI);
-}
+// window.closeLoadout = function() {
+//   hideElement(loadoutUI);
+//   showElement(lobbyUI);
+// }
 
 function getSavedSelectedClass() {
   var l = localStorage.getItem(LS_SELECTEDCLASS);
@@ -2982,7 +3255,11 @@ function SetupEvents() {
           deployButton.click();
         }
         if (e.keyCode == 27) { // Esc
-          closeLoadout();
+          lobbyTabs[0].checked = true;
+          // closeLoadout();
+        }
+        if (e.keyCode == 13) { // Enter
+          // selectClass("shotgun");
         }
       }
 

@@ -1016,11 +1016,11 @@ function PhysicsEngine(scene, settings = {}) {
                   ind += 6;
                 }
               }
-              else {
-                console.warn("NaN in impulses", {
-                  constraint, impulses, jacobian, velocities, masses, C, dt: this.dt
-                });
-              }
+              // else {
+              //   console.warn("NaN in impulses", {
+              //     constraint, impulses, lambda, frictionLambda, jacobian, velocities, masses, C, dt: this.dt
+              //   });
+              // }
             }
           }
 
@@ -1209,10 +1209,13 @@ function PhysicsEngine(scene, settings = {}) {
   }
 
   this.update = function() {
+    // updatePhysics();
+    // this.time += this.dt;
+    // return;
+
     var newTime = performance.now();
     var frameTime = (newTime - lastTime) / 1000;
-    if (frameTime > 0.4)
-      frameTime = 0.4;
+    frameTime = Math.min(frameTime, 0.4);
     lastTime = newTime;
 
     accumulator += frameTime;
@@ -1222,9 +1225,6 @@ function PhysicsEngine(scene, settings = {}) {
       accumulator -= this.dt;
       this.time += this.dt;
     }
-
-    // updatePhysics();
-    // this.time += this.dt;
   }
 
   this.getConstraintImpulse = getConstraintImpulse;

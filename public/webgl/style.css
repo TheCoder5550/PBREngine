@@ -41,6 +41,67 @@
   }
 }
 
+/* Toggle */
+
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: 60px;
+  height: 34px;
+}
+
+.toggle input { 
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle > .slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  -webkit-transition: .2s;
+  transition: .2s;
+}
+
+.toggle > .slider:before {
+  position: absolute;
+  content: "";
+  height: 26px;
+  width: 26px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  -webkit-transition: .2s;
+  transition: .2s;
+}
+
+input:checked + .slider {
+  background-color: #2196F3;
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px #2196F3;
+}
+
+input:checked + .slider:before {
+  -webkit-transform: translateX(26px);
+  -ms-transform: translateX(26px);
+  transform: translateX(26px);
+}
+
+.toggle > .slider.round {
+  border-radius: 34px;
+}
+
+.toggle > .slider.round:before {
+  border-radius: 50%;
+}
+
 /* Setup */
 
 *, *::after, *::before {
@@ -54,6 +115,8 @@
   --team: #1db676;
   --teamDark: #147c51;
   --enemy: #d43e20;
+
+  --teamGradient: linear-gradient(6deg, var(--team), var(--teamDark));
 }
 
 body {
@@ -98,12 +161,16 @@ body {
   position: fixed;
   inset: 0;
   pointer-events: none;
+  user-select: none;
 }
 
 .UI a,
 .UI button,
-.UI input {
+.UI input,
+.UI select,
+.UI label {
   pointer-events: all;
+  /* user-select: all; */
 }
 
 .ingameUI {
@@ -112,28 +179,22 @@ body {
 
 /* Lobby */
 
-.lobbyUI {
+.playUI {
   pointer-events: none;
-  position: fixed;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 10;
-  padding: 50px;
-  padding-top: 25px;
+  /* padding: 50px;
+  padding-top: 25px; */
 
   display: flex;
   flex-direction: column;
 }
 
-.lobbyUI h1 {
+.playUI h1 {
   color: white;
   font-size: 5em;
   margin: 0;
 }
 
-.lobbyUI a, .lobbyUI input {
+.playUI a, .playUI input {
   pointer-events: auto;
 }
 
@@ -188,8 +249,10 @@ body {
 }
 
 #deploy {
-  background-color: rgba(255, 30, 30, 0.9);
+  background: var(--teamGradient);
+  /* background-color: rgba(255, 30, 30, 0.9); */
   color: white;
+  transition: transform 0.2s;
 }
 
 .flashButton::before {
@@ -207,18 +270,140 @@ body {
   }
 }
 
-.lobbyUI .slideOut {
+.playUI .slideOut {
   transform: translateX(-200%);
   opacity: 0;
+}
+
+/* Tab system */
+
+#radioPlay:checked ~ .tabsWrapper label[for="radioPlay"],
+#radioLoadout:checked ~ .tabsWrapper label[for="radioLoadout"],
+#radioSettings:checked ~ .tabsWrapper label[for="radioSettings"] {
+  /* text-decoration: underline; */
+  font-weight: bold;
+  background: var(--teamGradient);
+}
+
+.tabSystem {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tabSystem .pages {
+  flex: 1;
+  position: relative;
+}
+
+.tabSystem .pages > * {
+  /* display: none; */
+  height: 100%;
+  position: absolute;
+  transform: translateX(-150%);
+  transition: transform 0.2s linear;
+}
+
+#radioPlay:checked ~ .pages > .playUI,
+#radioLoadout:checked ~ .pages > .loadout,
+#radioSettings:checked ~ .pages > .settingsUI {
+  transform: none;
+  /* display: flex; */
+}
+
+.lobbyUI {
+  padding: 1em;
+  z-index: 1000;
+  color: white;
+}
+
+.tabSystem .title {
+  font-size: 2em;
+}
+
+.tabSystem .tabsWrapper {
+  display: flex;
+  flex-direction: row;
+  pointer-events: all;
+}
+
+.tabSystem input[type="radio"] {
+  display: none;
+}
+
+.tabSystem .tabsWrapper label {
+  cursor: pointer;
+  /* margin-right: 1em; */
+  padding: 0.5em 1em;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Settings UI */
+
+.settingsUI {
+  width: 100%;
+}
+
+.settingsList {
+  max-width: 800px;
+}
+
+.settingsList > .item {
+  display: flex;
+  flex-direction: row;
+  padding: 0.5em;
+  margin-bottom: 0.5em;
+
+  background: var(--teamGradient);
+}
+
+/* .settingsList > .item:nth-child(2n) {
+  background: var(--team);
+} */
+
+.settingsList > .item > div:nth-child(1) {
+  width: 200px;
+}
+
+.settingsList > .item > div:nth-child(2) {
+  flex: 1;
+
+  display: flex;
+  flex-direction: row;
+  align-items: center;
 }
 
 /* Loadout */
 
 .loadout {
-  z-index: 1000;
-  padding: 5px;
+
+  display: flex;
+  flex-direction: column;
 
   color: white;
+}
+
+/* Tooltip */
+
+.loadout .tooltipWrapper {
+  user-select: none;
+  height: 50px;
+  display: flex;
+  flex-direction: row;
+}
+
+.loadout .tooltipWrapper > div {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 100%;
+  margin-right: 2em;
+}
+
+.loadout .tooltipWrapper img {
+  height: 40px;
 }
 
 .loadout > .backButton {
@@ -230,27 +415,39 @@ body {
   width: 200px;
 }
 
-.loadout > div {
-  height: calc(100% - 30px);
+.loadout .loadoutContent {
+  flex: 1;
+
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
+  /* align-items: flex-start; */
+}
+
+.loadout .selectedWeaponBackground {
+  /* background: var(--team); */
+  height: 100%;
 }
 
 .loadout .classSelect {
   pointer-events: all;
-  height: 100%;
-  width: 200px;
-  padding: 5px;
-  margin-right: 5px;
-  overflow-y: auto;
+  /* height: 100%; */
+  /* width: 200px; */
+  /* padding: 5px; */
+  /* margin-right: 5px; */
+  overflow: hidden;
+  overflow-x: auto;
   background: rgba(0, 0, 0, 0.3);
+
+  display: flex;
+  flex-direction: row;
 }
 
 .loadout .classSelect > button {
   position: relative;
 
   display: block;
-  width: 100%;
+  /* width: 100%; */
+  width: 200px;
   height: 80px;
 
   font-size: 1.25em;
@@ -258,7 +455,7 @@ body {
   border: none;
   background: white;
 
-  margin-bottom: 5px;
+  /* margin-bottom: 5px; */
   cursor: pointer;
 }
 
@@ -273,10 +470,11 @@ body {
   /* flex-grow: 1; */
   pointer-events: all;
   width: 300px;
-  height: 100%;
+  /* height: 100%; */
   padding: 1em;
 
-  background: var(--team);
+  background: #333;
+  /* background: var(--team); */
 }
 
 .loadout .classContainer .className {
@@ -344,21 +542,29 @@ body {
 .loadout .classContainer .selectClass {
   width: 100%;
   padding: 1em;
-  border: 2px solid white;
-  background: white;
+
+  border-width: 3px;
+  border-style: solid;
+  border-image: linear-gradient(6deg, var(--teamDark), var(--team));
+
+  /* border: 3px solid var(--teamDark); */
+
+  color: var(--black);
+  background: var(--teamGradient);
   font-weight: bold;
   font-size: 1em;
   cursor: pointer;
 }
 
 .classIsSelected {
+  border-image: none !important;
   border-color: var(--black) !important;
   background: none !important;
   cursor: default !important;
 }
 
 .loadout .classSelect > button.classIsSelected {
-  background: var(--team) !important;
+  background: var(--teamGradient) !important;
 }
 
 /* */

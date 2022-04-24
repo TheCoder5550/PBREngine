@@ -35,6 +35,9 @@ void main() {
 
   vec4 glassColor = vec4(0, 0, 0, 0.5);
   vec4 finalColor = mix(glassColor, vec4(scopeColor, 1), texture(albedoTexture, uv + vec2(0.5, 0.5)).a);
+  
+  // float d = clamp((length(uv) - 0.3) * 10., 0., 1.);
+  // finalColor = mix(finalColor, vec4(0, 0, 0, 1), d);
 
   fragColor = finalColor;
 }

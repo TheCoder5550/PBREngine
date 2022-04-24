@@ -130,6 +130,12 @@ function isMobile() {
 
 // HTML helper
 
+function removeChildren(parent) {
+  while (parent.firstChild) {
+    parent.firstChild.remove()
+  }
+}
+
 function fadeOutElement(element) {
   element.classList.remove("fadeOut");
   element.classList.add("fadeOut");
@@ -171,6 +177,7 @@ export {
   Float32Concat,
   watchGlobal,
   isMobile,
+  removeChildren,
   fadeOutElement,
   hideElement,
   showElement,

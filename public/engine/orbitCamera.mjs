@@ -3,8 +3,13 @@ import Matrix from "./matrix.mjs";
 import { Camera } from "./renderer.js";
 import Quaternion from "./quaternion.mjs";
 
-export default function OrbitCamera(renderer, cameraSettings) {
+export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
   var _this = this;
+
+  var allowRotate = settings.rotate ?? true;
+  var allowTranslate = settings.translate ?? true;
+  var allowScale = settings.scale ?? true;
+  var stylePointer = settings.stylePointer ?? true;
 
   var _distance = 5;
   Object.defineProperty(this, 'distance', {
@@ -46,28 +51,30 @@ export default function OrbitCamera(renderer, cameraSettings) {
   this.camera.setAspect(renderer.aspect);
   updateCameraMatrix();
 
-  renderer.canvas.style.cursor = "grab";
-
-  renderer.canvas.addEventListener("mousedown", function(e) {
-    renderer.canvas.style.cursor = "grabbing";
-  });
-
-  document.addEventListener("mouseup", function(e) {
+  if (stylePointer) {
     renderer.canvas.style.cursor = "grab";
-  });
+
+    renderer.canvas.addEventListener("mousedown", function(e) {
+      renderer.canvas.style.cursor = "grabbing";
+    });
+
+    document.addEventListener("mouseup", function(e) {
+      renderer.canvas.style.cursor = "grab";
+    });
+  }
 
   renderer.canvas.addEventListener('contextmenu', function(e) {
     e.preventDefault();
   });
   
   window.addEventListener("mousemove", function(e) {
-    if (renderer.mouse.left) {
+    if (renderer.mouse.left && allowRotate) {
       rotation.x += -e.movementY * 0.005;
       rotation.y += -e.movementX * 0.005;
 
       setRotationMatrix();
     }
-    else if (renderer.mouse.right) {
+    else if (renderer.mouse.right && allowTranslate) {
       moveCenter(e.movementX, e.movementY);
     }
 
@@ -135,11 +142,13 @@ export default function OrbitCamera(renderer, cameraSettings) {
   }, { passive: false });
 
   renderer.canvas.addEventListener("wheel", function(e) {
-    _this.distance += e.deltaY * 0.001 * _this.distance;
-    _this.distance = Math.max(0, _this.distance);
+    if (allowScale) {
+      _this.distance += e.deltaY * 0.001 * _this.distance;
+      _this.distance = Math.max(0, _this.distance);
 
-    updateCameraMatrix();
-    e.preventDefault();
+      updateCameraMatrix();
+      e.preventDefault();
+    }
   });
 
   var lastScale = 1;
@@ -162,6 +171,11 @@ export default function OrbitCamera(renderer, cameraSettings) {
   renderer.on("resize", function() {
     _this.camera.setAspect(renderer.aspect);
   });
+
+  this.setCenter = function(newCenter) {
+    center = newCenter;
+    updateCameraMatrix();
+  }
 
   function moveCenter(dx, dy) {
     var f = 0.0006 * _this.distance;

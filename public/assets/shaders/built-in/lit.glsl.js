@@ -703,7 +703,7 @@ in vec4 projectedTexcoords[levels];
 // uniform float biases[levels];
 uniform sampler2D projectedTextures[levels];
 
-int shadowQuality = 2;
+uniform int shadowQuality; // = 2;
 float shadowDarkness = 0.;
 // vec2 shadowStepSize = 1. / vec2(1024) * 10.; // bruh
 const float shadowKernalSize = 2.;

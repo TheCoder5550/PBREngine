@@ -3396,6 +3396,13 @@ function Renderer() {
   
       return newMeshRenderer;
     }
+
+    this.setShadowQuality = function(quality) {
+      for (var mat of this.materials) {
+        gl.useProgram(mat.programContainer.program);
+        gl.uniform1i(mat.programContainer.getUniformLocation("shadowQuality"), quality);
+      }
+    }
   }
 
   /*
@@ -3955,6 +3962,11 @@ function Renderer() {
     
       if (node.mesh != undefined) {
         var mesh = json.meshes[node.mesh];
+
+        var customData = mesh.extras;
+        if (customData) {
+          gameObject.customData = {...customData};
+        }
 
         var loadNormals = loadSettings.loadNormals ?? true;
         var loadTangents = loadSettings.loadTangents ?? true;
@@ -5885,6 +5897,7 @@ function GameObject(name = "Unnamed", options = {}) {
   this.layer = 0;
   this.visible = def(options.visible, true);
   this.castShadows = def(options.castShadows, true);
+  this.receiveShadows = def(options.receiveShadows, true);
 
   var oldMats;
   var _meshRenderer;
@@ -5905,6 +5918,17 @@ function GameObject(name = "Unnamed", options = {}) {
   this.animationController = null;
 
   var _components = [];
+
+  this.setReceiveShadows = function(receiveShadows, changeChildren = false) {
+    if (changeChildren) {
+      this.traverse(o => {
+        o.receiveShadows = receiveShadows;
+      });
+    }
+    else {
+      this.receiveShadows = receiveShadows;
+    }
+  }
 
   this.setLayer = function(layer, changeChildren = false) {
     if (changeChildren) {
@@ -6159,6 +6183,7 @@ function GameObject(name = "Unnamed", options = {}) {
             }
           }
           else {
+            this.meshRenderer.setShadowQuality?.(this.receiveShadows ? 2 : 0);
             this.meshRenderer.render(camera, currentMatrix, shadowPass, opaquePass);
           }
         }

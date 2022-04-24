@@ -95,7 +95,8 @@ async function setup() {
 
   setLoadingStatus("Loading environment");
   await scene.loadEnvironment({
-    hdrFolder: "../assets/hdri/sky_only",
+    hdrFolder: "../assets/hdri/wide_street_01_1k_precomputed",
+    // hdrFolder: "../assets/hdri/sky_only",
     // hdrFolder: "./hdr",
     res: 1024
   });
@@ -134,15 +135,20 @@ async function setup() {
   // physicsEngine.addMeshCollider(mapCollider);
   // physicsEngine.setupMeshCollider();
 
+  var mapPath = "../assets/models/maps/1/model.glb";//"./monza.glb";
+  var colliderPath = mapPath;
+
   setLoadingStatus("Loading map");
-  var map = await renderer.loadGLTF("./monza.glb");
+  var map = await renderer.loadGLTF(mapPath);
+  map.transform.position.y -= 5;
   scene.add(map);
 
   FindMaterials("Grass", map)?.[0]?.setUniform("doNoTiling", 1);
   // FindMaterials("Road", map)?.[0]?.setUniform("doNoTiling", 1);
 
   setLoadingStatus("Creating map collider");  
-  var collider = await renderer.loadGLTF("./monza.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
+  var collider = await renderer.loadGLTF(colliderPath, { loadMaterials: false, loadNormals: false, loadTangents: false });
+  collider.transform.position.y -= 5;
   physicsEngine.addMeshCollider(collider);
   physicsEngine.setupMeshCollider();
   // physicsEngine.octree.render(scene);
@@ -183,15 +189,17 @@ async function setup() {
   var spawnPosition = map.getChild("SpawnPosition", true);
 
   // Reflection probe
-  setLoadingStatus("Creating reflection probe");
-  var oldSkybox = scene.skyboxCubemap;
-  var cubemap = renderer.captureReflectionCubemap(Matrix.getPosition(spawnPosition.transform.worldMatrix));
-  // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 3, 20));
-  // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 8, 200));
-  await scene.loadEnvironment({ cubemap });
-  scene.skyboxCubemap = oldSkybox;
-  // scene.environmentIntensity = 2;
-  // scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(6000, 15));
+  if (spawnPosition) {
+    setLoadingStatus("Creating reflection probe");
+    var oldSkybox = scene.skyboxCubemap;
+    var cubemap = renderer.captureReflectionCubemap(Matrix.getPosition(spawnPosition.transform.worldMatrix));
+    // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 3, 20));
+    // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 8, 200));
+    await scene.loadEnvironment({ cubemap });
+    scene.skyboxCubemap = oldSkybox;
+    // scene.environmentIntensity = 2;
+    // scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(6000, 15));
+  }
 
   setLoadingStatus("Creating car");
   // car = new Car({
@@ -206,31 +214,31 @@ async function setup() {
   // car.rb.COMOffset.y += 0.35;
   // car.camera.followDistance = 6;
 
-  // car = new Car({
-  //   drivetrain: "RWD",
-  //   friction: 1,
-  //   forwardFriction: 1.3,
-  //   sidewaysFriction: 1,
-  //   frontCamber: 4,
-  //   maxSteerAngle: 55,
-  //   torque: 700,
-  //   differential: Car.ENUMS.DIFFERENTIAL.OPEN,
-
-  //   suspensionForce: 90_000,
-  //   suspensionDamping: 3500,
-  //   suspensionTravel: 0.15
-  // });
   car = new Car({
     drivetrain: "RWD",
     friction: 1,
     forwardFriction: 1.3,
-    sidewaysFriction: 1.7,
+    sidewaysFriction: 1,
+    frontCamber: 4,
+    maxSteerAngle: 55,
     torque: 700,
+    differential: Car.ENUMS.DIFFERENTIAL.LOCKED,
 
     suspensionForce: 90_000,
     suspensionDamping: 3500,
     suspensionTravel: 0.15
   });
+  // car = new Car({
+  //   drivetrain: "RWD",
+  //   friction: 1,
+  //   forwardFriction: 1.3,
+  //   sidewaysFriction: 1.7,
+  //   torque: 700,
+
+  //   suspensionForce: 90_000,
+  //   suspensionDamping: 3500,
+  //   suspensionTravel: 0.15
+  // });
   // await car.setup("../assets/models/americanMuscle.glb");
   // await car.setup("./porsche.glb");
   await car.setup("./nissanGTR2.glb");
