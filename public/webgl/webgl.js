@@ -221,6 +221,8 @@ var SERVER_SEND_FPS = 5;
 var SIMULATED_PING = () => Math.random() * 50 + 50;
 //
 
+var mouse = { movementX: 0, movementY: 0 };
+
 var ws;
 var stateBuffer = [];
 var inputBuffer = [];
@@ -1565,11 +1567,24 @@ class Player extends PlayerPhysicsBase {
         crouching: renderer.getKey(16)
       };
 
+      this.handRotOffset = Vector.lerp(
+        this.handRotOffset,
+        new Vector(
+          clamp(mouse.movementY * 0.01, -0.6, 0.6),
+          clamp(mouse.movementX * 0.01, -0.6, 0.6),
+          0
+        ),
+        0.05
+      );
+      mouse.movementX *= 0.3;
+      mouse.movementY *= 0.3;
+
       if (this.getCurrentWeapon()) {
         this.getCurrentWeapon().fixedUpdate(dt);
       }
 
       this.handRotation = this.getHeadRotation();
+      // this.handRotation = Vector.lerp(this.handRotation, this.getHeadRotation(), 0.7);
 
       var oldPosition = Vector.copy(this.position);
 
@@ -3236,6 +3251,9 @@ function SetupEvents() {
       lastMovement.x = e.movementX;
       lastMovement.y = e.movementY;
     }
+
+    mouse.movementX = e.movementX;
+    mouse.movementY = e.movementY;
   });
 
   renderer.on("keydown", function(e) {
