@@ -26,7 +26,7 @@
     </div>
   </div> -->
 
-  <div class="lobbyUI UI">
+  <div class="lobbyUI UI hidden">
     <div class="tabSystem">
       <input type="radio" id="radioPlay" value="radioPlay" name="mainTab" checked>
       <input type="radio" id="radioLoadout" value="radioLoadout" name="mainTab">
@@ -51,14 +51,14 @@
             </div>
             <div>
               <input id="username" placeholder="Username" />
-              <a href="#" onclick="flashButton(this)" id="deploy">Deploy</a>
+              <button onclick="flashButton(this)" id="deploy">Deploy</button>
             </div>
           </div>
         </div>
 
         <div class="loadout">
           <div class="loadoutContent">
-            <div class="classSelect">
+            <div class="classSelect DragToScroll">
             </div>
             <div class="selectedWeaponBackground">
               <div class="classContainer">
@@ -206,6 +206,7 @@
     <span id="loadingStatus">Loading script</span>
   </div>
 
+  <script src="dragToScroll.js"></script>
   <script src="../perlin.js"></script>
   <script src="../fakeConsole.js"></script>
   <script src="../Stats.js"></script>

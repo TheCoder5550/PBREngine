@@ -3,8 +3,8 @@ const require = createRequire(import.meta.url)
 
 import Vector from '../public/engine/vector.mjs';
 import Matrix from '../public/engine/matrix.mjs';
+import { GameObject, Transform } from '../public/engine/renderer.mjs';
 import { Octree, AABB } from '../public/engine/physics.mjs';
-import { AABBToAABB, AABBToTriangle } from '../public/engine/algebra.mjs';
 import { Uint8ToUint32 } from '../public/engine/helper.mjs';
 const fs = require('fs');
 
@@ -15,9 +15,9 @@ export default async function LoadCollider(path) {
   var nrTriangles = 0;
 
   gameObject.traverse(o => {
-    if (o.meshData) {
-      for (var j = 0; j < o.meshData.length; j++) {
-        var md = o.meshData[j];
+    if (o.meshRenderer) {
+      for (var j = 0; j < o.meshRenderer.meshData.length; j++) {
+        var md = o.meshRenderer.meshData[j];
         nrTriangles += md.indices.bufferData.length / 3;
       }
     }
@@ -27,11 +27,11 @@ export default async function LoadCollider(path) {
   var triangleIndex = 0;
 
   gameObject.traverse(o => {
-    if (o.meshData) {
+    if (o.meshRenderer) {
       var worldMatrix = o.getWorldMatrix();
 
-      for (var j = 0; j < o.meshData.length; j++) {
-        var md = o.meshData[j];
+      for (var j = 0; j < o.meshRenderer.meshData.length; j++) {
+        var md = o.meshRenderer.meshData[j];
 
         for (var k = 0; k < md.indices.bufferData.length; k += 3) {
           for (var l = 0; l < 3; l++) {
@@ -156,9 +156,14 @@ export async function CreateGameObjectFromGLTF(path, globalOptions = {}) {
         var node = json.nodes[nodeIndex];
       
         var mat = Matrix.identity();
-        if (node.translation) mat = Matrix.translate(Vector.fromArray(node.translation));
-        if (node.rotation) mat = Matrix.multiply(mat, Matrix.fromQuaternion(Vector.fromArray(node.rotation)));
-        if (node.scale) Matrix.transform([["scale", Vector.fromArray(node.scale)]], mat);
+        if (node.matrix) {
+          Matrix.copy(node.matrix, mat);
+        }
+        else {
+          if (node.translation) Matrix.translate(Vector.fromArray(node.translation), mat);
+          if (node.rotation) Matrix.multiply(mat, Matrix.fromQuaternion(Vector.fromArray(node.rotation)), mat);
+          if (node.scale) Matrix.transform([["scale", Vector.fromArray(node.scale)]], mat);
+        }
         
         var gameObject = new GameObject(node.name, {matrix: mat, ...globalOptions});
         gameObject.nodeIndex = nodeIndex;
@@ -181,10 +186,14 @@ export async function CreateGameObjectFromGLTF(path, globalOptions = {}) {
             var accAndBuffer = getAccessorAndBuffer(currentPrimitive.attributes.POSITION);
             meshData.position = { bufferData: accAndBuffer.buffer, size: accAndBuffer.size };
 
-            meshDatas.push(meshData);
+            meshDatas.push({
+              data: meshData
+            });
           }
       
-          gameObject.meshData = meshDatas;
+          gameObject.meshRenderer = {
+            meshData: meshDatas
+          };
           // gameObject.meshRenderer = new MeshRenderer(materials, meshDatas);
         }
       
@@ -216,55 +225,72 @@ export async function CreateGameObjectFromGLTF(path, globalOptions = {}) {
   });
 }
 
-function GameObject(name, options = {}) {
-  this.name = name;
-  this.children = def(options.children, []);
-  this.parent = null;
+// function GameObject(name, options = {}) {
+//   this.name = name;
+//   this.children = def(options.children, []);
+//   this.parent = null;
 
-  this.matrix = def(options.matrix, Matrix.identity());
-  this.baseMatrix = Matrix.copy(this.matrix);
-  this.translationMatrix = Matrix.getTranslationMatrix(this.matrix);
-  this.rotationMatrix = Matrix.getRotationMatrix(this.matrix);
-  this.scaleMatrix = Matrix.getScaleMatrix(this.matrix);
-  this.worldMatrix = null;
+//   this.matrix = def(options.matrix, Matrix.identity());
+//   this.baseMatrix = Matrix.copy(this.matrix);
+//   this.translationMatrix = Matrix.getTranslationMatrix(this.matrix);
+//   this.rotationMatrix = Matrix.getRotationMatrix(this.matrix);
+//   this.scaleMatrix = Matrix.getScaleMatrix(this.matrix);
+//   this.worldMatrix = null;
 
-  this.visible = def(options.visible, true);
+//   this.visible = def(options.visible, true);
 
-  this.traverse = function(func) {
-    func(this);
-    for (var child of this.children) {
-      child.traverse(func);
-    }
-  }
+//   this.traverse = function(func) {
+//     func(this);
+//     for (var child of this.children) {
+//       child.traverse(func);
+//     }
+//   }
 
-  this.addChildren = function(children) {
-    for (var i = 0; i < children.length; i++) {
-      children[i].parent = this;
-      this.children.push(children[i]);
-    }
-    return children;
-  }
+//   this.addChildren = function(children) {
+//     for (var i = 0; i < children.length; i++) {
+//       children[i].parent = this;
+//       this.children.push(children[i]);
+//     }
+//     return children;
+//   }
 
-  this.getWorldMatrix = function(stopParent, matrices = [], doMult = true) {
-    matrices.push(this.matrix);
-    if (this.parent && this.parent != stopParent) {
-      this.parent.getWorldMatrix(stopParent, matrices, false);
-    }
+//   this.getWorldMatrix = function(stopParent, matrices = [], doMult = true) {
+//     matrices.push(this.matrix);
+//     if (this.parent && this.parent != stopParent) {
+//       this.parent.getWorldMatrix(stopParent, matrices, false);
+//     }
     
-    if (doMult) {
-      var newMats = [...matrices].reverse();
-      var outMatrix = Matrix.identity();
-      for (var i = 0; i < newMats.length; i++) {
-        outMatrix = Matrix.multiply(outMatrix, newMats[i]);
-      }
-      return outMatrix;
-    }
-  }
-}
+//     if (doMult) {
+//       var newMats = [...matrices].reverse();
+//       var outMatrix = Matrix.identity();
+//       for (var i = 0; i < newMats.length; i++) {
+//         outMatrix = Matrix.multiply(outMatrix, newMats[i]);
+//       }
+//       return outMatrix;
+//     }
+//   }
 
-function def(current, d) {
-  return typeof current == "undefined" ? d : current;
-}
+//   this.getChild = function(name, recursive = false) {
+//     if (recursive) {
+//       var found;
+      
+//       this.traverse(o => {
+//         if (o.name === name && !found) {
+//           found = o;
+//         }
+//       });
+
+//       return found;
+//     }
+//     else {
+//       return this.children.find(e => e.name == name);
+//     }
+//   }
+// }
+
+// function def(current, d) {
+//   return typeof current == "undefined" ? d : current;
+// }
 
 // function Octree(aabb) {
 //   this.aabb = aabb;

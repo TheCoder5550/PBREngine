@@ -515,6 +515,25 @@ class GameCanvas {
     this.ctx.stroke();
   }
 
+  clippedPicture(url, sx, sy, swidth, sheight, x, y, width, height) {
+    var imageElement = this.images[url];
+    if (!imageElement) {
+      var img = new Image();
+      img.src = url;
+      img.onload = () => {
+        width = width || img.width;
+        height = height || img.height;
+        this.ctx.drawImage(img, sx, sy, swidth, sheight, x, y, width, height);
+      }
+      this.images[url] = img;
+    }
+    else if (imageElement.complete && imageElement.naturalWidth !== 0) {
+      width = width || imageElement.width;
+      height = height || imageElement.height;
+      this.ctx.drawImage(imageElement, sx, sy, swidth, sheight, x, y, width, height);
+    }
+  }
+
   picture(url, x, y, width, height) {
     var imageElement = this.images[url];
     if (!imageElement) {

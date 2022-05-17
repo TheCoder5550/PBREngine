@@ -1,7 +1,7 @@
 import Vector from "./engine/vector.mjs";
 import Matrix from "./engine/matrix.mjs";
 import Quaternion from "./engine/quaternion.mjs";
-import { FindMaterials } from "./engine/renderer.js";
+import { FindMaterials } from "./engine/renderer.mjs";
 import { 
   SphereCollider,
   Rigidbody

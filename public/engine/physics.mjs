@@ -1,3 +1,12 @@
+if (typeof window == "undefined") {
+  import("module").then(e => {
+    var { createRequire } = e;
+    const require = createRequire(import.meta.url);
+    const { performance } = require('perf_hooks');
+    global.performance = performance;
+  });
+}
+
 import Vector from "./vector.mjs";
 import Matrix from "./matrix.mjs";
 import Quaternion from "./quaternion.mjs";
@@ -478,6 +487,11 @@ function AABB(bl = Vector.zero(), tr = Vector.zero()) {
     return Vector.subtract(this.tr, this.bl);
   }
 
+  this.translate = function(t) {
+    Vector.addTo(this.bl, t);
+    Vector.addTo(this.tr, t);
+  }
+
   // this.transform = function(matrix) {
   //   return new AABB(
   //     Matrix.transformVector(matrix, this.bl),
@@ -496,6 +510,45 @@ AABB.bounds = function(points) {
   }
 
   return new AABB(min, max);
+}
+
+// bruh generates garbage together with physics octree
+function GetMeshAABB(gameObject, padding) {
+  var aabb = new AABB();
+
+  gameObject.traverse(o => {
+    if (o.meshRenderer && !o.meshRenderer.skin) {
+      var noTranslateWorldMatrix = Matrix.copy(o.transform.worldMatrix);
+      Matrix.removeTranslation(noTranslateWorldMatrix);
+
+      for (var i = 0; i < o.meshRenderer.meshData.length; i++) {
+        var md = o.meshRenderer.meshData[i];
+
+        if (md.data.position && md.data.indices) {
+          for (var j = 0; j < md.data.position.bufferData.length; j += 3) {
+            var v = {
+              x: md.data.position.bufferData[j],
+              y: md.data.position.bufferData[j + 1],
+              z: md.data.position.bufferData[j + 2]
+            };
+            v = Matrix.transformVector(o.transform.worldMatrix, v);
+            aabb.extend(v);
+          }
+        }
+      }
+    }
+  });
+
+  if (padding) {
+    aabb.bl.x -= padding;
+    aabb.bl.y -= padding;
+    aabb.bl.z -= padding;
+    aabb.tr.x += padding;
+    aabb.tr.y += padding;
+    aabb.tr.z += padding;
+  }
+
+  return aabb;
 }
 
 function PhysicsEngine(scene, settings = {}) {
@@ -596,7 +649,7 @@ function PhysicsEngine(scene, settings = {}) {
     else {
       aabb = new AABB();
       for (var c of meshCollidersToAdd) {
-        aabb.extend(this.scene.renderer.GetMeshAABB(c, 0.1));
+        aabb.extend(GetMeshAABB(c, 0.1));
       }
     }
 
@@ -1487,6 +1540,7 @@ export {
   CreateCubeCollider,
   AABBCollider,
   MeshCollider,
+  GetMeshAABB,
   Octree,
   AABB,
   PhysicsEngine,

@@ -48,7 +48,7 @@
   
   <script type="module">
 
-    import Renderer, { Scene, Light, GameObject, FindMaterials } from "./engine/renderer.js";
+    import Renderer, { Scene, Light, GameObject, FindMaterials, AnimationController, AnimationBlend} from "./engine/renderer.mjs";
     import { PhysicsEngine, Rigidbody, SphereCollider, CapsuleCollider } from "./engine/physics.mjs";
     import OrbitCamera from "./engine/orbitCamera.mjs";
     import Vector from "./engine/vector.mjs";
@@ -104,7 +104,7 @@
       var physicsEngine = new PhysicsEngine(scene);
 
       // camera = new FlyCamera(renderer, {position: new Vector(0, 0, 3), near: 0.1, far: 300, layer: 0, fov: 20});
-      camera = new OrbitCamera(renderer, {position: new Vector(0, 0, 3), near: 0.1, far: 300, layer: 0, fov: 35});
+      camera = new OrbitCamera(renderer, {position: new Vector(0, 0, 3), near: 0.1, far: 300, layer: 0, fov: 20});
 
       // await renderer.CreatePBRGrid(scene, 10, 10);
       // var model = scene.add(await renderer.loadGLTF("./assets/models/FlightHelmet.glb"));
@@ -221,7 +221,58 @@
       // cube.transform.position = new Vector(0, 6, 0);
       // scene.add(cube);
 
-      scene.add(await renderer.loadGLTF("./assets/models/warehouse/model.glb"));
+      var skin = scene.add(await renderer.loadGLTF("./assets/models/running/skinWithGun.glb"));
+
+      var idle = await renderer.loadGLTF("./assets/models/running/rifleIdle.glb");
+      idle.animationController.animations[0].transfer(idle, skin);
+
+      var crouchIdle = await renderer.loadGLTF("./assets/models/running/crouchIdle.glb");
+      crouchIdle.animationController.animations[0].transfer(crouchIdle, skin);
+      
+      var forward = await renderer.loadGLTF("./assets/models/running/forward.glb");
+      forward.animationController.animations[0].transfer(forward, skin);
+
+      var left = await renderer.loadGLTF("./assets/models/running/left.glb");
+      left.animationController.animations[0].transfer(left, skin);
+
+      var right = await renderer.loadGLTF("./assets/models/running/right.glb");
+      right.animationController.animations[0].transfer(right, skin);
+      
+      var ac = skin.animationController = new AnimationController();
+      ac.animations = [
+        idle.animationController.animations[0],
+        forward.animationController.animations[0],
+        left.animationController.animations[0],
+        right.animationController.animations[0],
+        crouchIdle.animationController.animations[0],
+      ];
+      ac.loop = true;
+      ac.weightsHandler = new AnimationBlend([
+        {
+          animation: ac.animations[0],
+          coords: new Vector(0, 0, 0)
+        },
+        {
+          animation: ac.animations[4],
+          coords: new Vector(0, 0, -1)
+        },
+        {
+          animation: ac.animations[2],
+          coords: new Vector(1, 0, 0)
+        },
+        {
+          animation: ac.animations[3],
+          coords: new Vector(-1, 0, 0)
+        },
+        {
+          animation: ac.animations[1],
+          coords: new Vector(0, 1, 0)
+        }
+      ]);
+
+      var targetX = 0;
+      var targetY = 0;
+      var targetZ = 0;
 
       window.renderer = renderer;
       window.scene = scene;
@@ -234,6 +285,42 @@
       scene.updateLights();
 
       renderer.on("renderloop", function(frameTime, time) {
+        var t = Math.sin(time / 2) / 2;
+        // ac.animationInfluences.set(ac.animations[0], t);
+        // ac.animationInfluences.set(ac.animations[1], 1 - t);
+
+        // if (renderer.getKeyDown(32)) {
+        //   ac.play(ac.animations[0]);
+        // }
+
+        if (renderer.getKey(37)) {
+          targetX = 1;
+        }
+        else if (renderer.getKey(39)) {
+          targetX = -1;
+        }
+        else {
+          targetX = 0;
+        }
+
+        if (renderer.getKey(38)) {
+          targetY = 1;
+        }
+        else {
+          targetY = 0;
+        }
+
+        if (renderer.getKey(32)) {
+          targetZ = -1;
+        }
+        else {
+          targetZ = 0;
+        }
+
+        ac.weightsHandler.x += (targetX - ac.weightsHandler.x) / 6;
+        ac.weightsHandler.y += (targetY - ac.weightsHandler.y) / 6;
+        ac.weightsHandler.z += (targetZ - ac.weightsHandler.z) / 6;
+
         // Debug?.clear?.();
 
         // if (renderer.getKey(38)) {
@@ -249,11 +336,11 @@
         // if (renderer.getKey(32)) {
           // physicsEngine.update(frameTime);
         // }
-        // scene.update(frameTime);
+        scene.update(frameTime);
         // physicsEngine.update(frameTime);
         renderer.render(camera.camera);
 
-        // stats.update();
+        stats.update();
       });
 
       function PlayerController() {

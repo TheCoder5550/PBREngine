@@ -34,14 +34,23 @@ function Weapon(settings = {}) {
   this.readyFireSoundPlayers = [];
   for (var i = 0; i < def(settings.fireSoundBufferSize, 20); i++) {
     var audio = new Audio(def(settings.fireSound, "../assets/sound/drumGun2.wav"));
-    audio.playbackRate = 0.8 + Math.random() * 0.4;
+    // audio.playbackRate = 0.8 + Math.random() * 0.4;
+
+    var audioSource = audioContext.createMediaElementSource(audio);
+    audioSource.connect(masterVolume);
+
     this.fireSoundPlayers.push(audio);
     this.readyFireSoundPlayers.push(audio);
   }
   this.dryFireSoundPlayer = new Audio(def(settings.dryFireSound, "../assets/sound/dryFire.wav"));
+  audioContext.createMediaElementSource(this.dryFireSoundPlayer).connect(masterVolume);
+
   this.reloadSoundPlayer = new Audio(def(settings.reloadSound, "../assets/sound/reload.wav"));
+  audioContext.createMediaElementSource(this.reloadSoundPlayer).connect(masterVolume);
+
   if (settings.doneReloadingSound) {
     this.doneReloadingSoundPlayer = new Audio(settings.doneReloadingSound);
+    audioContext.createMediaElementSource(this.doneReloadingSoundPlayer).connect(masterVolume);
   }
 
   var reloadTimeouts = [];
@@ -106,6 +115,7 @@ function Weapon(settings = {}) {
   this.ADSBulletSpread = def(settings.ADSBulletSpread, 0);
 
   this.scope = def(settings.scope, new Scope());
+  this.ADSSpeed = def(settings.ADSSpeed, 0.3);
   var adsT = 0;
 
   this.crosshairType = def(settings.crosshairType, 0);
@@ -151,6 +161,8 @@ function Weapon(settings = {}) {
   }
 
   this.fire = function() {
+    window.muzzleFlashEnabled = false;
+
     if (this.isReloading && this.sequentialReloading) {
       this.cancelReload();
       // return false;
@@ -172,6 +184,8 @@ function Weapon(settings = {}) {
 
         this.roundsInMag--;
 
+        window.muzzleFlashEnabled = true;
+
         // if (currentSpreeRound < 4) { // Remove recoil climb after 4 shots
           this.recoilOffsetTarget = {...this.recoilOffset};
         // }
@@ -188,6 +202,8 @@ function Weapon(settings = {}) {
             this.muzzleFlashModel.hidden = true;
           }, 10);
         }*/
+
+        // Vector.addTo(player.velocity, Vector.multiply(player.forward, -1));
 
         this.playAnimation("Fire");
 
@@ -229,9 +245,9 @@ function Weapon(settings = {}) {
             trail.health = hit.distance / 50;
 
             // Create bullethole
-            var mat =  Matrix.lookAt(Vector.add(hit.point, Vector.multiply(hit.normal, 0.01 + Math.random() * 0.01)), Vector.add(hit.point, hit.normal), Vector.normalize({x: 1, y: 0.1, z: 0}));
+            var mat =  Matrix.lookAt(Vector.add(hit.point, Vector.multiply(hit.normal, 0.0001 + Math.random() * 0.005)), Vector.add(hit.point, hit.normal), Vector.normalize({x: 1, y: 0.1, z: 0}));
             Matrix.transform([
-              ["scale", Vector.fill(0.03)]
+              ["scale", Vector.fill(0.05)]
             ], mat);
 
             if (bulletHoles) {
@@ -249,7 +265,7 @@ function Weapon(settings = {}) {
             var basis = Matrix.basis(tangent, bitangent, hit.normal);
    
             sparks.emitVelocity = () => {
-              var v = new Vector((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 1.2);
+              var v = new Vector((Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, 2 * Math.random());
               return Matrix.transformVector(basis, v);
             };
             sparks.emitPosition = () => hit.point;
@@ -384,6 +400,7 @@ function Weapon(settings = {}) {
     fireTimer -= dt;
     if (fireTimer <= 0 && this.isFiring) {
       this.isFiring = false;
+      window.muzzleFlashEnabled = false;
 
       if (this.fireMode == WEAPONENUMS.FIREMODES.AUTO && this.roundsInMag > 0 && renderer.mouse.left) {
         currentSpreeRound++;
@@ -460,7 +477,7 @@ function Weapon(settings = {}) {
     this.swayTime += dt * Vector.length({x: player.velocity.x, y: player.velocity.z}) / 3;
     currentPlayerVelYOffset += (player.velocity.y - currentPlayerVelYOffset) * 0.2;
 
-    adsT += -(adsT - (this.mode == this.GunModes.ADS ? 0 : 1)) * 0.3;
+    adsT += -(adsT - (this.mode == this.GunModes.ADS ? 0 : 1)) * this.ADSSpeed;
 
     // Camera rotation
     this.recoilOffsetVelocity = Vector.add(this.recoilOffsetVelocity, Vector.multiply(Vector.subtract(this.recoilOffsetTarget, this.recoilOffset), 2 * dt * 60));

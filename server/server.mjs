@@ -11,25 +11,58 @@ import PlayerPhysicsBase from '../public/playerPhysicsBase.mjs';
 console.log("Starting server...");
 
 const WebSocket = require('ws');
+const HttpsServer = require('https').createServer;
+const fs = require("fs");
 
 // var colliderPath = "../public/assets/models/gunTestRoom/collider.glb";
-var colliderPath = "../public/assets/models/maps/1/model.glb";
+var mapPath = "../public/assets/models/maps/dust2/dust2.glb"
+var colliderPath = "../public/assets/models/maps/dust2/dust2.glb";
 
-var octree;
+var spawnPoints = [];
 var physicsEngine;
 
-var SIMULATED_PING = 50;
+var SIMULATED_PING = 0;//50;
 
 (async function setup() {
-  octree = await LoadCollider(colliderPath);
-  physicsEngine = { octree }; // Fixing call structure (fancy words :))
+  var map = (await CreateGameObjectFromGLTF(mapPath))[0];
+
+  var spawnPointsObj = map.getChild("SpawnPoints", true);
+  if (spawnPointsObj) {
+    for (var child of spawnPointsObj.children) {
+      spawnPoints.push(child.transform.worldPosition);
+    }
+  }
+  else {
+    spawnPoints.push(Vector.zero());
+  }
+
+  var mapCollider = (await CreateGameObjectFromGLTF(colliderPath))[0];
+
+  physicsEngine = new PhysicsEngine();
+  physicsEngine.addMeshCollider(mapCollider);
+  physicsEngine.setupMeshCollider();
 
   console.log("Setup done!");
 
   loop();
 })();
 
-const wss = new WebSocket.Server({ port: 8080 });
+// const ip = "192.168.181.117";
+const ip = "localhost";
+const port = 8080;
+const certPath = "C:\\Users\\alfon\\Documents\\HTTPS self signed certificates\\server.crt";
+const keyPath = "C:\\Users\\alfon\\Documents\\HTTPS self signed certificates\\server.key";
+const passphrasePath = "./httpsPassphrase.txt";
+
+const server = HttpsServer({
+  cert: fs.readFileSync(certPath),
+  key: fs.readFileSync(keyPath),
+  passphrase: fs.readFileSync(passphrasePath).toString(),
+});
+const wss = new WebSocket.Server({
+  server: server
+});
+// const wss = new WebSocket.Server({ port: 8080 });
 
 var connectedClients = {};
 var clientHistory = [];
@@ -113,11 +146,15 @@ wss.on('connection', ws => {
         else if (parsed.type == "deploy") {
           if (ws.gameData.state == ws.gameData.STATES.IN_LOBBY) {
             ws.gameData.state = ws.gameData.STATES.PLAYING;
+            ws.gameData.position = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
+
             send("deploy", {
-              status: "success"
+              status: "success",
+              position: ws.gameData.position
             });
             broadcast("deployOther", {
-              clientID: ws.id
+              clientID: ws.id,
+              position: ws.gameData.position
             }, [ ws ]);
           }
           else {
@@ -171,7 +208,9 @@ wss.on('connection', ws => {
                 name: client.name,
                 data: {
                   position: client.gameData.position,
+                  velocity: client.gameData.velocity,
                   rotation: client.gameData.rotation,
+                  crouching: client.gameData.crouching
                 }
               });
             }
@@ -272,6 +311,9 @@ wss.on('connection', ws => {
   function send(type, data = null, clientSendTime) {
     sendGlobal(ws, type, data, clientSendTime);
   }
+});
+server.listen(port, ip, () => {
+  console.log(server.address());
 });
 
 var fixedDeltaTime = 1 / 60;
@@ -441,150 +483,150 @@ function loop() {
 
 }
 
-function applyInputs(client, inputs, dt) {
-  // Moving
-  var vertical = (inputs.forward || 0) - (inputs.back || 0);
-  var horizontal = (inputs.left || 0) - (inputs.right || 0);
+// function applyInputs(client, inputs, dt) {
+//   // Moving
+//   var vertical = (inputs.forward || 0) - (inputs.back || 0);
+//   var horizontal = (inputs.left || 0) - (inputs.right || 0);
 
-  if (vertical || horizontal) {
-    var direction = Vector.rotateAround({
-      x: vertical,
-      y: 0,
-      z: -horizontal
-    }, {x: 0, y: 1, z: 0}, -client.gameData.yRotation + Math.PI / 2);
+//   if (vertical || horizontal) {
+//     var direction = Vector.rotateAround({
+//       x: vertical,
+//       y: 0,
+//       z: -horizontal
+//     }, {x: 0, y: 1, z: 0}, -client.gameData.yRotation + Math.PI / 2);
 
-    if (client.gameData.isGrounded) {
-      direction = Vector.normalize(Vector.projectOnPlane(direction, client.gameData.realGroundNormal));
-    }
+//     if (client.gameData.isGrounded) {
+//       direction = Vector.normalize(Vector.projectOnPlane(direction, client.gameData.realGroundNormal));
+//     }
     
-    var walkSpeed = 5;
-    client.gameData.position = Vector.add(client.gameData.position, Vector.multiply(direction, walkSpeed * dt));
-  }
+//     var walkSpeed = 5;
+//     client.gameData.position = Vector.add(client.gameData.position, Vector.multiply(direction, walkSpeed * dt));
+//   }
 
-  // Jumping
-  if (inputs.jump) {
-    client.gameData.jumpCounter = client.gameData.jumpBuffering;
-  }
+//   // Jumping
+//   if (inputs.jump) {
+//     client.gameData.jumpCounter = client.gameData.jumpBuffering;
+//   }
 
-  if (inputs.jump && client.gameData.jumpCounter > 0 && client.gameData.groundCounter > 0) {
-    client.gameData.velocity.y = 6;
-    client.gameData.position.y += 0.05;
+//   if (inputs.jump && client.gameData.jumpCounter > 0 && client.gameData.groundCounter > 0) {
+//     client.gameData.velocity.y = 6;
+//     client.gameData.position.y += 0.05;
 
-    client.gameData.jumpCounter = 0;
-    client.gameData.groundCounter = 0;
-  }
+//     client.gameData.jumpCounter = 0;
+//     client.gameData.groundCounter = 0;
+//   }
 
-  client.gameData.crouching = inputs.crouching;
-}
+//   client.gameData.crouching = inputs.crouching;
+// }
 
-function simulateClientToTime(client, time) {
-  if (time <= client.currentSimTime) {
-    // console.warn("End time is less than current time");
-    return;
-  }
+// function simulateClientToTime(client, time) {
+//   if (time <= client.currentSimTime) {
+//     // console.warn("End time is less than current time");
+//     return;
+//   }
 
-  var millisDT = fixedDeltaTime * 1000;
+//   var millisDT = fixedDeltaTime * 1000;
 
-  while (client.currentSimTime < time) {
-    physicsStep(client, fixedDeltaTime);
-    client.currentSimTime += millisDT;
+//   while (client.currentSimTime < time) {
+//     physicsStep(client, fixedDeltaTime);
+//     client.currentSimTime += millisDT;
 
-    if (client.currentSimTime > time) {
-      client.currentSimTime -= millisDT;
-      break;
-    }
-  }
+//     if (client.currentSimTime > time) {
+//       client.currentSimTime -= millisDT;
+//       break;
+//     }
+//   }
 
-  var leftOverTime = time - client.currentSimTime;
-  physicsStep(client, leftOverTime / 1000);
+//   var leftOverTime = time - client.currentSimTime;
+//   physicsStep(client, leftOverTime / 1000);
 
-  client.currentSimTime = time.getTime();
-}
+//   client.currentSimTime = time.getTime();
+// }
 
-function physicsStep(client, dt) {
-  client.gameData.velocity.y -= 18 * dt;
+// function physicsStep(client, dt) {
+//   client.gameData.velocity.y -= 18 * dt;
 
-  // Jumping
-  if (client.gameData.isGrounded) {
-    client.gameData.groundCounter = client.gameData.coyoteTime;
-  }
+//   // Jumping
+//   if (client.gameData.isGrounded) {
+//     client.gameData.groundCounter = client.gameData.coyoteTime;
+//   }
 
-  client.gameDatagroundCounter -= dt;
-  client.gameDatajumpCounter -= dt;
+//   client.gameDatagroundCounter -= dt;
+//   client.gameDatajumpCounter -= dt;
 
-  // Friction
-  if (client.gameData.isGrounded) {
-    var projectedVelocity = Vector.projectOnPlane(client.gameData.velocity, client.gameData.fakeGroundNormal);//{x: this.velocity.x, y: 0, z: this.velocity.z};
-    var speed = Vector.length(projectedVelocity);
-    client.gameData.velocity = Vector.add(client.gameData.velocity, Vector.multiply(Vector.normalize(projectedVelocity), -speed * dt * client.gameData.friction));
+//   // Friction
+//   if (client.gameData.isGrounded) {
+//     var projectedVelocity = Vector.projectOnPlane(client.gameData.velocity, client.gameData.fakeGroundNormal);//{x: this.velocity.x, y: 0, z: this.velocity.z};
+//     var speed = Vector.length(projectedVelocity);
+//     client.gameData.velocity = Vector.add(client.gameData.velocity, Vector.multiply(Vector.normalize(projectedVelocity), -speed * dt * client.gameData.friction));
 
-    // // Sliding / turning
-    // if (this.crouching && speed > 10) {
-    //   var v = Vector.rotateAround({
-    //     x: Vector.length(Vector.projectOnPlane(this.velocity, this.fakeGroundNormal)),
-    //     y: 0,
-    //     z: 0
-    //   }, this.fakeGroundNormal, -this.rotation.y + Math.PI / 2);
+//     // // Sliding / turning
+//     // if (this.crouching && speed > 10) {
+//     //   var v = Vector.rotateAround({
+//     //     x: Vector.length(Vector.projectOnPlane(this.velocity, this.fakeGroundNormal)),
+//     //     y: 0,
+//     //     z: 0
+//     //   }, this.fakeGroundNormal, -this.rotation.y + Math.PI / 2);
       
-    //   this.velocity.x = v.x;
-    //   this.velocity.z = v.z;
-    // }
-  }
+//     //   this.velocity.x = v.x;
+//     //   this.velocity.z = v.z;
+//     // }
+//   }
 
-  if (client.gameData.position.y < -30) {
-    client.gameData.position = new Vector(10, 3, 10);
-    client.gameData.velocity = Vector.zero();
-  }
+//   if (client.gameData.position.y < -30) {
+//     client.gameData.position = new Vector(10, 3, 10);
+//     client.gameData.velocity = Vector.zero();
+//   }
 
-  client.gameData.position = Vector.add(client.gameData.position, Vector.multiply(client.gameData.velocity, dt));
+//   client.gameData.position = Vector.add(client.gameData.position, Vector.multiply(client.gameData.velocity, dt));
 
-  solveCollision(client);
-}
+//   solveCollision(client);
+// }
 
-function solveCollision(client) {
-  client.gameData.isGrounded = false;
+// function solveCollision(client) {
+//   client.gameData.isGrounded = false;
 
-  var colliderRadius = 0.5;
-  var standHeight = 2;
-  var height = 2;
-  var collisionIterations = 3;
+//   var colliderRadius = 0.5;
+//   var standHeight = 2;
+//   var height = 2;
+//   var collisionIterations = 3;
 
-  var radiusOffset = new Vector(0, colliderRadius, 0);
-  var playerAABB = new AABB(
-    {x: client.gameData.position.x - colliderRadius * 2, y: client.gameData.position.y - colliderRadius * 2,          z: client.gameData.position.z - colliderRadius * 2},
-    {x: client.gameData.position.x + colliderRadius * 2, y: client.gameData.position.y + colliderRadius * 2 + height, z: client.gameData.position.z + colliderRadius * 2}
-  );
-  var q = octree.queryAABB(playerAABB);
+//   var radiusOffset = new Vector(0, colliderRadius, 0);
+//   var playerAABB = new AABB(
+//     {x: client.gameData.position.x - colliderRadius * 2, y: client.gameData.position.y - colliderRadius * 2,          z: client.gameData.position.z - colliderRadius * 2},
+//     {x: client.gameData.position.x + colliderRadius * 2, y: client.gameData.position.y + colliderRadius * 2 + height, z: client.gameData.position.z + colliderRadius * 2}
+//   );
+//   var q = octree.queryAABB(playerAABB);
 
-  for (var iter = 0; iter < collisionIterations; iter++) {
-    if (q) {
-      for (var k = 0; k < q.length; k++) {
-        if (!AABBTriangleToAABB(q[k][0], q[k][1], q[k][2], playerAABB)) { // bruh redundant?
-          continue;
-        }
+//   for (var iter = 0; iter < collisionIterations; iter++) {
+//     if (q) {
+//       for (var k = 0; k < q.length; k++) {
+//         if (!AABBTriangleToAABB(q[k][0], q[k][1], q[k][2], playerAABB)) { // bruh redundant?
+//           continue;
+//         }
 
-        var col = capsuleToTriangle(Vector.add(client.gameData.position, new Vector(0, standHeight / 2 - height * 0.5 + colliderRadius, 0)), Vector.subtract(Vector.add(client.gameData.position, new Vector(0, standHeight / 2 + height / 2, 0)), radiusOffset), colliderRadius, q[k][0], q[k][1], q[k][2], true);
-        // var col = capsuleToTriangle(Vector.add(this.position, radiusOffset), Vector.subtract(Vector.add(this.position, new Vector(0, this.height, 0)), radiusOffset), this.colliderRadius, q[k][0], q[k][1], q[k][2], true);
+//         var col = capsuleToTriangle(Vector.add(client.gameData.position, new Vector(0, standHeight / 2 - height * 0.5 + colliderRadius, 0)), Vector.subtract(Vector.add(client.gameData.position, new Vector(0, standHeight / 2 + height / 2, 0)), radiusOffset), colliderRadius, q[k][0], q[k][1], q[k][2], true);
+//         // var col = capsuleToTriangle(Vector.add(this.position, radiusOffset), Vector.subtract(Vector.add(this.position, new Vector(0, this.height, 0)), radiusOffset), this.colliderRadius, q[k][0], q[k][1], q[k][2], true);
         
-        if (col && !Vector.equal(col.normal, Vector.zero(), 0.001)) {
-          var dp = Vector.dot(Vector.up(), col.normal);
-          var normal = dp > 0.85 ? Vector.up() : col.normal;
-          var depth = col.depth / Vector.dot(normal, col.normal);
+//         if (col && !Vector.equal(col.normal, Vector.zero(), 0.001)) {
+//           var dp = Vector.dot(Vector.up(), col.normal);
+//           var normal = dp > 0.85 ? Vector.up() : col.normal;
+//           var depth = col.depth / Vector.dot(normal, col.normal);
 
-          client.gameData.position = Vector.add(client.gameData.position, Vector.multiply(normal, depth));
-          client.gameData.velocity = Vector.projectOnPlane(client.gameData.velocity, normal);
+//           client.gameData.position = Vector.add(client.gameData.position, Vector.multiply(normal, depth));
+//           client.gameData.velocity = Vector.projectOnPlane(client.gameData.velocity, normal);
 
-          var isGround = Vector.dot(normal, Vector.up()) > 0.7;
-          if (isGround) {
-            client.gameData.fakeGroundNormal = normal;
-            client.gameData.realGroundNormal = col.normal;
-            client.gameData.isGrounded = true;
-          }
-        }
-      }
-    }
-  }
-}
+//           var isGround = Vector.dot(normal, Vector.up()) > 0.7;
+//           if (isGround) {
+//             client.gameData.fakeGroundNormal = normal;
+//             client.gameData.realGroundNormal = col.normal;
+//             client.gameData.isGrounded = true;
+//           }
+//         }
+//       }
+//     }
+//   }
+// }
 
 function getWorldState(time) {
   var clientHistoryCopy = [...clientHistory];

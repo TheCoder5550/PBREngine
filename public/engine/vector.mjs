@@ -277,6 +277,17 @@ export default class Vector {
     var b = Vector.multiply(relativeVec, Math.sin(theta));
     return Vector.add(a, b);
   }
+
+  static clamp(v, min, max) {
+    var minIsVector = Vector.isVectorIsh(min);
+    var maxIsVector = Vector.isVectorIsh(max);
+
+    return new Vector(
+      clamp(v.x, minIsVector ? min.x : min, maxIsVector ? max.x : max),
+      clamp(v.y, minIsVector ? min.y : min, maxIsVector ? max.y : max),
+      clamp(v.z, minIsVector ? min.z : min, maxIsVector ? max.z : max)
+    );
+  }
 }
 
 // if (typeof module != "undefined")

@@ -1,3 +1,4 @@
+import { lerp } from "./helper.mjs";
 import Matrix from "./matrix.mjs";
 import Vector from "./vector.mjs";
 

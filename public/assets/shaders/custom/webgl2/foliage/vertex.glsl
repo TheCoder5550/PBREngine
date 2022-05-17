@@ -21,14 +21,14 @@ out vec2 vUV;
 float billboardSize = 0.5;
 
 void main() {
-  vNormal = normal;
+  vNormal = mat3(modelMatrix) * normal;
   vTangent = tangent;
   vUV = uv;
   vColor = color;
 
-  vec3 offset = mat3(inverseViewMatrix) * vec3((vUV - 0.5) * 2. * billboardSize, 0);
+  vec3 offset = mat3(inverse(modelMatrix)) * mat3(inverseViewMatrix) * vec3((vUV - 0.5) * 2. * billboardSize, 0);
   vec3 wind = vec3(0.05 * sin(iTime * 0.9 + position.x * position.y * position.z * 1.5), 0, 0);
-  vec4 worldPosition = modelMatrix * vec4(position + offset + wind, 1.0);
+  vec4 worldPosition = modelMatrix * vec4(position + offset + wind * 0., 1.0);
 
   vPosition = vec3(worldPosition);
   

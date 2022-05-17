@@ -7,8 +7,8 @@ class PlayerPhysicsBase {
     this.physicsEngine = null;
 
     this.rotation = Vector.zero();
-    this.position = pos;
-    this.startPosition = pos;
+    this.position = Vector.copy(pos);
+    this.startPosition = Vector.copy(pos);
     this.velocity = Vector.zero();
 
     this.crouching = false;
@@ -128,7 +128,7 @@ class PlayerPhysicsBase {
           
           if (col && !Vector.equal(col.normal, Vector.zero(), 0.001)) {
             var dp = Vector.dot(Vector.up(), col.normal);
-            var normal = dp > 0.85 ? Vector.up() : col.normal;
+            var normal = dp > 0.75 ? Vector.up() : col.normal;
             var depth = col.depth / Vector.dot(normal, col.normal);
 
             this.position = Vector.add(this.position, Vector.multiply(normal, depth));
@@ -155,7 +155,7 @@ class PlayerPhysicsBase {
         x: vertical,
         y: 0,
         z: -horizontal
-      }, {x: 0, y: 1, z: 0}, -this.rotation.y + Math.PI / 2);
+      }, {x: 0, y: 1, z: 0}, -this.getHeadRotation().y + Math.PI / 2);
   
       if (this.grounded) {
         direction = Vector.normalize(Vector.projectOnPlane(direction, this.realGroundNormal));
@@ -195,6 +195,18 @@ class PlayerPhysicsBase {
     }
 
     this.crouching = inputs.crouching;
+  }
+
+  getHeadRotation() {
+    if (this.getCurrentWeapon?.()) {
+      return Vector.add(this.rotation, this.getCurrentWeapon().recoilOffset);
+    }
+    
+    return this.rotation;
+  }
+
+  get forward() {
+    return Vector.rotateAround(new Vector(1, 0, 0), Vector.up(), -this.getHeadRotation().y + Math.PI / 2);
   }
 }
 

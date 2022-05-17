@@ -4,7 +4,8 @@
   <meta charset='utf-8'>
   <meta http-equiv='X-UA-Compatible' content='IE=edge'>
   <title>PBR demo</title>
-  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <!-- <meta name='viewport' content='width=device-width, initial-scale=1'> -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes" />
 
   <link rel="preconnect" href="https://fonts.gstatic.com">
@@ -39,7 +40,7 @@
     // import OrbitCamera from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/orbitCamera.mjs";
     // import Vector from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/vector.mjs";
 
-    import Renderer, { Scene, GameObject } from "./engine/renderer.js";
+    import Renderer, { Scene, GameObject } from "./engine/renderer.mjs";
     import OrbitCamera from "./engine/orbitCamera.mjs";
     import Vector from "./engine/vector.mjs";
 
@@ -52,14 +53,6 @@
 
     (async function() {
       renderer = new Renderer();
-      await renderer.setup({
-        disableLitInstanced: true,
-        disableUnlitInstanced: true,
-        disableLitSkinned: true,
-        disableLitBillboard: true,
-        disableTrailLit: true,
-        disableParticleProgram: true
-      });
 
       scene = new Scene();
       scene.environmentIntensity = 1.25;
@@ -79,7 +72,7 @@
       scene.add(model);
 
       renderer.on("renderloop", function(frameTime) {
-        scene.update(frameTime);
+        renderer.update(frameTime);
         renderer.render(camera.camera);
 
         stats.update();

@@ -1,6 +1,6 @@
 import Vector from "./vector.mjs";
 import Matrix from "./matrix.mjs";
-import { Camera } from "./renderer.js";
+import { Camera } from "./renderer.mjs";
 import Quaternion from "./quaternion.mjs";
 
 export default function OrbitCamera(renderer, cameraSettings, settings = {}) {

@@ -1,6 +1,6 @@
 "use strict";
 
-import Renderer, { GameObject, Scene, Camera, AudioListener3D, FindMaterials, flyCamera, Light } from "../engine/renderer.js";
+import Renderer, { GameObject, Scene, Camera, AudioListener3D, FindMaterials, flyCamera, Light } from "../engine/renderer.mjs";
 import { PhysicsEngine, Rigidbody, SphereCollider, AABB } from "../engine/physics.mjs";
 import FlyCamera from "../engine/flyCamera.mjs";
 import Vector from "../engine/vector.mjs";
@@ -28,7 +28,9 @@ var rafID;
 var ui = new GameCanvas({publicMethods: false});
 ui.canvas.classList.add("ingameUICanvas");
 
-var renderer = new Renderer();
+var renderer = new Renderer({
+  dontCallSetup: true
+});
 var scene = new Scene("Main scene");
 
 var fov = 25;
@@ -136,7 +138,7 @@ async function setup() {
   // physicsEngine.setupMeshCollider();
 
   var mapPath = "../assets/models/maps/1/model.glb";//"./monza.glb";
-  var colliderPath = mapPath;
+  var colliderPath = "../assets/models/maps/1/collider.glb";
 
   setLoadingStatus("Loading map");
   var map = await renderer.loadGLTF(mapPath);
