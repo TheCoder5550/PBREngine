@@ -404,8 +404,6 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
     N *= -1.;
   }
 
-  N += vec3(0.01, 0, 0);
-
   vec3 R = reflect(-V, N);
 
   float f0 = 0.04;

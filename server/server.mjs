@@ -210,7 +210,8 @@ wss.on('connection', ws => {
                   position: client.gameData.position,
                   velocity: client.gameData.velocity,
                   rotation: client.gameData.rotation,
-                  crouching: client.gameData.crouching
+                  crouching: client.gameData.crouching,
+                  localUpdatedTime: client.gameData.localUpdatedTime
                 }
               });
             }
@@ -359,7 +360,8 @@ function loop() {
         lastProcessedTick: client.inputQueue[client.inputQueue.length - 1].tick
       });
 
-      client.gameData.localUpdatedTime = client.inputQueue[client.inputQueue.length - 1].localTime;//new Date().getTime();
+      client.gameData.localUpdatedTime = client.inputQueue[client.inputQueue.length - 1].localTime;
+      // client.gameData.localUpdatedTime = new Date().getTime();
       client.inputQueue = [];
     }
 

@@ -32,16 +32,25 @@ function Weapon(settings = {}) {
 
   this.fireSoundPlayers = [];
   this.readyFireSoundPlayers = [];
-  for (var i = 0; i < def(settings.fireSoundBufferSize, 20); i++) {
-    var audio = new Audio(def(settings.fireSound, "../assets/sound/drumGun2.wav"));
-    // audio.playbackRate = 0.8 + Math.random() * 0.4;
 
-    var audioSource = audioContext.createMediaElementSource(audio);
-    audioSource.connect(masterVolume);
+  var bufferSize = def(settings.fireSoundBufferSize, 20);
+  fetch(def(settings.fireSound, "../assets/sound/drumGun2.wav"))
+    .then(response => response.blob())
+    .then(blob => {
+        var fileBlob = URL.createObjectURL(blob);
 
-    this.fireSoundPlayers.push(audio);
-    this.readyFireSoundPlayers.push(audio);
-  }
+        for (var i = 0; i < bufferSize; i++) {
+          var audio = new Audio(fileBlob);
+          // audio.playbackRate = 0.8 + Math.random() * 0.4;
+      
+          var audioSource = audioContext.createMediaElementSource(audio);
+          audioSource.connect(masterVolume);
+      
+          this.fireSoundPlayers.push(audio);
+          this.readyFireSoundPlayers.push(audio);
+        }
+  });
+
   this.dryFireSoundPlayer = new Audio(def(settings.dryFireSound, "../assets/sound/dryFire.wav"));
   audioContext.createMediaElementSource(this.dryFireSoundPlayer).connect(masterVolume);
 

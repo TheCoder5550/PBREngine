@@ -91,6 +91,11 @@ class PlayerPhysicsBase {
 
     this.position = Vector.add(this.position, Vector.multiply(this.velocity, dt));
 
+    // Fix bouncing when going down slope
+    if (this.grounded) {
+      this.position.y -= 0.05;
+    }
+
     this.solveCollisions();
 
     // Reset when out-of-bounds
@@ -190,8 +195,13 @@ class PlayerPhysicsBase {
     }
   
     // Crouching
-    if (inputs.crouching && !this.crouching && this.grounded) {
-      this.position.y -= 0.5;
+    if (this.grounded) {
+      if (inputs.crouching && !this.crouching) {
+        this.position.y -= 0.5;
+      }
+      if (!inputs.crouching && this.crouching) {
+        this.position.y += 0.5;
+      }
     }
 
     this.crouching = inputs.crouching;

@@ -77,12 +77,11 @@ async function setup() {
     clearColor: [0, 0, 0, 1],
     shadowSizes: [7, 56],
     shadowBiases: [-0.0001, -0.001],
-    shadowResolution: 4096,
+    // shadowResolution: 4096,
 
     // Mobile
     version: 2,
     // renderScale: 0.1,
-    disableLitBillboard: true
   });
   renderer.canvas.classList.add("webglCanvas");
   renderer.postprocessing.exposure = -0.5;
@@ -137,13 +136,13 @@ async function setup() {
   // physicsEngine.addMeshCollider(mapCollider);
   // physicsEngine.setupMeshCollider();
 
-  var mapPath = "../assets/models/maps/1/model.glb";//"./monza.glb";
-  var colliderPath = "../assets/models/maps/1/collider.glb";
+  var mapPath = "./kajaman.glb";//"./monza.glb";
+  var colliderPath = "./kajaman.glb";
 
   setLoadingStatus("Loading map");
   var map = await renderer.loadGLTF(mapPath);
   map.transform.position.y -= 5;
-  scene.add(map);
+  scene.add(renderer.BatchGameObject(map));
 
   FindMaterials("Grass", map)?.[0]?.setUniform("doNoTiling", 1);
   // FindMaterials("Road", map)?.[0]?.setUniform("doNoTiling", 1);
@@ -241,9 +240,9 @@ async function setup() {
   //   suspensionDamping: 3500,
   //   suspensionTravel: 0.15
   // });
-  // await car.setup("../assets/models/americanMuscle.glb");
+  await car.setup("../assets/models/americanMuscle.glb");
   // await car.setup("./porsche.glb");
-  await car.setup("./nissanGTR2.glb");
+  // await car.setup("./nissanGTR2.glb");
 
   car.camera.followDistance = 5;
   car.camera.followHeight = 0.35;

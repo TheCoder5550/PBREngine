@@ -514,15 +514,21 @@ function Renderer(settings = {}) {
 
     var scene = this.scenes[this.currentScene];
 
+    // scene.updateUniformBuffers(
+    //   camera.projectionMatrix,
+    //   camera.viewMatrix,
+    //   camera.inverseViewMatrix
+    // );
+
+    if (this.shadowCascades && _settings.enableShadows && (scene.sunIntensity.x != 0 || scene.sunIntensity.y != 0 || scene.sunIntensity.z != 0)) {
+      this.shadowCascades.renderShadowmaps(camera.transform.position);
+    }
+
     scene.updateUniformBuffers(
       camera.projectionMatrix,
       camera.viewMatrix,
       camera.inverseViewMatrix
     );
-
-    if (this.shadowCascades && _settings.enableShadows && (scene.sunIntensity.x != 0 || scene.sunIntensity.y != 0 || scene.sunIntensity.z != 0)) {
-      this.shadowCascades.renderShadowmaps(camera.transform.position);
-    }
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.postprocessing && _settings.enablePostProcessing ? this.postprocessing.framebuffer : null);
     // gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -601,11 +607,10 @@ function Renderer(settings = {}) {
     }
   });
 
-  this.add = function(scene, debug = false) {
+  this.add = function(scene) {
     this.scenes.push(scene);
     scene.renderer = this;
-    // if (!debug)
-      scene.setupUBO();
+    scene.setupUBO();
     return scene;
   }
 
@@ -2585,13 +2590,22 @@ function Renderer(settings = {}) {
         shadowmap.updateModelMatrix(cameraPosition);
         shadowmap.bind();
 
-        // bruh
-        var scene = renderer.scenes[renderer.currentScene];
-        scene.render({
+        var camera = {
           projectionMatrix: shadowmap.shadowPerspeciveMatrix,
           viewMatrix: shadowmap.shadowViewMatrix,
           inverseViewMatrix: shadowmap.shadowInverseViewMatrix
-        }, {
+        };
+
+        // bruh
+        var scene = renderer.scenes[renderer.currentScene];
+
+        scene.updateUniformBuffers(
+          camera.projectionMatrix,
+          camera.viewMatrix,
+          camera.inverseViewMatrix
+        );
+
+        scene.render(camera, {
           materialOverride: this.material,
           renderPass: ENUMS.RENDERPASS.SHADOWS
         });
@@ -3141,8 +3155,12 @@ function Renderer(settings = {}) {
           //   (gl["uniform" + uniform.type]).call(gl, location, ...uniform.arguments);
           // }
 
-          // gl["uniform" + uniform.type + "v"](location, uniform.arguments);
-          uniform.func(location, uniform.arguments);
+          if (uniform.func) {
+            uniform.func(location, uniform.arguments);
+          }
+          else {
+            gl["uniform" + uniform.type + "v"](location, uniform.arguments);
+          }
 
           // if (uniform.texture) {
           //   var n = new Array(uniform.arguments.length);
@@ -3324,9 +3342,13 @@ function Renderer(settings = {}) {
         }
 
         // bruh why does order matter ^^^ (activeTexture and bindTexture (skin) vvvvvvv)
-        if (!shadowPass) {
+        // if (!shadowPass) {
           gl.uniform1i(mat.programContainer.getUniformLocation("u_jointTexture"), this.skin.textureIndex);
           gl.uniform1f(mat.programContainer.getUniformLocation("u_numJoints"), this.skin.joints.length);
+        // }
+
+        if (shadowPass) {
+          gl.uniform1iv(mat.programContainer.getUniformLocation("projectedTextures[0]"), [ 0, 0 ]);
         }
 
         this.skin.bindTexture();
@@ -3467,6 +3489,10 @@ function Renderer(settings = {}) {
         mat.bindUniforms(camera);
         if (!shadowPass && renderer.shadowCascades) {
           renderer.shadowCascades.setUniforms(mat);
+        }
+
+        if (shadowPass) {
+          gl.uniform1iv(mat.programContainer.getUniformLocation("projectedTextures[0]"), [ 0, 0 ]);
         }
   
         mat.setCulling(shadowPass);
@@ -6264,7 +6290,7 @@ function GameObject(name = "Unnamed", options = {}) {
         // }
 
         if (this.meshRenderer && !(shadowPass && !this.castShadows)) {
-          if (settings.materialOverride) {
+          if (settings.materialOverride && true) {
             for (var i = 0; i < this.meshRenderer.materials.length; i++) {
               oldMats[i] = this.meshRenderer.materials[i].programContainer;
               this.meshRenderer.materials[i].programContainer = settings.materialOverride.programContainer;
@@ -6299,6 +6325,11 @@ function GameObject(name = "Unnamed", options = {}) {
 
   this.getChildStructure = function(level = 0, lastChild = []) {
     var output = this.name;
+
+    if (!this.visible) {
+      output += " (Not visible)";
+    }
+
     if (this.children.length > 0) {
       output += "\n";
     }
@@ -6712,6 +6743,12 @@ function Scene(name) {
     }
     console.error("Add scene to renderer before loading environment");
     return false;
+  }
+
+  this.copyEnvironment = function(scene) {
+    this.skyboxCubemap = scene.skyboxCubemap;
+    this.diffuseCubemap = scene.diffuseCubemap;
+    this.specularCubemap = scene.specularCubemap;
   }
 
   this.add = function(gameObject) {

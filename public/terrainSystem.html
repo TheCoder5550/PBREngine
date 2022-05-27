@@ -53,14 +53,6 @@
 
     (async function() {
       renderer = new Renderer();
-      await renderer.setup({
-        disableLitInstanced: true,
-        disableUnlitInstanced: true,
-        disableLitSkinned: true,
-        disableLitBillboard: true,
-        disableTrailLit: true,
-        disableParticleProgram: true
-      });
 
       scene = new Scene();
       scene.environmentIntensity = 0;
@@ -68,10 +60,10 @@
       // scene.smoothSkybox = true;
       renderer.add(scene);
 
-      await scene.loadEnvironment({
-        hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed", 
-        res: 512
-      });
+      // await scene.loadEnvironment({
+      //   hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed", 
+      //   res: 512
+      // });
 
       camera = new OrbitCamera(renderer, {near: 0.1, far: 5000, layer: 0, fov: 20});
       camera.distance = 4;

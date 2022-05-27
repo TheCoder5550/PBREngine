@@ -207,7 +207,7 @@ var disconnected = false;
 // var playerId = parseInt(urlParams.get('id')) || Math.floor(Math.random() * 1e6);
 
 // Settings
-var LERP_DELAY = 200 * 3;
+var LERP_DELAY = 200 * 2;
 var SERVER_SEND_FPS = 15;
 // var CORRECTION_SIM_STEPS = 5;
 var SIMULATED_PING = () => 0;//Math.random() * 50 + 50;
@@ -242,7 +242,7 @@ var settings = new Settings();
 // source.audioElement.loop = true;
 // source.play();
 
-var scene = new Scene("Main scene");
+var scene;
 
 var orbitCamera;
 var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0});
@@ -282,6 +282,10 @@ async function setup() {
   console.log("Setup start");
   console.time("setup");
 
+  /*
+    Create renderer
+  */
+
   loadingStatus.innerText = "Setting up renderer";
   console.time("renderer.setup");
 
@@ -304,16 +308,22 @@ async function setup() {
     ws.close();
   });
 
+  renderer.settings.loadTextures = false;
   renderer.postprocessing.exposure = -0.5;
   console.timeEnd("renderer.setup");
 
+  /*
+    Create scenes
+  */
+
   loadingStatus.innerText = "Loading environment";
   console.time("loadEnvironment");
-  // scene.skyboxVisible = false;
-  // scene.smoothSkybox = true;
+
+  scene = new Scene("Main scene");
+  renderer.add(scene);
+
   scene.environmentIntensity = 0.8//0.4;
   scene.sunIntensity = Vector.fill(4);
-  renderer.add(scene);
   // await scene.loadEnvironment();
   // await scene.loadEnvironment({ hdrFolder: "../assets/hdri/sky_only" });
   // var oldSkybox = scene.skyboxCubemap;
@@ -325,10 +335,15 @@ async function setup() {
   // window.glDebugger = new GLDebugger();
   
   var menuScene = new Scene("Menu scene");
-  renderer.add(menuScene, true);
-  // await menuScene.loadEnvironment({ hdrFolder: "../assets/hdri/sky_only" });
-  menuScene.sunIntensity = Vector.fill(1.5);
-  menuScene.environmentIntensity = 0.15;
+  renderer.add(menuScene);
+  menuScene.copyEnvironment(scene);
+  menuScene.sunIntensity = Vector.fill(3);
+  menuScene.environmentIntensity = 0.35;
+  menuScene.sunDirection.z *= -1;
+
+  /*
+    Cameras
+  */
 
   // orbitCamera = new OrbitCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 23});
   lobbyWeaponCamera = new OrbitCamera(renderer, {near: 0.01, far: 100, layer: 0, fov: 20}, { translate: false, scale: true, stylePointer: false });
@@ -343,7 +358,10 @@ async function setup() {
   renderer.on("resize", resizeEvent);
   resizeEvent();
 
-  // Create programs / shaders
+  /*
+    Create programs / shaders
+  */
+
   loadingStatus.innerText = "Loading programs";
   var reddotProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/reddot"));
   // var litParallax = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/litParallax"));
@@ -352,6 +370,10 @@ async function setup() {
   var brokenPlasterProgram = new renderer.ProgramContainer(await renderer.createProgram(brokenPlasterSource.webgl2.vertex, brokenPlasterSource.webgl2.fragment));
   // var waterShader = await createProgram("./assets/shaders/water");
 
+  /*
+    Load textures
+  */
+
   loadingStatus.innerText = "Loading textures";
   var bulletHole = renderer.loadTexture("../assets/textures/bullethole.png");
   var bulletTrail = renderer.loadTexture("../assets/textures/bulletTrail.png");
@@ -359,7 +381,10 @@ async function setup() {
   var leaves = renderer.loadTexture("../assets/textures/leaves.png");
   // var waterNormal = loadTexture("../assets/textures/water-normal.png");
 
-  // Materials
+  /*
+    Materials
+  */
+
   reddotMaterial = new renderer.Material(reddotProgram);
   reddotMaterial.setUniform("albedoTexture", reddotTexture);
   reddotMaterial.setUniform("textureScale", 0.2 * 0.3);
@@ -377,19 +402,14 @@ async function setup() {
   //   {type: "3f", name: "sunDirection", arguments: [sunDirection.x, sunDirection.y, sunDirection.z]},
   // ], [waterNormal]);
 
-  // AABB visualizer
+  /*
+    AABB visualizer
+  */
+
   var aabbVis = scene.add(new GameObject("AABB", {
     meshRenderer: new renderer.MeshInstanceRenderer([new renderer.Material(solidColorInstanceProgram)], [new renderer.MeshData(renderer.getLineCubeData())], {drawMode: renderer.gl.LINES}),
     castShadows: false
   }));
-
-
-
-  // await renderWeaponIcons();
-  // hideElement(loadingDiv);
-  // return;
-
-
 
   // Bullet holes
   bulletHoles = scene.add(new GameObject("HitObject", {
@@ -420,7 +440,6 @@ async function setup() {
   mat.doubleSided = true;
   sparks.material = mat;
 
-
   sparksObject.addComponent(sparks);
   scene.add(sparksObject);
 
@@ -450,13 +469,12 @@ async function setup() {
   // Menu map
   var menuMap = menuScene.add(await renderer.loadGLTF("../assets/models/maps/menu/model.glb"));
 
-  // var hedge = menuScene.add(await renderer.loadGLTF("../assets/models/hedge.glb"));
-  // hedge.setLayer(2, true);
-  // hedge.children[0].meshRenderer.materials[0] = foliageMat;
+  var hedge = menuScene.add(await renderer.loadGLTF("../assets/models/hedge.glb"));
+  hedge.transform.rotation = Quaternion.euler(0, Math.PI / 2, 0);
+  hedge.transform.position.z = -3;
+  hedge.children[0].meshRenderer.materials[0] = foliageMat;
 
-  // var dm = menuScene.add(await renderer.loadGLTF("../assets/models/dancingMonster.glb"));
-  // dm.animationController.loop = true;
-  // dm.animationController.play(dm.animationController.animations[0]);
+  // menuScene.add(await renderer.loadGLTF("../assets/models/DamagedHelmet.glb"));
 
   // Load map
   loadingStatus.innerText = "Loading map";
@@ -694,6 +712,7 @@ async function setup() {
   right.animationController.animations[0].transfer(right, swat);
 
   var ac = swat.animationController = new AnimationController();
+  ac.speed = 1.5;
   ac.animations = [
     idle.animationController.animations[0],
     forward.animationController.animations[0],
@@ -920,8 +939,10 @@ function renderUI(dt) {
         ammoCounter.querySelector(".current").classList.remove("emptyMag");
       }
 
+      // bruh creates nodes
       ammoCounter.querySelector(".current").innerText = currentWeapon.roundsInMag;
       ammoCounter.querySelector(".max").innerText = currentWeapon.magSize;
+
       // ammoCounter.innerText = `${currentWeapon.roundsInMag} / ${currentWeapon.magSize}`;
 
       // ui.text(`${currentWeapon.roundsInMag} / ${currentWeapon.magSize}`, 10, ui.height - 10, 60, "white", "black", 1);
@@ -1095,7 +1116,7 @@ function Enemy(gameObject, name = "Enemy") {
       var billboard = new GameObject("Billboard");
       billboard.meshRenderer = meshRenderer;
       this.gameObject.addChild(billboard);
-      billboard.transform.position.y = 35;
+      billboard.transform.position.y = 2.4//35;
     }
   }
 
@@ -3238,6 +3259,30 @@ function setupWebsocket() {
       console.log("Connected to server");
       sendMessage("login", { username: localStorage.getItem(LS_USERNAME) });
       // sendMessage("login", {id: playerId});
+
+      sendDataInterval = setInterval(function() {
+        sendMessage("inputs", inputsToSend);
+        inputsToSend = [];
+  
+        sendMessage("getAllPlayers");
+  
+        // if (wsIsOpen(ws)) {
+        //   sendMessage("actionQueue", {
+        //     id: oldActionQueues.length,
+        //     actionQueue
+        //   });
+        //   oldActionQueues.push(actionQueue);
+        //   actionQueue = [];
+  
+        //   // if (player) {
+        //   //   sendMessage("updatePlayer", {
+        //   //     position: player.position,
+        //   //     angle: player.getHeadRotation().y
+        //   //   });
+        //   // }
+        //   sendMessage("getAllPlayers");
+        // }
+      }, 1000 / SERVER_SEND_FPS);
     }
 
     ws.onerror = function() {
@@ -3256,32 +3301,6 @@ function setupWebsocket() {
   catch (e) {
     console.warn("Failed to construct WebSocket!");
     console.error(e);
-  }
-
-  if (wsIsOpen(ws)) {
-    sendDataInterval = setInterval(function() {
-      sendMessage("inputs", inputsToSend);
-      inputsToSend = [];
-
-      sendMessage("getAllPlayers");
-
-      // if (wsIsOpen(ws)) {
-      //   sendMessage("actionQueue", {
-      //     id: oldActionQueues.length,
-      //     actionQueue
-      //   });
-      //   oldActionQueues.push(actionQueue);
-      //   actionQueue = [];
-
-      //   // if (player) {
-      //   //   sendMessage("updatePlayer", {
-      //   //     position: player.position,
-      //   //     angle: player.getHeadRotation().y
-      //   //   });
-      //   // }
-      //   sendMessage("getAllPlayers");
-      // }
-    }, 1000 / SERVER_SEND_FPS);
   }
 }
 
@@ -3372,7 +3391,7 @@ function websocketOnMessage(msg) {
 
           var trailPos = parsed.data.origin;
           var direction = parsed.data.direction;
-          var trailVel = Vector.multiply(direction, 50);
+          var trailVel = Vector.multiply(direction, 100);
           var trail = new BulletTrail(trailPos, trailVel, direction);
           trail.health = parsed.data.trailHealth;
           bulletTrails.push(trail);
