@@ -464,7 +464,7 @@ function Renderer(settings = {}) {
     this.scenes[this.currentScene].update(frameTime);
   }
 
-  this.render = function(camera, secondaryCameras) {
+  this.render = function(camera, secondaryCameras = null, settings = {}) {
     // gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     // gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
     // gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -520,7 +520,7 @@ function Renderer(settings = {}) {
     //   camera.inverseViewMatrix
     // );
 
-    if (this.shadowCascades && _settings.enableShadows && (scene.sunIntensity.x != 0 || scene.sunIntensity.y != 0 || scene.sunIntensity.z != 0)) {
+    if (this.shadowCascades && _settings.enableShadows && (scene.sunIntensity.x != 0 || scene.sunIntensity.y != 0 || scene.sunIntensity.z != 0) && settings.shadows !== false) {
       this.shadowCascades.renderShadowmaps(camera.transform.position);
     }
 
@@ -616,6 +616,10 @@ function Renderer(settings = {}) {
 
   this.on = function(event, func) {
     this.eventHandler.addEvent(event, func);
+  }
+
+  this.activeScene = function() {
+    return this.scenes[this.currentScene];
   }
 
   /*
@@ -2617,8 +2621,9 @@ function Renderer(settings = {}) {
     }
 
     this.setUniforms = function(material) {
-      if (material.getUniformLocation(`textureMatrices[0]`) != null) {
-        gl.uniformMatrix4fv(material.getUniformLocation(`textureMatrices[0]`), false, textureMatrices);
+      var l = material.getUniformLocation(`textureMatrices[0]`);
+      if (l != null) {
+        gl.uniformMatrix4fv(l, false, textureMatrices);
         gl.uniform1iv(material.getUniformLocation(`projectedTextures[0]`), projectedTextures);
         gl.uniform1fv(material.getUniformLocation(`biases[0]`), biases);
       }
@@ -3264,6 +3269,8 @@ function Renderer(settings = {}) {
     this.jointData = new Float32Array(joints.length * 16);
     this.textureIndex = 25; // bruh
     this.parentNode;// = scene.root; // Bruh
+
+    var initialUpdate = true;
   
     for (var i = 0; i < joints.length; i++) {
       this.inverseBindMatrices.push(new Float32Array(inverseBindMatrixData.buffer, inverseBindMatrixData.byteOffset + Float32Array.BYTES_PER_ELEMENT * 16 * i, 16));
@@ -3287,7 +3294,11 @@ function Renderer(settings = {}) {
     }
 
     this.update = function() {
-      this.updateMatrixTexture();
+      if (initialUpdate) {
+        // bruh should update when joints change
+        this.updateMatrixTexture();
+        initialUpdate = false;
+      }
     }
   
     this.bindTexture = function() {

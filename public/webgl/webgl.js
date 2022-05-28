@@ -101,6 +101,8 @@ selectClassButton.addEventListener("click", function() {
 var gameUI = document.querySelector(".gameUI");
 
 var ammoCounter = document.querySelector(".gameUI .bottomRight .ammo");
+var currentAmmoSpan = ammoCounter.querySelector(".current");
+var maxAmmoSpan = ammoCounter.querySelector(".max");
 
 var healthBarReal = document.querySelector(".gameUI .bottomLeft .healthContainer .currentHealth");
 var healthBarAnimation = document.querySelector(".gameUI .bottomLeft .healthContainer .healthAnimation");
@@ -848,7 +850,9 @@ async function setup() {
     // if (enemies[2].gameObject) enemies[2].gameObject.transform.position.z = -6;
     // if (enemies[0].gameObject) enemies[0].gameObject.transform.position.z = Math.sin(timeSinceStart * 2.5) * 3;
   
-    physicsEngine.update();
+    if (renderer.activeScene() == scene) {
+      physicsEngine.update();
+    }
 
     for (var key in multiplayerCharacters) {
       multiplayerCharacters[key].update(physicsEngine.dt);
@@ -890,7 +894,7 @@ async function setup() {
       renderer.render(mainCamera);
     }
     else if (player.state == player.STATES.IN_LOBBY) {
-      renderer.render(lobbyWeaponCamera.camera);
+      renderer.render(lobbyWeaponCamera.camera, null, { shadows: false });
     }
     // renderer.render(orbitCamera.camera);
     renderUI(frameTime);
@@ -939,9 +943,8 @@ function renderUI(dt) {
         ammoCounter.querySelector(".current").classList.remove("emptyMag");
       }
 
-      // bruh creates nodes
-      ammoCounter.querySelector(".current").innerText = currentWeapon.roundsInMag;
-      ammoCounter.querySelector(".max").innerText = currentWeapon.magSize;
+      currentAmmoSpan.textContent = currentWeapon.roundsInMag;
+      maxAmmoSpan.textContent = currentWeapon.magSize;
 
       // ammoCounter.innerText = `${currentWeapon.roundsInMag} / ${currentWeapon.magSize}`;
 

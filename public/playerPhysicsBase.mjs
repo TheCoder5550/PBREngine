@@ -98,7 +98,7 @@ class PlayerPhysicsBase {
 
     this.solveCollisions();
 
-    // Reset when out-of-bounds
+    // Reset when out-of-bounds 
     if (this.position.y < -30) {
       this.position = this.startPosition;
       this.velocity = Vector.zero();
