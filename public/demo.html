@@ -36,13 +36,13 @@
 <body>
   <script type="module">
 
-    import Renderer, { Scene, GameObject } from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/renderer.mjs";
-    import OrbitCamera from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/orbitCamera.mjs";
-    import Vector from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/vector.mjs";
+    // import Renderer, { Scene, GameObject } from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/renderer.mjs";
+    // import OrbitCamera from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/orbitCamera.mjs";
+    // import Vector from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/vector.mjs";
 
-    // import Renderer, { Scene } from "./engine/renderer.mjs";
-    // import OrbitCamera from "./engine/orbitCamera.mjs";
-    // import Vector from "./engine/vector.mjs";
+    import Renderer, { Scene } from "./engine/renderer.mjs";
+    import OrbitCamera from "./engine/orbitCamera.mjs";
+    import Vector from "./engine/vector.mjs";
 
     var stats = new Stats();
     document.body.appendChild(stats.dom);
@@ -68,8 +68,8 @@
       camera = new OrbitCamera(renderer, {near: 0.1, far: 300, layer: 0, fov: 20});
       camera.distance = 4;
 
-      var model = await renderer.loadGLTF("./assets/models/DamagedHelmet.glb");
-      scene.add(model);
+      var model = await renderer.loadGLTF("./assets/models/eco-house.glb");
+      scene.add(renderer.BatchGameObject(model));
 
       renderer.on("renderloop", function(frameTime) {
         renderer.update(frameTime);

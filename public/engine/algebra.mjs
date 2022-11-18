@@ -122,61 +122,64 @@ function rayToPlane(origin, direction, planePosition, planeNormal, line = false)
   return d;
 }
 
-// function AABBToTriangle(box, triangle) {
-//   // Triangle vertices
-//   for (var i = 0; i < 3; i++) {
-//     if (box.pointInside(triangle[i])) {
-//       return true;
-//     }
-//   }
+var boxNormals = [
+  new Vector(1,0,0),
+  new Vector(0,1,0),
+  new Vector(0,0,1)
+];
+var coords = ["x", "y", "z"];
 
-//   var triangleMin, triangleMax;
-//   var boxMin, boxMax;
+// This function might be correct...
+function AABBToTriangle(box, triangle) {
+  // Triangle vertices
+  for (var i = 0; i < 3; i++) {
+    if (pointInsideAABB(box, triangle[i])) {
+    // if (box.pointInside(triangle[i])) {
+      return true;
+    }
+  }
 
-//   var boxVertices = box.getVertices();
+  var triangleMin, triangleMax;
+  var boxMin, boxMax;
 
-//   // Test the box normals (x-, y- and z-axes)
-//   var boxNormals = [
-//     new Vector(1,0,0),
-//     new Vector(0,1,0),
-//     new Vector(0,0,1)
-//   ];
-//   var coords = ["x", "y", "z"];
+  // var boxVertices = box.getVertices();
+  var boxVertices = getAABBVertices(box);
 
-//   for (var i = 0; i < 3; i++) {
-//     var [triangleMin, triangleMax] = Project(triangle, boxNormals[i]);
+  // Test the box normals (x-, y- and z-axes)
+  for (var i = 0; i < 3; i++) {
+    var [triangleMin, triangleMax] = Project(triangle, boxNormals[i]);
 
-//     if (triangleMax < box.bl[coords[i]] || triangleMin > box.tr[coords[i]]) // check <<
-//       return false; // No intersection possible.
-//   }
+    if (triangleMax < box.bl[coords[i]] || triangleMin > box.tr[coords[i]]) // check <<
+      return false; // No intersection possible.
+  }
 
-//   // Test the triangle normal
-//   var triangleNormal = getTriangleNormal(triangle);
-//   var triangleOffset = Vector.dot(triangleNormal, triangle[0]);
-//   var [boxMin, boxMax] = Project(boxVertices, triangleNormal);
-//   if (boxMax < triangleOffset || boxMin > triangleOffset)
-//     return false; // No intersection possible.
+  // Test the triangle normal
+  var triangleNormal = getTriangleNormal(triangle);
+  var triangleOffset = Vector.dot(triangleNormal, triangle[0]);
+  var [boxMin, boxMax] = Project(boxVertices, triangleNormal);
+  if (boxMax < triangleOffset || boxMin > triangleOffset)
+    return false; // No intersection possible.
 
-//   // Test the nine edge cross-products
-//   var triangleEdges = [
-//     Vector.subtract(triangle[0], triangle[1]),
-//     Vector.subtract(triangle[1], triangle[2]),
-//     Vector.subtract(triangle[2], triangle[0])
-//   ];
-//   for (var i = 0; i < 3; i++) {
-//     for (var j = 0; j < 3; j++) {
-//       // The box normals are the same as it's edge tangents
-//       var axis = Vector.cross(triangleEdges[i], boxNormals[i]);
-//       var [boxMin, boxMax] = Project(boxVertices, axis);
-//       var [triangleMin, triangleMax] = Project(triangle, axis);
-//       if (boxMax <= triangleMin || boxMin >= triangleMax)
-//         return false; // No intersection possible
-//     }
-//   }
+  // Test the nine edge cross-products
+  var triangleEdges = [
+    Vector.subtract(triangle[0], triangle[1]),
+    Vector.subtract(triangle[1], triangle[2]),
+    Vector.subtract(triangle[2], triangle[0])
+  ];
+  for (var i = 0; i < 3; i++) {
+    for (var j = 0; j < 3; j++) {
+      // The box normals are the same as it's edge tangents
+      var axis = Vector.cross(triangleEdges[i], boxNormals[i]);
+      var [boxMin, boxMax] = Project(boxVertices, axis);
+      var [triangleMin, triangleMax] = Project(triangle, axis);
+      if (boxMax <= triangleMin || boxMin >= triangleMax)
+        return false; // No intersection possible
+    }
+  }
 
-//   // No separating axis found.
-//   return true;
-// }
+  // No separating axis found.
+  return true;
+}
 
 function Project(points, axis) {
   var min = Infinity;
@@ -230,50 +233,50 @@ var aabbEdges = [
 ];
 
 /* Bruh - Slow? Prolly */
-function AABBToTriangle(box, triangle) {
-  if (typeof window != "undefined") window.AABBToTriangleCalls++;
+// function AABBToTriangle(box, triangle) {
+//   if (typeof window != "undefined") window.AABBToTriangleCalls++;
 
-  // Triangle vertices
-  for (var i = 0; i < 3; i++) {
-    if (pointInsideAABB(box, triangle[i])) {
-      return true;
-    }
-  }
+//   // Triangle vertices
+//   for (var i = 0; i < 3; i++) {
+//     if (pointInsideAABB(box, triangle[i])) {
+//       return true;
+//     }
+//   }
 
-  // Triangle edges
-  for (var i = 0; i < 3; i++) {
-    var origin = triangle[i];
-    var diff = Vector.subtract(triangle[(i + 1) % 3], triangle[i]);
-    var direction = Vector.normalize(diff);
-    var len = Vector.length(diff);
+//   // Triangle edges
+//   for (var i = 0; i < 3; i++) {
+//     var origin = triangle[i];
+//     var diff = Vector.subtract(triangle[(i + 1) % 3], triangle[i]);
+//     var direction = Vector.normalize(diff);
+//     var len = Vector.length(diff);
 
-    var hit = rayToAABB(origin, direction, box);
-    if (hit && Math.min(Math.abs(hit.min), Math.abs(hit.max)) <= len) {
-      return true;
-    }
-  }
+//     var hit = rayToAABB(origin, direction, box);
+//     if (hit && Math.min(Math.abs(hit.min), Math.abs(hit.max)) <= len) {
+//       return true;
+//     }
+//   }
 
-  // AABB edges
-  var vertices = getAABBVertices(box);
-  var edges = aabbEdges;
+//   // AABB edges
+//   var vertices = getAABBVertices(box);
+//   var edges = aabbEdges;
 
-  for (var i = 0; i < edges.length; i++) {
-    var v1 = vertices[edges[i][0]];
-    var v2 = vertices[edges[i][1]];
+//   for (var i = 0; i < edges.length; i++) {
+//     var v1 = vertices[edges[i][0]];
+//     var v2 = vertices[edges[i][1]];
 
-    var origin = v1;
-    var diff = Vector.subtract(v2, v1);
-    var direction = Vector.normalize(diff);
-    var len = Vector.length(diff);
+//     var origin = v1;
+//     var diff = Vector.subtract(v2, v1);
+//     var direction = Vector.normalize(diff);
+//     var len = Vector.length(diff);
 
-    var hit = rayToTriangle(origin, direction, triangle[0], triangle[1], triangle[2]);
-    if (hit && hit.distance <= len) {
-      return true;
-    }
-  }
+//     var hit = rayToTriangle(origin, direction, triangle[0], triangle[1], triangle[2]);
+//     if (hit && hit.distance <= len) {
+//       return true;
+//     }
+//   }
 
-  return false;
-}
+//   return false;
+// }
 
 function rayToAABB(origin, direction, AABB) {
   var dirfrac = {
@@ -478,6 +481,12 @@ function saturate(t) {
   return clamp(t, 0, 1);
 }
 
+function distanceBetweenRayAndPoint(ray, point) {
+  var RP = Vector.subtract(point, ray.origin);
+  var p = Vector.dot(ray.direction, RP);
+  return Math.sqrt(Vector.lengthSqr(RP) - p * p);
+}
+
 export {
   AABBToAABB,
   closestPointToTriangle,
@@ -491,5 +500,6 @@ export {
   getTriangleNormal,
   sphereToTriangle,
   capsuleToTriangle,
-  ClosestPointOnLineSegment
+  ClosestPointOnLineSegment,
+  distanceBetweenRayAndPoint
 }

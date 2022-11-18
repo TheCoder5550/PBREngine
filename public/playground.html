@@ -68,9 +68,7 @@
     var time = 0;
 
     (async function() {
-      renderer = new Renderer();
-
-      await renderer.setup({
+      renderer = new Renderer({
         renderScale: 1,
         clearColor: [1, 0, 0, 1],
 

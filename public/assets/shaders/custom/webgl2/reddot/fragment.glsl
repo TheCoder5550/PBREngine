@@ -14,9 +14,9 @@ uniform float textureScale;
 uniform vec3 scopeColor;
 
 void main() {
-  if (length(vUV - vec2(0.5)) > 0.5) {
-    discard;
-  }
+  // if (length(vUV - vec2(0.5)) > 0.5) {
+  //   discard;
+  // }
 
   vec3 normal = normalize(vEyeNormal);
   vec3 tangent = normalize(vEyeTangent);

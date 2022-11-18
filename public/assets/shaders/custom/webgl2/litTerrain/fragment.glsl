@@ -144,6 +144,24 @@ vec3 PositionalLight (vec3 worldPos, vec3 N, vec3 V, vec3 lightPos, vec3 lightCo
 vec3 Spotlight (vec3 worldPos, vec3 N, vec3 V, vec3 lightPos, vec3 dir, float angle, vec3 lightColor, vec3 albedo, float metallic, float roughness, float scalarF0);
 vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, float _metallic, float _roughness, float _ao);
 
+const int OCTAVES = 4;
+float LayeredNoise(vec2 p) {
+  float _noise = 0.;
+  float frequency = 1.;
+  float factor = 1.;
+
+  float persistance = 0.45;
+  float roughness = 3.;
+
+  for (int i = 0; i < OCTAVES; i++) {
+    _noise += noise(p * frequency + float(i) * 0.72354) * factor;
+    factor *= persistance;
+    frequency *= roughness;
+  }
+
+  return _noise;
+}
+
 void main() {
   vec4 currentAlbedo = vec4(1);
 
@@ -151,25 +169,37 @@ void main() {
   vec3 stoneAlbedo = sampleTexture(albedoTextures[1], vUV).rgb;
   vec3 snowAlbedo = sampleTexture(albedoTextures[2], vUV).rgb;
 
-  vec3 grassNormal = sampleTexture(normalTextures[0], vUV).rgb;
-  vec3 stoneNormal = sampleTexture(normalTextures[1], vUV).rgb;
-  vec3 snowNormal = sampleTexture(normalTextures[2], vUV).rgb;
+  // fragColor = vec4(grassAlbedo, 1.0);
+  // return;
+
+  vec3 grassNormal = sampleTexture(normalTextures[0], vUV).rgb * 2. - 1.;
+  vec3 stoneNormal = sampleTexture(normalTextures[1], vUV).rgb * 2. - 1.;
+  vec3 snowNormal = sampleTexture(normalTextures[2], vUV).rgb * 2. - 1.;
+
+  fragColor = lit(vec4(snowAlbedo, 1), 0.5, vec3(0), snowNormal, 0., 0.95, 1.);
+  return;
 
   vec3 up = vec3(0, 1, 0);
 
+  // grassAlbedo = mix(grassAlbedo * vec3(1, 1, 0.3), grassAlbedo, noise(vUV / 50.));
+  // grassAlbedo = mix(vec3(1), vec3(0), noise(vUV / 5.));
+  grassAlbedo *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(vUV / 40.), 0., 1.));
+
   vec3 steepness = mix(stoneAlbedo, grassAlbedo, smoothstep(0.7, 0.75, dot(up, vNormal)));
-  currentAlbedo.xyz = mix(steepness, snowAlbedo, smoothstep(80., 100., vPosition.y));
+  currentAlbedo.xyz = mix(steepness, snowAlbedo, smoothstep(80., 100., vPosition.y + LayeredNoise(vUV / 20.) * 30.));
 
-  steepness = mix(stoneNormal, grassAlbedo, smoothstep(0.8, 1., dot(up, vNormal)));
-  vec3 newNormal = mix(steepness, snowNormal, smoothstep(20., 35., vPosition.y));
+  steepness = normalize(mix(stoneNormal, grassAlbedo, smoothstep(0.8, 1., dot(up, vNormal))));
+  vec3 newNormal = normalize(mix(steepness, snowNormal, smoothstep(20., 35., vPosition.y)));
 
-  vec3 _tangentNormal = grassNormal * 2. - 1.;//newNormal * 2. - 1.;
+  // vec3 _tangentNormal = grassNormal * 2. - 1.;//newNormal * 2. - 1.;
+  vec3 _tangentNormal = snowNormal;
+  // _tangentNormal.g *= -1.;
 
   // fragColor = vec4(currentAlbedo.rgb * clamp(dot(sunDirection, vNormal), 0., 1.), currentAlbedo.a);
   // return;
 
   // if (doNoTiling) {
-  //   currentAlbedo.rgb = mix(vec3(0.2), currentAlbedo.rgb, noise(vUV / 5.));
+  //   currentAlbedo.rgb = mix(currentAlbedo.rgb * vec3(1, 1, 0.3), currentAlbedo.rgb, noise(vUV / 50.));
   // }
 
   vec3 _emission = vec3(0);//emissiveFactor;
@@ -552,6 +582,8 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
   if (!gl_FrontFacing) {
     N *= -1.;
   }
+
+  // return vec4(N, _albedo.a);
 
   vec3 R = reflect(-V, N);
 

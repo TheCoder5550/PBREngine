@@ -40,8 +40,12 @@ import {
 } from "../engine/algebra.mjs";
 import { WEAPONENUMS, updateBulletTrails, Weapon, Scope, BulletTrail, bulletTrails } from "./weapon.js";
 import OrbitCamera from "../engine/orbitCamera.mjs";
+import FlyCamera from "../engine/flyCamera.mjs";
 import PlayerPhysicsBase from "../playerPhysicsBase.mjs";
 import * as brokenPlasterSource from "../assets/shaders/custom/brokenPlaster.glsl.mjs";
+import * as waterSource from "../assets/shaders/custom/water.glsl.mjs";
+import Keybindings from "../keybindingsController.mjs";
+import { Car } from "../car.js";
 
 var perlin = new Perlin();
 
@@ -127,8 +131,6 @@ var loadingStatus = document.getElementById("loadingStatus");
 
 var deathScreen = document.querySelector(".deathScreen");
 
-var gamepadManager = new GamepadManager();
-
 /* Canvas classes */
 
 // var stats = new Stats();
@@ -209,7 +211,7 @@ var disconnected = false;
 // var playerId = parseInt(urlParams.get('id')) || Math.floor(Math.random() * 1e6);
 
 // Settings
-var LERP_DELAY = 200 * 2;
+var LERP_DELAY = 300;
 var SERVER_SEND_FPS = 15;
 // var CORRECTION_SIM_STEPS = 5;
 var SIMULATED_PING = () => 0;//Math.random() * 50 + 50;
@@ -220,13 +222,13 @@ var stateBuffer = [];
 var inputBuffer = [];
 var inputsToSend = [];
 var tick = 0;
-
-// var actionQueue = [];
-// var oldActionQueues = [];
-var sendDataInterval;
+var wsSendTime = 0;
 var multiplayerCharacters = {};
 var latencies = [];
 var swat;
+// var actionQueue = [];
+// var oldActionQueues = [];
+// var sendDataInterval;
 
 var mouse = { movementX: 0, movementY: 0 };
 
@@ -239,6 +241,8 @@ var audioListener = new AudioListener3D();
 var leaderboard = new Leaderboard(document.querySelector(".leaderboard"));
 var killfeed = new Killfeed();
 var settings = new Settings();
+var gamepadManager = new GamepadManager();
+var keybindings;
 
 // var source = new AudioSource3D(audioListener, "./assets/sound/drumGun.wav");
 // source.audioElement.loop = true;
@@ -272,7 +276,7 @@ var physicsEngine;
 // var colliders = [];
 
 var time = 0;
-var fpsHistory = [];
+var fpsHistory = new Array(20).fill(0);
 
 var reddotMaterial;
 var bulletHoles;
@@ -301,7 +305,7 @@ async function setup() {
   });
 
   renderer.on("error", function() {
-    loadingStatus.innerText = "WebGL 2 not supported";
+    loadingStatus.innerText = "WebGL not supported";
   });
   renderer.on("contextlost", function() {
     running = false;
@@ -310,9 +314,18 @@ async function setup() {
     ws.close();
   });
 
-  renderer.settings.loadTextures = false;
   renderer.postprocessing.exposure = -0.5;
   console.timeEnd("renderer.setup");
+
+  keybindings = new Keybindings(renderer, gamepadManager);
+  keybindings.setBinding("jump", {
+    keyboard: "Space",
+    controller: "A"
+  });
+  keybindings.setBinding("crouch", {
+    keyboard: "ShiftLeft",
+    controller: "X"
+  });
 
   /*
     Create scenes
@@ -329,7 +342,8 @@ async function setup() {
   // await scene.loadEnvironment();
   // await scene.loadEnvironment({ hdrFolder: "../assets/hdri/sky_only" });
   // var oldSkybox = scene.skyboxCubemap;
-  await scene.loadEnvironment({ hdrFolder: "../assets/hdri/wide_street_01_1k_precomputed" });
+  // await scene.loadEnvironment({ hdrFolder: "../assets/hdri/wide_street_01_1k_precomputed" });
+  await scene.loadEnvironment({ hdrFolder: "../assets/hdri/fouriesburg_mountain_cloudy_1k" });
   // scene.skyboxCubemap = oldSkybox;
 
   console.timeEnd("loadEnvironment");
@@ -347,6 +361,9 @@ async function setup() {
     Cameras
   */
 
+  // var debugFlyCamera = new FlyCamera(renderer, {near: 0.01, far: 1000});
+  // debugFlyCamera.baseSpeed = 8;
+  // debugFlyCamera.sprintSpeed = 50;
   // orbitCamera = new OrbitCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 23});
   lobbyWeaponCamera = new OrbitCamera(renderer, {near: 0.01, far: 100, layer: 0, fov: 20}, { translate: false, scale: true, stylePointer: false });
   lobbyWeaponCamera.distance = 3;
@@ -370,7 +387,8 @@ async function setup() {
   var solidColorInstanceProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/solidColor"));
   var foliage = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/foliage"));
   var brokenPlasterProgram = new renderer.ProgramContainer(await renderer.createProgram(brokenPlasterSource.webgl2.vertex, brokenPlasterSource.webgl2.fragment));
-  // var waterShader = await createProgram("./assets/shaders/water");
+  // var waterShader = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/water"));
+  var waterProgram = new renderer.ProgramContainer(await renderer.createProgram(waterSource.webgl2.vertex, waterSource.webgl2.fragment));
 
   /*
     Load textures
@@ -381,7 +399,7 @@ async function setup() {
   var bulletTrail = renderer.loadTexture("../assets/textures/bulletTrail.png");
   var reddotTexture = renderer.loadTexture("../assets/textures/reddot2.png", { TEXTURE_WRAP_S: renderer.gl.CLAMP_TO_EDGE, TEXTURE_WRAP_T: renderer.gl.CLAMP_TO_EDGE });
   var leaves = renderer.loadTexture("../assets/textures/leaves.png");
-  // var waterNormal = loadTexture("../assets/textures/water-normal.png");
+  var waterNormal = renderer.loadTexture("../assets/textures/waternormals.jpg");
 
   /*
     Materials
@@ -389,7 +407,7 @@ async function setup() {
 
   reddotMaterial = new renderer.Material(reddotProgram);
   reddotMaterial.setUniform("albedoTexture", reddotTexture);
-  reddotMaterial.setUniform("textureScale", 0.2 * 0.3);
+  reddotMaterial.setUniform("textureScale", 0.2 * 0.3 * 2);
   reddotMaterial.setUniform("scopeColor", [20, 0.1, 0.1]);
 
   var foliageMat = new renderer.Material(foliage);
@@ -397,12 +415,17 @@ async function setup() {
   foliageMat.setUniform("useTexture", 1);
   foliageMat.setUniform("albedoTexture", leaves);
 
-  // var waterMaterial = new Material(waterShader, [
-  //   {type: "1i", name: "useNormalTexture", arguments: [1]},
-  //   {type: "1i", name: "normalTexture", arguments: [0]},
-  //   {type: "2f", name: "uvScale", arguments: [20, 20]},
-  //   {type: "3f", name: "sunDirection", arguments: [sunDirection.x, sunDirection.y, sunDirection.z]},
-  // ], [waterNormal]);
+  var waterMaterial = new renderer.CreateLitMaterial({}, waterProgram);
+  waterMaterial.setUniform("albedo", [1, 1, 1, 1]);
+  waterMaterial.setUniform("normalTexture", waterNormal);
+  waterMaterial.setUniform("uvScale", [100_000, 100_000]);
+  window.waterMaterial = waterMaterial;
+
+  // var waterMaterial = new renderer.Material(waterShader);
+  // waterMaterial.setUniform("useNormalTexture", 1);
+  // waterMaterial.setUniform("normalTexture", waterNormal);
+  // waterMaterial.setUniform("uvScale", [20, 20]);
+  // waterMaterial.setUniform("sunDirection", [scene.sunDirection.x, scene.sunDirection.y, scene.sunDirection.z]);
 
   /*
     AABB visualizer
@@ -481,8 +504,11 @@ async function setup() {
   // Load map
   loadingStatus.innerText = "Loading map";
 
-  var mapPath = "../assets/models/maps/dust2/dust2.glb";
-  var colliderPath = "../assets/models/maps/dust2/dust2.glb";
+  var mapPath = "../assets/models/checkerPlaneBig.glb";
+  var colliderPath = "../assets/models/checkerPlaneBig.glb";
+
+  // var mapPath = "../assets/models/maps/dust2/dust2.glb";
+  // var colliderPath = "../assets/models/maps/dust2/dust2.glb";
 
   // var map = scene.add(await renderer.loadGLTF("../assets/models/city/model.glb"));
   // var mapCollider = await renderer.loadGLTF("../assets/models/city/collider.glb");
@@ -490,13 +516,22 @@ async function setup() {
   // var mapCollider = await renderer.loadGLTF("../assets/models/test/playerArea.glb");
   var map = await renderer.loadGLTF(mapPath, { loadMaterials: true, maxTextureSize: 1024 });
   // scene.add(renderer.BatchGameObject(map));
-  scene.add(map);
+  // scene.add(map);
 
   // map.getChild("Plane").meshRenderer.materials[0].setUniform("doNoTiling", 1);
 
   map.getChildrenWithCustomData("foliage").forEach(o => {
     o.meshRenderer.materials[0] = foliageMat;
   });
+
+  var water = renderer.CreateShape("plane", waterMaterial);
+  // water.transform.position.y = -20;
+  // water.transform.scale = Vector.fill(5000);
+  // water.transform.rotation = Quaternion.euler(-Math.PI / 2, 0, 0);
+  scene.add(water);
+
+  var oilrig = await renderer.loadGLTF("../assets/models/maps/oilrig/oilrig.glb");
+  scene.add(oilrig);
 
   loadingStatus.innerText = "Generating collider";
   var mapCollider = await renderer.loadGLTF(colliderPath, { loadMaterials: false, loadNormals: false, loadTangents: false });
@@ -517,11 +552,6 @@ async function setup() {
   // physicsEngine.addMeshCollider(terrain);
   // physicsEngine.setupMeshCollider();
 
-  physicsEngine.fixedUpdate = function(dt) {
-    player.fixedUpdate(dt);
-    player.update(dt);
-  }
-
   // console.time("addMeshToOctree");
   // window.AABBToTriangleCalls = 0;
   // physicsEngine.addMeshToOctree(mapCollider);
@@ -535,6 +565,9 @@ async function setup() {
   // var hill = await CreateCaptureZone(Vector.zero());
   // captureZoneManager.add(hill);
 
+  var e = new Enemy(scene.add(renderer.CreateShape("cube")));
+  e.health = Infinity;
+  enemies.push(e);
   // enemies.push(new Enemy(map.getChild("Target", true)));
   // enemies.push(new Enemy(map.getChild("Target.001", true)));
   // enemies.push(new Enemy(map.getChild("Target.002", true)));
@@ -779,6 +812,41 @@ async function setup() {
   player.physicsEngine = physicsEngine;
   player.setWeapons(classes[selectedClass].weapons);
 
+  var car = new Car(scene, physicsEngine, {
+    drivetrain: "RWD",
+    friction: 1,
+    forwardFriction: 1,
+    sidewaysFriction: 1,
+    maxSteerAngle: 35,
+    torque: 350,
+    ABS: false,
+
+    suspensionForce: 70_000,
+    suspensionDamping: 3000,
+    suspensionTravel: 0.125,
+
+    differential: Car.ENUMS.DIFFERENTIAL.LOCKED,
+  });
+  window.car = car;
+  await car.setup("../cargame/tocus.glb");
+  car.camera.followDistance = 5;
+  car.camera.followHeight = 0.3;
+  car.camera.pitch = 0.1;
+  car.keybindings.setBinding("resetCar", {});
+  car.canMove = false;
+
+  physicsEngine.fixedUpdate = function(dt) {
+    car.fixedUpdate(dt);
+
+    if (car.canMove) {
+      player.position = car.rb.position;
+      player.velocity = Vector.zero();
+    }
+
+    player.fixedUpdate(dt);
+    player.update(dt);
+  }
+
   setupWebsocket();
 
   SetupEvents();
@@ -796,6 +864,9 @@ async function setup() {
     window.bulletHoles = bulletHoles;
     window.sparks = sparks;
     window.defaultFov = defaultFov;
+    window.Quaternion = Quaternion;
+    window.Vector = Vector;
+    window.Matrix = Matrix;
 
     scene.updateLights();
 
@@ -813,14 +884,21 @@ async function setup() {
 
   console.timeEnd("setup");
 
-  function renderloop(frameTime, timeSinceStart) {
+  function renderloop(frameTime, timeSinceStart, frameNumber) {
+    wsSendTime += frameTime;
+    if (wsSendTime > 1 / SERVER_SEND_FPS) {
+      wsSendTime %= 1 / SERVER_SEND_FPS;
+      websocketTick();
+    }
+
     time = timeSinceStart;
     counters = {};
 
-    fpsHistory.push(1 / frameTime);
-    if (fpsHistory.length > 20) {
-      fpsHistory.shift();
-    } 
+    fpsHistory[frameNumber % 20] = 1 / frameTime;
+    // fpsHistory.push(1 / frameTime);
+    // if (fpsHistory.length > 20) {
+    //   fpsHistory.shift();
+    // }
 
     // Lag
     if (renderer.getKey(81)) {
@@ -850,9 +928,21 @@ async function setup() {
     // if (enemies[2].gameObject) enemies[2].gameObject.transform.position.z = -6;
     // if (enemies[0].gameObject) enemies[0].gameObject.transform.position.z = Math.sin(timeSinceStart * 2.5) * 3;
   
-    if (renderer.activeScene() == scene) {
-      physicsEngine.update();
+    if (renderer.getKeyDown(70) && Vector.distance(car.rb.position, player.position) < 3.5) {
+      if (car.canMove) {
+        car.canMove = false;
+        player.canMove = true;
+      }
+      else {
+        car.canMove = true;
+        player.canMove = false;
+      }
     }
+
+    // if (renderer.activeScene() == scene) {
+      physicsEngine.update();
+    // }
+    if (car) car.update(frameTime);
 
     for (var key in multiplayerCharacters) {
       multiplayerCharacters[key].update(physicsEngine.dt);
@@ -883,6 +973,7 @@ async function setup() {
       muzzleFlash.emit(1);
     }
 
+    // debugFlyCamera.update(frameTime);
     renderer.update(frameTime);
     // scene.update(frameTime);
     // menuScene.update(frameTime);
@@ -897,6 +988,7 @@ async function setup() {
       renderer.render(lobbyWeaponCamera.camera, null, { shadows: false });
     }
     // renderer.render(orbitCamera.camera);
+    // renderer.render(debugFlyCamera.camera);
     renderUI(frameTime);
   
     // stats.update();
@@ -916,7 +1008,7 @@ function renderUI(dt) {
       if (currentWeapon.mode != WEAPONENUMS.GUNMODES.ADS) {
         crosshair.render();
       }
-
+      
       if (currentWeapon.mode == WEAPONENUMS.GUNMODES.ADS && currentWeapon.scope.sniperScope) {
         ui.save();
         ui.background("black");
@@ -963,6 +1055,17 @@ function renderUI(dt) {
     killfeed.render();
   }
 
+  if (player.state === player.STATES.PLAYING && !car.canMove && Vector.distance(car.rb.position, player.position) < 3.5) {
+    ui.picture("../assets/textures/keyIcons/F_Key_Dark.png", ui.width / 2 - 200, ui.height / 2, 50, 50);
+    ui.setTextYAlign("middle");
+    ui.text("Drive vehicle", ui.width / 2 - 200 + 60, ui.height / 2 + 25, 30, "white", "black");
+    ui.resetTextYAlign();
+  }
+
+  if (car.canMove) {
+    car.renderUI(ui);
+  }
+
   // Stats
   ui.setFont("monospace");
 
@@ -974,7 +1077,7 @@ function renderUI(dt) {
   ui.text("+" + maxFPS + "%", 115, 20, 15, "lime");
 
   var averageLatency = Math.round(latencies.reduce((a, b) => a + (isNaN(b) ? 0 : b), 0) / latencies.length);
-  var color = (averageLatency < 100 ? "lime" : averageLatency < 150 ? "yellow" : "red");
+  var color = (averageLatency < 50 ? "lime" : averageLatency < 150 ? "yellow" : "red");
   ui.text(averageLatency + "ms", 5, 40, 15, color);
 
   ui.setFont("Arial");
@@ -1040,17 +1143,20 @@ function Hitmarker() {
 
   this.render = function() {
     if (time - this.timeOffset < 0.5) {
-      var alpha = 8 * (this.timeOffset - time + 0.5);
-      this.drawHitmarker(`rgba(0, 0, 0, ${alpha})`, 3);
-      this.drawHitmarker(`rgba(${this.color[0]}, ${this.color[1]}, ${this.color[2]}, ${alpha})`, 2);
+      var alpha = 1 - Math.pow(Math.cos(clamp(time - this.timeOffset, 0, 1) * Math.PI), 20);
+
+      // var alpha = clamp(8 * (this.timeOffset - time + 0.5), 0, 1);
+      var spacing = this.spacing + clamp(1 + (this.timeOffset - time) * 10, 0, 1) * 10;
+      this.drawHitmarker(spacing, `rgba(0, 0, 0, ${alpha})`, 3);
+      this.drawHitmarker(spacing, `rgba(${this.color[0]}, ${this.color[1]}, ${this.color[2]}, ${alpha})`, 2);
     }
   }
 
-  this.drawHitmarker = function(color, lineWidth) {
+  this.drawHitmarker = function(spacing, color, lineWidth) {
     for (var i = 0; i < 4; i++) {
       var xDir = Math.floor(i / 2) * 2 - 1;
       var yDir = Math.floor(((i + 1) % 4) / 2) * 2 - 1;
-      ui.line(ui.width / 2 + xDir * this.spacing, ui.height / 2 + yDir * this.spacing, ui.width / 2 + xDir * (this.spacing + this.size), ui.height / 2 + yDir * (this.spacing + this.size), color, lineWidth);
+      ui.line(ui.width / 2 + xDir * spacing, ui.height / 2 + yDir * spacing, ui.width / 2 + xDir * (spacing + this.size), ui.height / 2 + yDir * (spacing + this.size), color, lineWidth);
     }
   }
 }
@@ -1439,12 +1545,21 @@ class Player extends PlayerPhysicsBase {
       mainCamera.setFOV(currentFov);
       weaponCamera.setFOV(currentWeaponFov);
 
-      mainCamera.transform.rotation = Quaternion.eulerVector(Vector.negate(this.getHeadRotation()));
-      mainCamera.transform.position = this.getHeadPos();//Vector.add(this.position, {x: 0, y: this.height - 0.1, z: 0});
-      // mainCamera.transform.position = Vector.add(Vector.compMultiply(this.position, {x: 1, y: 1, z: -1}), {x: 0, y: 1.6, z: 0});
+      var rot = this.getHeadRotation();
+      var m = Matrix.transform([
+        ["translate", this.getHeadPos()],
+        ["ry", -rot.y],
+        ["rx", -rot.x],
+        ["rz", -rot.z],
+      ]);
+      mainCamera.transform.matrix = m;
+      weaponCamera.transform.matrix = m;
 
-      weaponCamera.transform.position = mainCamera.transform.position;
-      weaponCamera.transform.rotation = mainCamera.transform.rotation;
+      // mainCamera.transform.rotation = Quaternion.eulerVector(Vector.negate(this.getHeadRotation()));
+      // mainCamera.transform.position = this.getHeadPos();//Vector.add(this.position, {x: 0, y: this.height - 0.1, z: 0});
+
+      // weaponCamera.transform.position = mainCamera.transform.position;
+      // weaponCamera.transform.rotation = mainCamera.transform.rotation;
 
       // var rot = this.getHeadRotation();
       // var m = Matrix.transform([
@@ -1466,13 +1581,23 @@ class Player extends PlayerPhysicsBase {
   fixedUpdate(dt) {
     if (this.state == this.STATES.PLAYING) {
       var inputs = {
-        forward: renderer.getKey(87),
-        back: renderer.getKey(83),
-        left: renderer.getKey(65),
-        right: renderer.getKey(68),
-        jump: renderer.getKey(32),
-        crouching: renderer.getKey(16)
+        forward: deadZone(clamp(-keybindings.getInput("vertical"), 0, 1)),
+        back: deadZone(clamp(keybindings.getInput("vertical"), 0, 1)),
+        left: deadZone(clamp(-keybindings.getInput("horizontal"), 0, 1)),
+        right: deadZone(clamp(keybindings.getInput("horizontal"), 0, 1)),
+        jump: keybindings.getInput("jump"),
+        crouching: keybindings.getInput("crouch"),
+        fire: renderer.mouse.left
       };
+      // var inputs = {
+      //   forward: renderer.getKey(87),
+      //   back: renderer.getKey(83),
+      //   left: renderer.getKey(65),
+      //   right: renderer.getKey(68),
+      //   jump: renderer.getKey(32),
+      //   crouching: renderer.getKey(16),
+      //   fire: renderer.mouse.left
+      // };
 
       this.handRotOffset = Vector.lerp(
         this.handRotOffset,
@@ -1534,16 +1659,21 @@ class Player extends PlayerPhysicsBase {
         inputs,
         yRotation
       };
-      stateBuffer[tick] = {
-        position: this.position,
-        velocity: this.velocity
-      };
-
-      inputsToSend.push({...inputBuffer[tick]});
-      // sendMessage("inputs", inputBuffer[tick]);
-
-      tick++;
     }
+    else {
+      inputBuffer[tick] = {
+        localTime: new Date().getTime(),
+        tick
+      };
+    }
+
+    stateBuffer[tick] = {
+      position: this.position,
+      velocity: this.velocity
+    };
+    inputsToSend.push({...inputBuffer[tick]});
+
+    tick++;
   }
 
   clampRotation() {
@@ -2054,13 +2184,14 @@ function MultiplayerCharacter(gameObject) {
   this.id = -1;
   this.gameObject = gameObject;
   this.snapshotHistory = [];
+  var lastState = null;
 
   this.update = function(dt) {
     if (this.gameObject) {
       var data = this.getLerpedSnapshotData(new Date() - LERP_DELAY);
       if (data) {
         // this.gameObject.animationController.speed = data.currentSpeed;
-        if (!isNaN(data.animationX) && !isNaN(data.animationY) && !isNaN(data.animationZ)) {
+        if (this.gameObject.animationController && !isNaN(data.animationX) && !isNaN(data.animationY) && !isNaN(data.animationZ)) {
           var wh = this.gameObject.animationController.weightsHandler;
           wh.x += (data.animationX - wh.x) / 2;
           wh.y += (data.animationY - wh.y) / 2;
@@ -2069,6 +2200,18 @@ function MultiplayerCharacter(gameObject) {
 
         this.gameObject.transform.position = data.position;
         this.gameObject.transform.rotation = Quaternion.euler(0, -data.rotation.y + Math.PI, 0);
+
+        if (this.enemy) {
+          if (data.state == player.STATES.PLAYING && this.enemy.dead) {
+            this.enemy.respawn();
+          }
+          if (data.state != player.STATES.PLAYING && !this.enemy.dead) {
+            this.enemy.dead = true;
+            this.enemy.gameObject.visible = false;
+          }
+        }
+
+        lastState = data.state;
       }
     }
   }
@@ -2106,7 +2249,7 @@ function MultiplayerCharacter(gameObject) {
         for (var key in neighbors[0].data) {
           var func;
 
-          if (typeof neighbors[0].data[key] == "number") {
+          if (typeof neighbors[0].data[key] == "number" && key != "state") {
             func = lerp;
           }
           else if (Vector.isVectorIsh(neighbors[0].data[key])) {
@@ -2829,19 +2972,25 @@ window.flashButton = function(element) {
 async function setupWeapons() {
   loadingStatus.innerText = "Loading weapons";
 
+  renderer.settings.loadTextures = false;
   var weaponModels = {
-    pistol: scene.add(await renderer.loadGLTF("../assets/models/weapons/pistolSuppressor.glb", {gameObjectOptions: {castShadows: false}})),
-    AK12: scene.add(await renderer.loadGLTF("../assets/models/weapons/AK12.glb", { gameObjectOptions: {castShadows: false}})),
-    sniper: scene.add(renderer.BatchGameObject(await renderer.loadGLTF("../assets/models/weapons/sniper.glb", {gameObjectOptions: {castShadows: false}}))),
+    "1911": await renderer.loadGLTF("../assets/models/weapons/1911.glb", {gameObjectOptions: {castShadows: false}}),
+    pistol: await renderer.loadGLTF("../assets/models/weapons/pistolSuppressor.glb", {gameObjectOptions: {castShadows: false}}),
+    AK12: await renderer.loadGLTF("../assets/models/weapons/AK12.glb", { gameObjectOptions: {castShadows: false}}),
+    sniper: renderer.BatchGameObject(await renderer.loadGLTF("../assets/models/weapons/sniper.glb", {gameObjectOptions: {castShadows: false}})),
 
     // ak47: scene.add(await renderer.loadGLTF("../assets/models/ak47Hands.glb", { loadMaterials: true, maxTextureSize: 256, gameObjectOptions: {castShadows: false}})),
-    shotgun: scene.add(await renderer.loadGLTF("../assets/models/weapons/shotgun.glb", {gameObjectOptions: {castShadows: false}})),
+    shotgun: await renderer.loadGLTF("../assets/models/weapons/shotgun.glb", {gameObjectOptions: {castShadows: false}}),
     // sks: scene.add(await renderer.loadGLTF("../assets/models/sks.glb", { loadMaterials: false, gameObjectOptions: {castShadows: false}}))
-    LMG: scene.add(await renderer.loadGLTF("../assets/models/weapons/LMG.glb", {gameObjectOptions: {castShadows: false}})),
+    LMG: await renderer.loadGLTF("../assets/models/weapons/LMG.glb", {gameObjectOptions: {castShadows: false}}),
   };
+  renderer.settings.loadTextures = true;
 
   for (var key in weaponModels) {
     var w = weaponModels[key];
+
+    scene.add(w);
+    // scene.add(renderer.BatchGameObject(w));
     w.setLayer(1, true);
     w.visible = false;
     w.setReceiveShadows(false, true);
@@ -2854,7 +3003,7 @@ async function setupWeapons() {
   }
 
   // weaponModels.shotgun.transform.rotation = Quaternion.euler(0, Math.PI, 0);
-  weaponModels.shotgun.animationController.speed = 2.5;
+  weaponModels.shotgun.animationController.speed = 0;// 2.5;
   
   for (var animation of weaponModels.pistol.animationController.animations) {
     if (animation.name.indexOf("Reload") != -1) {
@@ -2880,7 +3029,7 @@ async function setupWeapons() {
       ADSFOV: 30,
       ADSMouseSensitivity: 0.8,
 
-      ADSWeaponFOV: 5
+      ADSWeaponFOV: 12
     }),
 
     sniper: new Scope({
@@ -2906,9 +3055,9 @@ async function setupWeapons() {
         recoil: function() {
           var m = (1 - player.crouching * 0.5);
           return {
-            x: -0.9 * m,
+            x: -1.1 * m,
             y: (Math.random() - 0.5) * 0.5 * m,
-            z: 0
+            z: (Math.random() - 0.5) * 0.5 * m
           };
         }
       });
@@ -2920,6 +3069,8 @@ async function setupWeapons() {
       // w.modelRecoil.fireForce = new Vector(0, 0, 4);
       // w.modelRecoil.fireTorque = Vector.zero();
       // w.modelRecoil.fireTorque.z = 3;
+
+      w.modelRecoil.fireTorque = () => new Vector(4, 0.1, (Math.random() - 0.5) * 20);
 
       return w;
     },
@@ -2953,6 +3104,21 @@ async function setupWeapons() {
       w.scope.ADSWepaonFOV = 32;
       w.modelRecoil.fireForce = Vector.zero();
       w.modelRecoil.fireTorque = Vector.zero();
+
+      return w;
+    },
+    "1911": () => {
+      var w = new Weapon({
+        scope: scopes.reddot,
+        weaponObject: weaponModels["1911"],
+        reloadTime: 1000,
+        weaponModelOffset: new Vector(-0.2, 0.1, 0.25),
+        weaponModelADSOffset: new Vector(0, 0, -0.62),
+      });
+      w.name = "Pistol";
+
+      w.modelRecoil.fireForce = new Vector(0, 0, 2);
+      w.modelRecoil.fireTorque = new Vector(4, 0, 0);
 
       return w;
     },
@@ -3002,8 +3168,10 @@ async function setupWeapons() {
       });
       w.name = "Shotgun";
 
-      w.modelRecoil.fireForce = Vector.zero();
-      w.modelRecoil.fireTorque = Vector.zero();
+      w.modelRecoil.fireForce = new Vector(0, 0.5, 7);
+      w.modelRecoil.fireTorque = new Vector(4, 0, 0);
+      // w.modelRecoil.fireForce = Vector.zero();
+      // w.modelRecoil.fireTorque = Vector.zero();
 
       return w;
     },
@@ -3069,7 +3237,8 @@ async function setupWeapons() {
       weapons: [
         weapons.AK12(),
         weapons.pistol(),
-        weapons.autoPistol()
+        weapons.autoPistol(),
+        weapons["1911"]() 
       ]
     },
     sniper: {
@@ -3263,29 +3432,9 @@ function setupWebsocket() {
       sendMessage("login", { username: localStorage.getItem(LS_USERNAME) });
       // sendMessage("login", {id: playerId});
 
-      sendDataInterval = setInterval(function() {
-        sendMessage("inputs", inputsToSend);
-        inputsToSend = [];
-  
-        sendMessage("getAllPlayers");
-  
-        // if (wsIsOpen(ws)) {
-        //   sendMessage("actionQueue", {
-        //     id: oldActionQueues.length,
-        //     actionQueue
-        //   });
-        //   oldActionQueues.push(actionQueue);
-        //   actionQueue = [];
-  
-        //   // if (player) {
-        //   //   sendMessage("updatePlayer", {
-        //   //     position: player.position,
-        //   //     angle: player.getHeadRotation().y
-        //   //   });
-        //   // }
-        //   sendMessage("getAllPlayers");
-        // }
-      }, 1000 / SERVER_SEND_FPS);
+      // sendDataInterval = setInterval(function() {
+      //   websocketTick();
+      // }, 1000 / SERVER_SEND_FPS);
     }
 
     ws.onerror = function() {
@@ -3305,6 +3454,30 @@ function setupWebsocket() {
     console.warn("Failed to construct WebSocket!");
     console.error(e);
   }
+}
+
+function websocketTick() {
+  sendMessage("inputs", inputsToSend);
+  inputsToSend = [];
+
+  sendMessage("getAllPlayers");
+
+  // if (wsIsOpen(ws)) {
+  //   sendMessage("actionQueue", {
+  //     id: oldActionQueues.length,
+  //     actionQueue
+  //   });
+  //   oldActionQueues.push(actionQueue);
+  //   actionQueue = [];
+
+  //   // if (player) {
+  //   //   sendMessage("updatePlayer", {
+  //   //     position: player.position,
+  //   //     angle: player.getHeadRotation().y
+  //   //   });
+  //   // }
+  //   sendMessage("getAllPlayers");
+  // }
 }
 
 function wsIsOpen(ws) {
@@ -3360,18 +3533,19 @@ function websocketOnMessage(msg) {
       else if (parsed.type == "deploy") {
         if (parsed.data.status == "success") {
           player.state = player.STATES.PLAYING;
+          player.position = parsed.data.position;
         }
         else {
           console.error("Could not deploy!");
           lobbyUI.querySelector(".navigation").classList.remove("slideOut");
         }
       }
-      else if (parsed.type == "deployOther") {
-        var m = multiplayerCharacters[parsed.data.clientID];
-        if (m) {
-          m.enemy.respawn(parsed.data.position);
-        }
-      }
+      // else if (parsed.type == "deployOther") {
+      //   var m = multiplayerCharacters[parsed.data.clientID];
+      //   if (m) {
+      //     m.enemy.respawn(parsed.data.position);
+      //   }
+      // }
       else if (parsed.type == "gotoLobby") {
         player.gotoLobby();
       }
@@ -3422,8 +3596,8 @@ function websocketOnMessage(msg) {
           for (var entity of parsed.data) {
             var found = multiplayerCharacters[entity.id];
             if (!found) {
-              var gameObject = scene.add(swat.copy());
-              console.log(gameObject.animationController);
+              var gameObject = scene.add(renderer.CreateShape("cube"));//scene.add(swat.copy());
+              // console.log(gameObject.animationController);
 
               found = new MultiplayerCharacter(gameObject);
               found.id = entity.id;
@@ -3450,11 +3624,11 @@ function websocketOnMessage(msg) {
                 serverTimestamp: new Date(parsed.serverTimestamp),
                 // timestamp: parsed.serverTimestamp,
                 rawTimestamp: t,
-                timestamp: new Date(t),
+                timestamp: +new Date(t),
                 data: entity.data
               });
 
-              if (found.snapshotHistory.length > 500) {
+              if (found.snapshotHistory.length > 100) {
                 found.snapshotHistory.shift();
               }
             }
@@ -3466,12 +3640,20 @@ function websocketOnMessage(msg) {
 
         var playerCopy = new PlayerPhysicsBase(player.startPosition);
         playerCopy.physicsEngine = physicsEngine;
-        playerCopy.position = {...parsed.data.gameData.position},
-        playerCopy.velocity = {...parsed.data.gameData.velocity},
-        playerCopy.grounded = parsed.data.gameData.isGrounded;
+        playerCopy.position = {...parsed.data.gameData.position};
+        playerCopy.velocity = {...parsed.data.gameData.velocity};
+        playerCopy.grounded = parsed.data.gameData.grounded;
+        playerCopy.crouching = parsed.data.gameData.crouching;
 
-        var positionError = Vector.distance(stateBuffer[parsed.data.lastProcessedTick].position, playerCopy.position);
-        if (positionError > 0.0001) {
+        playerCopy.groundCounter = parsed.data.gameData.groundCounter;
+        playerCopy.jumpCounter = parsed.data.gameData.jumpCounter;
+        playerCopy.lastJumpInput = parsed.data.gameData.lastJumpInput;
+        playerCopy.fakeGroundNormal = {...parsed.data.gameData.fakeGroundNormal};
+        playerCopy.realGroundNormal = {...parsed.data.gameData.realGroundNormal};
+
+        var positionError = Vector.distanceSqr(stateBuffer[parsed.data.lastProcessedTick].position, playerCopy.position);
+        var error = 0.005;
+        if (positionError > error * error) {
           for (var rewindTick = parsed.data.lastProcessedTick + 1; rewindTick < tick; rewindTick++) {
             var inputs = inputBuffer[rewindTick];
 
@@ -3483,7 +3665,7 @@ function websocketOnMessage(msg) {
             playerCopy.simulatePhysicsStep(dt);
           }
 
-          var smoothing = true;
+          var smoothing = false;
           if (smoothing && positionError < 2) {
             player.position = Vector.lerp(player.position, playerCopy.position, 0.5);
           }
@@ -3505,9 +3687,10 @@ function websocketOnMessage(msg) {
 function displayWSError() {
   console.log("Connection lost!");
   loadingStatus.innerText = "Connection lost";
-  if (sendDataInterval) {
-    clearInterval(sendDataInterval);
-  }
+
+  // if (sendDataInterval) {
+  //   clearInterval(sendDataInterval);
+  // }
 
   disconnected = true;
   // running = false;
@@ -3530,6 +3713,11 @@ function SetupEvents() {
   // window.onbeforeunload = function() {
   //   return true;
   // }
+
+  window.addEventListener("mousedown", function() {
+    window.audioContext.resume();
+    audioListener.audioContext.resume();
+  });
 
   renderer.on("mousedown", function(e) {
     if (running && player) {
@@ -3620,9 +3808,6 @@ function SetupEvents() {
           lobbyTabs[0].checked = true;
           // closeLoadout();
         }
-        if (e.keyCode == 13) { // Enter
-          // selectClass("shotgun");
-        }
       }
 
       if (e.keyCode == 9) { // Tab
@@ -3661,51 +3846,59 @@ function SetupEvents() {
   }
 }
 
+function deadZone(x, zone = 0.1) {
+  if (Math.abs(x) < zone) {
+    return 0;
+  }
+
+  return x;
+}
+
 // bruh performance intensive
 // bruh add to renderer class
-function GLDebugger() {
-  this.index = 0;
-  this.cubes = [];
-  for (var i = 0; i < 50; i++) {
-    var c = this.cubes[i] = scene.add(renderer.CreateShape("cube"));
-    c.transform.position.y = -100;
-    c.castShadows = false;
+// function GLDebugger() {
+//   this.index = 0;
+//   this.cubes = [];
+//   for (var i = 0; i < 50; i++) {
+//     var c = this.cubes[i] = scene.add(renderer.CreateShape("cube"));
+//     c.transform.position.y = -100;
+//     c.castShadows = false;
 
-    var m = FindMaterials("", c)[0];
-    m.setUniform("albedo", [0, 0, 0, 1]);
-    m.setUniform("emissiveFactor", [Math.random(), Math.random(), Math.random()]);
-  }
+//     var m = FindMaterials("", c)[0];
+//     m.setUniform("albedo", [0, 0, 0, 1]);
+//     m.setUniform("emissiveFactor", [Math.random(), Math.random(), Math.random()]);
+//   }
 
-  this.clear = function() {
-    this.index = 0;
-    for (var cube of this.cubes) {
-      cube.transform.position.y = -100;
-    }
-  }
+//   this.clear = function() {
+//     this.index = 0;
+//     for (var cube of this.cubes) {
+//       cube.transform.position.y = -100;
+//     }
+//   }
 
-  this.Vector = function(p, normal, size = 1, color) {
-    var c = this.cubes[this.index];
-    c.transform.matrix = Matrix.lookAt(Vector.add(p, Vector.multiply(normal, 0.5 * size)), Vector.add(p, normal), new Vector(0.1, 0.9, 0));
-    c.transform.scale = new Vector(0.01, 0.01, 0.5 * size);
+//   this.Vector = function(p, normal, size = 1, color) {
+//     var c = this.cubes[this.index];
+//     c.transform.matrix = Matrix.lookAt(Vector.add(p, Vector.multiply(normal, 0.5 * size)), Vector.add(p, normal), new Vector(0.1, 0.9, 0));
+//     c.transform.scale = new Vector(0.01, 0.01, 0.5 * size);
 
-    if (color) {
-      FindMaterials("", c)[0].setUniform("emissiveFactor", color);
-    }
+//     if (color) {
+//       FindMaterials("", c)[0].setUniform("emissiveFactor", color);
+//     }
 
-    this.index++;
-    this.index = this.index % this.cubes.length;
-  }
+//     this.index++;
+//     this.index = this.index % this.cubes.length;
+//   }
 
-  this.Point = function(p, size = 0.2, color) {
-    var c = this.cubes[this.index];
-    c.transform.position = p;
-    c.transform.scale = Vector.fill(size);
+//   this.Point = function(p, size = 0.2, color) {
+//     var c = this.cubes[this.index];
+//     c.transform.position = p;
+//     c.transform.scale = Vector.fill(size);
 
-    if (color) {
-      FindMaterials("", c)[0].setUniform("emissiveFactor", color);
-    }
+//     if (color) {
+//       FindMaterials("", c)[0].setUniform("emissiveFactor", color);
+//     }
 
-    this.index++;
-    this.index = this.index % this.cubes.length;
-  }
-}
+//     this.index++;
+//     this.index = this.index % this.cubes.length;
+//   }
+// }

@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com">
   <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;400&display=swap" rel="stylesheet">
 
-  <script src="https://aaserver.net/libraries/gameCanvas/gameCanvasPerlin.js"></script>
+  <script src="gamepadManager.js"></script>
   <script src="Stats.js"></script>
 
   <style>
@@ -36,217 +36,161 @@
 <body>
   <script type="module">
 
-    import Renderer, { Scene, GameObject } from "./engine/renderer.mjs";
+    import Renderer, { Scene, GameObject, Transform, Camera, FindMaterials } from "./engine/renderer.mjs";
     import OrbitCamera from "./engine/orbitCamera.mjs";
+    import FlyCamera from "./engine/flyCamera.mjs";
     import Vector from "./engine/vector.mjs";
-    import { clamp, mapValue } from "./engine/helper.mjs";
-    import { getTriangleNormal } from "./engine/algebra.mjs";
+    import Matrix from "./engine/matrix.mjs";
+    import GLDebugger from "./engine/GLDebugger.mjs";
+    import Terrain from "./engine/terrain.mjs";
+
+    import { PhysicsEngine } from "./engine/physics.mjs";
+    import { Car } from "./car.js";
+    var physicsEngine;
 
     var stats = new Stats();
     document.body.appendChild(stats.dom);
-
-    var perlin = typeof Perlin == "undefined" ? {noise: _ => 0} : new Perlin();
 
     var renderer;
     var scene;
     var camera;
 
     (async function() {
-      renderer = new Renderer();
+      renderer = new Renderer({ renderScale: 1, debug: false });
 
       scene = new Scene();
-      scene.environmentIntensity = 0;
-      scene.sunIntensity = Vector.fill(1);
+      // scene.environmentIntensity = 0;
+      scene.sunIntensity = Vector.fill(1.5);
+      // scene.sunDirection = Vector.normalize(new Vector(-5, 2, -5));
       // scene.smoothSkybox = true;
       renderer.add(scene);
 
-      // await scene.loadEnvironment({
-      //   hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed", 
-      //   res: 512
-      // });
+      await scene.loadEnvironment({
+        hdr: "./assets/hdri/hilly_terrain_01_1k.hdr", 
+        // hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed", 
+        res: 512
+      });
 
-      camera = new OrbitCamera(renderer, {near: 0.1, far: 5000, layer: 0, fov: 20});
-      camera.distance = 4;
+      window.Debug = new GLDebugger(scene);
 
-      var model = await renderer.loadGLTF("./assets/models/DamagedHelmet.glb");
-      model.transform.position.y += 2;
+      // camera = new OrbitCamera(renderer, {near: 0.1, far: 5000, layer: 0, fov: 20});
+      // camera.distance = 4;
+      camera = new FlyCamera(renderer, {near: 0.1, far: 10000, layer: 0, fov: 35});
+      camera.sprintSpeed = 250;
+
+      // camera = new Camera({near: 0.1, far: 100, layer: 0, fov: 35});
+      // camera.transform.position = new Vector(0, 0, 7);
+
+      var mapPath = "./assets/models/brickPlane.glb";
+      var colliderPath = "./assets/models/brickPlane.glb";
+
+      var map = await renderer.loadGLTF(mapPath);
+      map.transform.position.y -= 5;
+      map.transform.scale = Vector.fill(20);
+      scene.add(renderer.BatchGameObject(map));
+
+      var collider = await renderer.loadGLTF(colliderPath, { loadMaterials: false, loadNormals: false, loadTangents: false });
+      collider.transform.position.y -= 5;
+      collider.transform.scale = Vector.fill(20);
+      physicsEngine = new PhysicsEngine(scene);
+      physicsEngine.addMeshCollider(collider);
+      physicsEngine.setupMeshCollider();
+
+      // window.physicsEngine = physicsEngine;
+      var car = new Car(scene, physicsEngine, {
+        drivetrain: "RWD",
+        friction: 1,
+        forwardFriction: 1,
+        sidewaysFriction: 1.05,
+        maxSteerAngle: 40,
+        torque: 400,
+
+        suspensionForce: 90_000,
+        suspensionDamping: 3000,
+        suspensionTravel: 0.1,
+        rideHeightOffset: 0.08,
+
+        controlScheme: Car.ControlScheme.Keyboard,
+        activateAutoCountersteer: false,
+
+        differential: Car.ENUMS.DIFFERENTIAL.LOCKED,
+      });
+      car.resetPosition = new Vector(0, -4, 0);
+      await car.setup("./assets/models/audi_rs6.glb");
+      // await car.setup("./cargame/porsche.glb");
+
+      car.camera.followDistance = 5;
+      car.camera.followHeight = 0.3;
+      car.camera.pitch = 0.1;
+
+      // car.getWheel("fr").sidewaysFriction = 1.3;
+      // car.getWheel("fl").sidewaysFriction = 1.3;
+
+      // car.rb.COMOffset.z += 0.3;
+      car.rb.velocity.z = -30;
+
+      var terrain = new Terrain(scene);
+      terrain.chunkRes = 9;
+      // terrain.chunkUpdatesPerFrame = 100;
+      // terrain.quadtree.placeTransform(camera.camera.transform);
+      await terrain.loadMaterials();
+
+      var model = await renderer.loadGLTF("./assets/models/audi_rs6.glb");
+      model.transform.position.y = terrain.getHeight(model.transform.position.x, model.transform.position.z);
       scene.add(model);
 
-      var litTerrain = new renderer.ProgramContainer(await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/litTerrain"));
-      console.log(litTerrain);
+      // var grass = scene.add(await renderer.loadGLTF("./cargame/grass.glb"));
+      // grass.children[0].meshRenderer = grass.children[0].meshRenderer.getInstanceMeshRenderer();
 
-      var gl = renderer.gl;
-      var sRGBInternalFormat = renderer.version == 1 ? (renderer.sRGBExt && (renderer.floatTextures || renderer.textureHalfFloatExt) ? renderer.sRGBExt.SRGB_ALPHA_EXT : gl.RGBA) : gl.SRGB8_ALPHA8;
-      var sRGBFormat = renderer.version == 1 ? (renderer.sRGBExt && (renderer.floatTextures || renderer.textureHalfFloatExt) ? renderer.sRGBExt.SRGB_ALPHA_EXT : gl.RGBA) : gl.RGBA;
-      var grassAlbedo = await renderer.loadTextureAsync("./assets/textures/Ground037_4K-JPG/Ground037_4K_Color.jpg", {internalFormat: sRGBInternalFormat, format: sRGBFormat});
-      var grassNormal = await renderer.loadTextureAsync("./assets/textures/Ground037_4K-JPG/Ground037_4K_Normal.jpg");
-
-      var stoneAlbedo = await renderer.loadTextureAsync("./assets/textures/Snow/albedo.jpg", {internalFormat: sRGBInternalFormat, format: sRGBFormat});
-      var stoneNormal = await renderer.loadTextureAsync("./assets/textures/Snow/normal.jpg");
-
-      var snowAlbedo = await renderer.loadTextureAsync("./assets/textures/Snow/albedo.jpg", {internalFormat: sRGBInternalFormat, format: sRGBFormat});
-      var snowNormal = await renderer.loadTextureAsync("./assets/textures/Snow/normal.jpg");
-
-      var terrainMat = renderer.CreateLitMaterial({}, litTerrain);
-      terrainMat.setUniform("roughness", 1);
-      terrainMat.setUniform("albedoTextures[0]", [ grassAlbedo, stoneAlbedo, snowAlbedo ]);
-      terrainMat.setUniform("normalTextures[0]", [ grassNormal, stoneNormal, snowNormal ]);
-
-      var rootChunks = 15;
-      var chunkSize = 40;
-      var chunkRes = 50;
-
-      lodTerrain(1000, chunkRes);
-
-      function lodTerrain(chunkSize = 40, chunkRes = 40, level = 0) {
-        for (var z = -1; z <= 1; z++) {
-          for (var x = -1; x <= 1; x++) {
-            if (level > 2 || x !== 0 || z !== 0) {
-              var terrain = scene.add(new GameObject("Terrain " + x + "," + z));
-              terrain.transform.position = new Vector(x * chunkSize, 0, z * chunkSize);
-              terrain.meshRenderer = new renderer.MeshRenderer(terrainMat, createTerrainData(chunkSize, chunkSize, chunkRes, 200, new Vector(chunkSize * x, chunkSize * z, 0), 0.001, 600 * (1 / 3) ** level));
-            }
-          }
-        }
-
-        if (level <= 2) {
-          lodTerrain(chunkSize / 3, chunkRes, level + 1);
-        }
-      }
-
-      // for (var z = -Math.floor(rootChunks / 2); z <= Math.floor(rootChunks / 2); z++) {
-      //   for (var x = -Math.floor(rootChunks / 2); x <= Math.floor(rootChunks / 2); x++) {
-      //     var terrain = scene.add(new GameObject("Terrain " + x + "," + z));
-      //     terrain.transform.position = new Vector(x * chunkSize, 0, z * chunkSize);
-      //     terrain.meshRenderer = new renderer.MeshRenderer(terrainMat, createTerrainData(chunkSize, chunkSize, chunkRes, 20, new Vector(chunkSize * x, chunkSize * z, 0), 0.01, 50));
-
-      //     // physicsEngine.addMeshToOctree(terrain);
-      //   }
+      // for (var i = 0; i < 1000; i++) {
+      //   var pos = new Vector((Math.random() - 0.5) * 50, 0, (Math.random() - 0.5) * 50);
+      //   pos.y = terrain.getHeight(pos.x, pos.z);
+        
+      //   grass.children[0].meshRenderer.addInstance(Matrix.transform([
+      //     ["translate", pos],
+      //     ["scale", Vector.fill(1 + Math.random() * 3)],
+      //     ["ry", Math.random() * Math.PI * 2]
+      //   ]));
       // }
 
-      renderer.on("renderloop", function(frameTime) {
+      var mainCamera = car.mainCamera;
+      // var mainCamera = camera.camera;
+      // var mainCamera = camera;
+
+      var tt = scene.add(new GameObject("Trail test"));
+      var tr = tt.addComponent(new renderer.TrailRenderer());
+
+      setInterval(function() {
+        tr.emit = !tr.emit;
+      }, 1000);
+
+      renderer.on("renderloop", function(frameTime, totalTime) {
+        camera.update(frameTime);
+
+        tt.transform.position.x = Math.cos(totalTime) * 3;
+        tt.transform.position.z = Math.sin(totalTime) * 3;
+
+        // terrain.update(mainCamera.transform);
+        terrain.update();
+
+        physicsEngine.update();
+        if (car) {
+          car.update(frameTime);
+        }
+
         scene.update(frameTime);
-        renderer.render(camera.camera);
+        renderer.render(mainCamera);
 
         stats.update();
       });
 
+      window.car = car;
       window.renderer = renderer;
       window.scene = scene;
-      // window.physicsEngine = physicsEngine;
+      window.physicsEngine = physicsEngine;
       window.camera = camera;
+      window.terrain = terrain;
     })();
-
-    function createTerrainData(w = 20, h = 20, res = 5, heightFactor = 2, noiseOffset = Vector.zero(), noiseScale = 0.01, uvScale = 20) {
-      function getHeight(i, j) {
-        return Math.pow(LayeredNoise(i * noiseScale, j * noiseScale, 6), 2) * heightFactor;// * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
-        // return perlin.noise(i * noiseScale, j * noiseScale) * scale * heightFactor * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
-      }
-
-      var uvs = [];
-      var vertices = [];
-      var triangles = [];
-      var tangents = [];
-
-      for (var i = 0; i < res; i++) {
-        for (var j = 0; j < res; j++) {
-          var x = mapValue(i, 0, res - 1, -w / 2, w / 2);
-          var z = mapValue(j, 0, res - 1, -h / 2, h / 2);
-
-          var vertex = new Vector(
-            x,
-            getHeight(x + noiseOffset.x, z + noiseOffset.y),
-            z
-          );
-          vertices.push(vertex.x, vertex.y, vertex.z);
-          uvs.push(i / (res - 1) * uvScale, j / (res - 1) * uvScale);
-        }
-      }
-
-      var normals = new Array(vertices.length / 3);
-      for (var i = 0; i < normals.length; i++) {
-        normals[i] = [];
-      }
-
-      for (var i = 0; i < res - 1; i++) {
-        for (var j = 0; j < res - 1; j++) {
-          var ind = j + i * res;
-          var indices = [
-            ind,
-            ind + 1,
-            ind + res,
-
-            ind + 1,
-            ind + res + 1,
-            ind + res
-          ];
-          triangles.push(...indices);
-
-          var t1Normal = getTriangleNormal([Vector.fromArray(vertices, indices[0] * 3), Vector.fromArray(vertices, indices[1] * 3), Vector.fromArray(vertices, indices[2] * 3)]);
-          var t2Normal = getTriangleNormal([Vector.fromArray(vertices, indices[3] * 3), Vector.fromArray(vertices, indices[4] * 3), Vector.fromArray(vertices, indices[5] * 3)]);
-
-          normals[indices[0]].push(t1Normal);
-          normals[indices[1]].push(t1Normal);
-          normals[indices[2]].push(t1Normal);
-          normals[indices[3]].push(t2Normal);
-          normals[indices[4]].push(t2Normal);
-          normals[indices[5]].push(t2Normal);
-        }
-      }
-
-      var outNormals = [];
-      for (var i = 0; i < normals.length; i++) {
-        var normal = Vector.divide(normals[i].reduce((a, b) => {
-          return Vector.add(a, b);
-        }, Vector.zero()), normals[i].length);
-
-        outNormals.push(normal.x, normal.y, normal.z);
-
-        tangents.push(normal.y, normal.x, normal.z);
-      }
-
-      var meshData = new renderer.MeshData({
-        indices: {
-          bufferData: new Uint32Array(triangles),
-          target: renderer.gl.ELEMENT_ARRAY_BUFFER
-        },
-        position: {
-          bufferData: new Float32Array(vertices),
-          size: 3
-        },
-        normal: {
-          bufferData: new Float32Array(outNormals),
-          size: 3
-        },
-        tangent: {
-          bufferData: new Float32Array(tangents),
-          size: 3
-        },
-        uv: {
-          bufferData: new Float32Array(uvs),
-          size: 2
-        }
-      });
-      
-      return meshData;
-    }
-
-    function LayeredNoise(x, y, octaves = 4) {
-      var noise = 0;
-      var frequency = 1;
-      var factor = 1;
-
-      var persistance = 0.4;
-      var roughness = 3;
-
-      for (var i = 0; i < octaves; i++) {
-        noise += perlin.noise(x * frequency + i * 0.72354, y * frequency + i * 0.72354) * factor;
-        factor *= persistance;
-        frequency *= roughness;
-      }
-
-      return noise;
-    }
 
   </script>
 </body>

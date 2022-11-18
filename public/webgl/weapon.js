@@ -37,24 +37,27 @@ function Weapon(settings = {}) {
   fetch(def(settings.fireSound, "../assets/sound/drumGun2.wav"))
     .then(response => response.blob())
     .then(blob => {
-        var fileBlob = URL.createObjectURL(blob);
+      var fileBlob = URL.createObjectURL(blob);
 
-        for (var i = 0; i < bufferSize; i++) {
-          var audio = new Audio(fileBlob);
-          // audio.playbackRate = 0.8 + Math.random() * 0.4;
-      
-          var audioSource = audioContext.createMediaElementSource(audio);
-          audioSource.connect(masterVolume);
-      
-          this.fireSoundPlayers.push(audio);
-          this.readyFireSoundPlayers.push(audio);
-        }
+      for (var i = 0; i < bufferSize; i++) {
+        var audio = new Audio(fileBlob);
+        // audio.playbackRate = 0.8 + Math.random() * 0.4;
+    
+        var audioSource = audioContext.createMediaElementSource(audio);
+        audioSource.connect(masterVolume);
+    
+        this.fireSoundPlayers.push(audio);
+        this.readyFireSoundPlayers.push(audio);
+      }
   });
 
   this.dryFireSoundPlayer = new Audio(def(settings.dryFireSound, "../assets/sound/dryFire.wav"));
   audioContext.createMediaElementSource(this.dryFireSoundPlayer).connect(masterVolume);
 
   this.reloadSoundPlayer = new Audio(def(settings.reloadSound, "../assets/sound/reload.wav"));
+  this.reloadSoundPlayer.addEventListener('loadedmetadata', e => {
+    this.reloadSoundPlayer.playbackRate =  (this.reloadSoundPlayer.duration * 1000) / this.reloadTime;
+  });
   audioContext.createMediaElementSource(this.reloadSoundPlayer).connect(masterVolume);
 
   if (settings.doneReloadingSound) {
@@ -196,13 +199,15 @@ function Weapon(settings = {}) {
         window.muzzleFlashEnabled = true;
 
         // if (currentSpreeRound < 4) { // Remove recoil climb after 4 shots
-          this.recoilOffsetTarget = {...this.recoilOffset};
+        this.recoilOffsetTarget.x = this.recoilOffset.x; // Z should always have center as target 
+        this.recoilOffsetTarget.y = this.recoilOffset.y;
+        // this.recoilOffsetTarget = {...this.recoilOffset};
         // }
         var currentRecoil = this.recoil();
         this.recoilOffsetVelocity = Vector.add(this.recoilOffsetVelocity, currentRecoil);
 
         Vector.addTo(this.modelRecoil.velocity, this.modelRecoil.fireForce);
-        Vector.addTo(this.modelRecoil.angularVelocity, this.modelRecoil.fireTorque);
+        Vector.addTo(this.modelRecoil.angularVelocity, typeof this.modelRecoil.fireTorque === "function" ? this.modelRecoil.fireTorque() : this.modelRecoil.fireTorque);
 
         /*if (this.muzzleFlashModel) {
           this.muzzleFlashRotation = Math.random() * Math.PI * 2;
@@ -221,13 +226,13 @@ function Weapon(settings = {}) {
         if (this.mode == this.GunModes.ADS) currentSpread *= lerp(this.ADSBulletSpread, 1, adsT);
 
         var rot = player.getHeadRotation();
-        var origin = player.getHeadPos();
+        var origin = player.getHeadPos();//this.weaponObject.getChild("MuzzleOffset", true).transform.worldPosition;
 
         for (var i = 0; i < this.bulletsPerShot; i++) {
           var direction = Matrix.transformVector(Matrix.transform([
-            ["rz", -rot.z],
             ["ry", -rot.y],
             ["rx", -rot.x],
+            ["rz", -rot.z],
             ["rx", (Math.random() - 0.5) * 2 * currentSpread],
             ["ry", (Math.random() - 0.5) * 2 * currentSpread],
           ]), {x: 0, y: 0, z: -1});
@@ -440,9 +445,9 @@ function Weapon(settings = {}) {
       var rot = player.handRotation;//player.getHeadRotation();
       var ops = [
         ["translate", player.getHeadPos()],
-        ["rz", -rot.z],
         ["ry", -rot.y],
         ["rx", -rot.x],
+        // ["rz", -rot.z], // (When commented) Only spin head on z
         ["translate", Vector.multiply(player.handOffset, adsT)],
         ["translate", Vector.multiply(new Vector(Math.cos(player.walkTime * 0.5) * 0.005, Math.pow(Math.sin(player.walkTime * 0.5), 2) * 0.01, 0), adsT)], // Weapon bobbing
         ["rz", player.handRotOffset.z * adsT],
@@ -450,10 +455,14 @@ function Weapon(settings = {}) {
         ["rx", player.handRotOffset.x * adsT],
 
         ["translate", Vector.lerp(this.weaponModelADSOffset, this.weaponModelOffset, adsT)],
-        ["translate", this.modelRecoil.translation],
-        ["rz", this.modelRecoil.rotation.z * adsT],
-        ["ry", this.modelRecoil.rotation.y * adsT],
-        ["rx", this.modelRecoil.rotation.x * adsT],
+        // ["translate", this.modelRecoil.translation],
+        // ["rz", this.modelRecoil.rotation.z * adsT],
+        // ["ry", this.modelRecoil.rotation.y * adsT],
+        // ["rx", this.modelRecoil.rotation.x * adsT],
+        // ["translate", this.modelRecoil.translation],
+        // ["rz", this.modelRecoil.rotation.z],
+        // ["ry", this.modelRecoil.rotation.y],
+        // ["rx", this.modelRecoil.rotation.x],
 
         ["translate", Vector.multiply({x: 0, y: -clamp(currentPlayerVelYOffset * 0.005, -0.08, 0.08), z: 0}, adsT)] // Jump and fall bobbing
 
@@ -474,7 +483,13 @@ function Weapon(settings = {}) {
         baseMatrix = Matrix.multiply(baseMatrix, localADSOffset);
       }
 
+      var s = 0.1 + adsT * 0.9;
       Matrix.transform([
+        ["translate", this.modelRecoil.translation],
+        ["rz", this.modelRecoil.rotation.z * s],
+        ["ry", this.modelRecoil.rotation.y * s],
+        ["rx", this.modelRecoil.rotation.x * s],
+
         ["scale", initialWeaponScale]
       ], baseMatrix);
 
@@ -489,9 +504,9 @@ function Weapon(settings = {}) {
     adsT += -(adsT - (this.mode == this.GunModes.ADS ? 0 : 1)) * this.ADSSpeed;
 
     // Camera rotation
-    this.recoilOffsetVelocity = Vector.add(this.recoilOffsetVelocity, Vector.multiply(Vector.subtract(this.recoilOffsetTarget, this.recoilOffset), 2 * dt * 60));
-    this.recoilOffsetVelocity = Vector.add(this.recoilOffsetVelocity, Vector.multiply(this.recoilOffsetVelocity, -1 * 0.3 * dt * 60));
-    this.recoilOffset = Vector.add(this.recoilOffset, Vector.multiply(this.recoilOffsetVelocity, dt));
+    Vector.addTo(this.recoilOffsetVelocity, Vector.multiply(Vector.subtract(this.recoilOffsetTarget, this.recoilOffset), 2 * dt * 60));
+    Vector.addTo(this.recoilOffsetVelocity, Vector.multiply(this.recoilOffsetVelocity, -1 * 0.3 * dt * 60));
+    Vector.addTo(this.recoilOffset, Vector.multiply(this.recoilOffsetVelocity, dt));
 
     // Model translation
     Vector.addTo(this.modelRecoil.velocity, Vector.multiply(this.modelRecoil.translation, this.modelRecoil.translationReturn * dt)); // Return

@@ -6,6 +6,8 @@ class PlayerPhysicsBase {
   constructor(pos = Vector.zero()) {
     this.physicsEngine = null;
 
+    this.canMove = true;
+
     this.rotation = Vector.zero();
     this.position = Vector.copy(pos);
     this.startPosition = Vector.copy(pos);
@@ -27,6 +29,7 @@ class PlayerPhysicsBase {
     this.jumpBuffering = 0.08;
     this.groundCounter = 0;
     this.jumpCounter = 0;
+    this.lastJumpInput = false;
 
     this.collisionIterations = 3;
     this.grounded = false;
@@ -42,7 +45,7 @@ class PlayerPhysicsBase {
     this.deaths = 0;
     this.killStreak = 0;
 
-    this.STATES = { IN_LOBBY: 0, PLAYING: 1, DEAD: 2 };
+    this.STATES = Object.freeze({ IN_LOBBY: 0, PLAYING: 1, DEAD: 2 });
     this.state = this.STATES.IN_LOBBY;
 
     Object.defineProperty(this, "dead", {
@@ -136,8 +139,22 @@ class PlayerPhysicsBase {
             var normal = dp > 0.75 ? Vector.up() : col.normal;
             var depth = col.depth / Vector.dot(normal, col.normal);
 
+            // Touching roof
+            if (Vector.dot(col.normal, Vector.up()) < -0.2) {
+              if (this.velocity.y > 0) {
+                this.velocity = Vector.projectOnPlane(this.velocity, Vector.up());
+              }
+            }
+
+            if (Vector.dot(col.normal, Vector.up()) < -0.05) {
+              // this.velocity = Vector.projectOnPlane(this.velocity, Vector.up());
+            }
+            else {
+              this.velocity = Vector.projectOnPlane(this.velocity, normal);
+            }
+
             this.position = Vector.add(this.position, Vector.multiply(normal, depth));
-            this.velocity = Vector.projectOnPlane(this.velocity, normal);
+            // this.velocity = Vector.projectOnPlane(this.velocity, normal);
 
             var isGround = Vector.dot(normal, Vector.up()) > 0.7;
             if (isGround) {
@@ -152,6 +169,14 @@ class PlayerPhysicsBase {
   }
 
   applyInputs(inputs, dt) {
+    if (!inputs) {
+      return;
+    }
+
+    if (!this.canMove) {
+      return;
+    }
+
     var vertical = (inputs.forward || 0) - (inputs.back || 0);
     var horizontal = (inputs.left || 0) - (inputs.right || 0);
   
@@ -182,7 +207,7 @@ class PlayerPhysicsBase {
   
     // Jumping
     // if (renderer.getKeyDown(32)) {
-    if (inputs.jump) {
+    if (inputs.jump && !this.lastJumpInput) {
       this.jumpCounter = this.jumpBuffering;
     }
   
@@ -205,6 +230,8 @@ class PlayerPhysicsBase {
     }
 
     this.crouching = inputs.crouching;
+
+    this.lastJumpInput = inputs.jump;
   }
 
   getHeadRotation() {

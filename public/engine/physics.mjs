@@ -42,6 +42,7 @@ import {
   capsuleToTriangle,
   ClosestPointOnLineSegment
 } from "./algebra.mjs";
+import { EventHandler } from "./renderer.mjs";
 
 function CreateCubeCollider(pos, scale, rot) {
   var aabb = new AABBCollider(Vector.subtract(pos, scale), Vector.add(pos, scale), Matrix.transform([
@@ -147,101 +148,101 @@ function AABBCollider(bl, tr, matrix = Matrix.identity(), inverted = false) {
   }
 }
 
-function MeshCollider(data, matrix = Matrix.identity()) {
-  this.vertices = data.position.bufferData;
-  this.indices = data.indices.bufferData;
-  this.matrix = matrix;
+// function MeshCollider(data, matrix = Matrix.identity()) {
+//   this.vertices = data.position.bufferData;
+//   this.indices = data.indices.bufferData;
+//   this.matrix = matrix;
 
-  this.raycast = function(origin, direction) {
-    var smallestDistance = Infinity;
-    var normal;
-    var point;
+//   this.raycast = function(origin, direction) {
+//     var smallestDistance = Infinity;
+//     var normal;
+//     var point;
 
-    for (var i = 0; i < this.indices.length; i += 3) {
-      var i1 = this.indices[i];
-      var i2 = this.indices[i + 1];
-      var i3 = this.indices[i + 2];
+//     for (var i = 0; i < this.indices.length; i += 3) {
+//       var i1 = this.indices[i];
+//       var i2 = this.indices[i + 1];
+//       var i3 = this.indices[i + 2];
 
-      var a = {
-        x: this.vertices[i1 * 3],
-        y: this.vertices[i1 * 3 + 1],
-        z: this.vertices[i1 * 3 + 2]
-      };
+//       var a = {
+//         x: this.vertices[i1 * 3],
+//         y: this.vertices[i1 * 3 + 1],
+//         z: this.vertices[i1 * 3 + 2]
+//       };
 
-      var b = {
-        x: this.vertices[i2 * 3],
-        y: this.vertices[i2 * 3 + 1],
-        z: this.vertices[i2 * 3 + 2]
-      };
+//       var b = {
+//         x: this.vertices[i2 * 3],
+//         y: this.vertices[i2 * 3 + 1],
+//         z: this.vertices[i2 * 3 + 2]
+//       };
 
-      var c = {
-        x: this.vertices[i3 * 3],
-        y: this.vertices[i3 * 3 + 1],
-        z: this.vertices[i3 * 3 + 2]
-      };
+//       var c = {
+//         x: this.vertices[i3 * 3],
+//         y: this.vertices[i3 * 3 + 1],
+//         z: this.vertices[i3 * 3 + 2]
+//       };
 
-      a = Matrix.transformVector(this.matrix, a);
-      b = Matrix.transformVector(this.matrix, b);
-      c = Matrix.transformVector(this.matrix, c);
+//       a = Matrix.transformVector(this.matrix, a);
+//       b = Matrix.transformVector(this.matrix, b);
+//       c = Matrix.transformVector(this.matrix, c);
 
-      var hitPoint = rayToTriangle(origin, direction, a, b, c);
-      if (hitPoint && hitPoint.distance < smallestDistance) {
-        smallestDistance = hitPoint.distance;
-        normal = Vector.normalize(Vector.cross(Vector.subtract(b, a), Vector.subtract(c, a)));
-        point = hitPoint.point;
-      }
-    }
+//       var hitPoint = rayToTriangle(origin, direction, a, b, c);
+//       if (hitPoint && hitPoint.distance < smallestDistance) {
+//         smallestDistance = hitPoint.distance;
+//         normal = Vector.normalize(Vector.cross(Vector.subtract(b, a), Vector.subtract(c, a)));
+//         point = hitPoint.point;
+//       }
+//     }
 
-    return {
-      distance: smallestDistance,
-      normal: normal,
-      point: point
-    };
-  }
+//     return {
+//       distance: smallestDistance,
+//       normal: normal,
+//       point: point
+//     };
+//   }
 
-  this.getNormal = function(point) {
-    var smallestDistance = Infinity;
-    var normal;
+//   this.getNormal = function(point) {
+//     var smallestDistance = Infinity;
+//     var normal;
 
-    for (var i = 0; i < this.indices.length; i += 3) {
-      var i1 = this.indices[i];
-      var i2 = this.indices[i + 1];
-      var i3 = this.indices[i + 2];
+//     for (var i = 0; i < this.indices.length; i += 3) {
+//       var i1 = this.indices[i];
+//       var i2 = this.indices[i + 1];
+//       var i3 = this.indices[i + 2];
 
-      var a = {
-        x: this.vertices[i1 * 3],
-        y: this.vertices[i1 * 3 + 1],
-        z: this.vertices[i1 * 3 + 2]
-      }
+//       var a = {
+//         x: this.vertices[i1 * 3],
+//         y: this.vertices[i1 * 3 + 1],
+//         z: this.vertices[i1 * 3 + 2]
+//       }
 
-      var b = {
-        x: this.vertices[i2 * 3],
-        y: this.vertices[i2 * 3 + 1],
-        z: this.vertices[i2 * 3 + 2]
-      }
+//       var b = {
+//         x: this.vertices[i2 * 3],
+//         y: this.vertices[i2 * 3 + 1],
+//         z: this.vertices[i2 * 3 + 2]
+//       }
 
-      var c = {
-        x: this.vertices[i3 * 3],
-        y: this.vertices[i3 * 3 + 1],
-        z: this.vertices[i3 * 3 + 2]
-      }
+//       var c = {
+//         x: this.vertices[i3 * 3],
+//         y: this.vertices[i3 * 3 + 1],
+//         z: this.vertices[i3 * 3 + 2]
+//       }
 
-      var pointOnTriangle = closestPointOnTriangle(point, a, b, c);
-      if (pointOnTriangle) {
-        var distance = Vector.distance(point, pointOnTriangle);
-        if (distance < smallestDistance) {
-          smallestDistance = distance;
-          normal = Vector.normalize(Vector.cross(Vector.subtract(b, a), Vector.subtract(c, a)));
-        }
-      }
-    }
+//       var pointOnTriangle = closestPointOnTriangle(point, a, b, c);
+//       if (pointOnTriangle) {
+//         var distance = Vector.distance(point, pointOnTriangle);
+//         if (distance < smallestDistance) {
+//           smallestDistance = distance;
+//           normal = Vector.normalize(Vector.cross(Vector.subtract(b, a), Vector.subtract(c, a)));
+//         }
+//       }
+//     }
 
-    return {
-      normal: normal,
-      distance: smallestDistance
-    };
-  }
-}
+//     return {
+//       normal: normal,
+//       distance: smallestDistance
+//     };
+//   }
+// }
 
 function Octree(aabb, maxDepth = 5) {
   this.aabb = aabb;
@@ -261,9 +262,9 @@ function Octree(aabb, maxDepth = 5) {
       return false;
     }
 
-    var triangles = [];
+    var triangles = new Array(indices.length);
     for (var i = 0; i < indices.length; i++) {
-      triangles.push(this.getTriangleFromIndex(this.trianglesArray, indices[i]));
+      triangles[i] = this.getTriangleFromIndex(this.trianglesArray, indices[i]);
     }
 
     return triangles;
@@ -278,9 +279,9 @@ function Octree(aabb, maxDepth = 5) {
       return false;
     }
 
-    var triangles = [];
+    var triangles = new Array(indices.length);
     for (var i = 0; i < indices.length; i++) {
-      triangles.push(this.getTriangleFromIndex(this.trianglesArray, indices[i]));
+      triangles[i] = this.getTriangleFromIndex(this.trianglesArray, indices[i]);
     }
 
     return triangles;
@@ -427,21 +428,40 @@ function SimpleAABB(bl, tr) {
   this.tr = tr;
 }
 
-function AABB(bl = Vector.zero(), tr = Vector.zero()) {
-  this.bl = bl;
-  this.tr = tr;
+function AABB(bl, tr) {
+  this.isEmpty = !bl && !tr;
 
-  this.extend = function(pointOrAABB) {
-    if (pointOrAABB instanceof AABB) {
-      var aabb = pointOrAABB;
-      this.bl = Vector.compFunc(this.bl, aabb.bl, Math.min);
-      this.tr = Vector.compFunc(this.tr, aabb.tr, Math.max);
+  this.bl = bl ?? Vector.zero();
+  this.tr = tr ?? Vector.zero();
+
+  var infVec = Vector.fill(Infinity);
+  var negInfVec = Vector.fill(-Infinity);
+
+  this.addPadding = function(padding = 0) {
+    this.bl.x -= padding;
+    this.bl.y -= padding;
+    this.bl.z -= padding;
+    this.tr.x += padding;
+    this.tr.y += padding;
+    this.tr.z += padding;
+  }
+
+  this.extend = function(pointOrAABBorPadding) {
+    if (pointOrAABBorPadding instanceof AABB) {
+      var aabb = pointOrAABBorPadding;
+      this.bl = Vector.compFunc(this.isEmpty ? infVec : this.bl, aabb.bl, Math.min);
+      this.tr = Vector.compFunc(this.isEmpty ? negInfVec : this.tr, aabb.tr, Math.max);
+    }
+    else if (Vector.isVectorIsh(pointOrAABBorPadding)) {
+      var point = pointOrAABBorPadding;
+      this.bl = Vector.compFunc(this.isEmpty ? infVec : this.bl, point, Math.min);
+      this.tr = Vector.compFunc(this.isEmpty ? negInfVec : this.tr, point, Math.max);
     }
     else {
-      var point = pointOrAABB;
-      this.bl = Vector.compFunc(this.bl, point, Math.min);
-      this.tr = Vector.compFunc(this.tr, point, Math.max);
+      this.addPadding(pointOrAABBorPadding);
     }
+
+    this.isEmpty = false;
   }
 
   this.pointInside = function(point) {
@@ -513,10 +533,14 @@ AABB.bounds = function(points) {
 }
 
 // bruh generates garbage together with physics octree
-function GetMeshAABB(gameObject, padding) {
+function GetMeshAABB(gameObject, padding, ignoreGameObjects) {
   var aabb = new AABB();
 
   gameObject.traverse(o => {
+    if (ignoreGameObjects && ignoreGameObjects.includes(o)) {
+      return;
+    }
+
     if (o.meshRenderer && !o.meshRenderer.skin) {
       var noTranslateWorldMatrix = Matrix.copy(o.transform.worldMatrix);
       Matrix.removeTranslation(noTranslateWorldMatrix);
@@ -540,12 +564,7 @@ function GetMeshAABB(gameObject, padding) {
   });
 
   if (padding) {
-    aabb.bl.x -= padding;
-    aabb.bl.y -= padding;
-    aabb.bl.z -= padding;
-    aabb.tr.x += padding;
-    aabb.tr.y += padding;
-    aabb.tr.z += padding;
+    aabb.addPadding(padding);
   }
 
   return aabb;
@@ -573,6 +592,10 @@ function PhysicsEngine(scene, settings = {}) {
   // var aabb = new AABB(new Vector(-250, -35.33, -250), new Vector(250, 30, 250));
   // var aabb = new AABB(new Vector(-30.33, -35.33, -40.33), new Vector(30, 3.6, 40));
   // this.octree = new Octree(aabb, 4);
+  this.octree = new Octree(new AABB(Vector.fill(-1), Vector.fill(1)), settings.octreeLevels ?? 4);
+
+  this.eventHandler = new EventHandler();
+  this.on = this.eventHandler.on.bind(this.eventHandler);
 
   this.Raycast = function(origin, direction) {
     var outArray = [];
@@ -583,6 +606,7 @@ function PhysicsEngine(scene, settings = {}) {
       var normal;
       var point;
   
+      // bruh, keep all hits here
       for (var k = 0; k < q.length; k++) {
         var hitPoint = rayToTriangle(origin, direction, q[k][0], q[k][1], q[k][2]);
         if (hitPoint && hitPoint.distance < smallestDistance) {
@@ -600,6 +624,84 @@ function PhysicsEngine(scene, settings = {}) {
         });
       }
     }
+
+    this.scene.root.traverse(function(gameObject) {
+      // var meshColliders = gameObject.findComponents("MeshCollider");
+      var components = gameObject.getComponents();
+      for (var component of components) {
+        if (component instanceof MeshCollider) {
+          var meshCollider = component;
+
+          if (!meshCollider.octree) {
+            meshCollider.setup();
+          }
+
+          if (meshCollider.octree) {
+            var q = meshCollider.octree.query(origin, direction);
+            if (q) {
+              for (var k = 0; k < q.length; k++) {
+                var hitPoint = rayToTriangle(origin, direction, q[k][0], q[k][1], q[k][2]);
+                if (hitPoint) {
+                  outArray.push({
+                    distance: hitPoint.distance,
+                    normal: getTriangleNormal(q[k]),
+                    point: hitPoint.point
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // this.scene.root.traverse(function(gameObject) {
+    //   if (gameObject.meshRenderer && rayToAABB(origin, direction, gameObject.meshRenderer.aabb)) {
+    //     var worldMatrix = gameObject.transform.worldMatrix;
+
+    //     for (var j = 0; j < gameObject.meshRenderer.meshData.length; j++) {
+    //       var md = gameObject.meshRenderer.meshData[j].data;
+
+    //       for (var k = 0; k < md.indices.bufferData.length; k += 3) {
+    //         function getVertex(index) {
+    //           var currentIndex = md.indices.bufferData[k + index] * 3;
+    //           var vec = Vector.fromArray(md.position.bufferData, currentIndex);
+    //           vec = {x: vec.x, y: vec.y, z: vec.z};
+    //           var transVec = Matrix.transformVector(worldMatrix, vec);
+    //           return transVec;
+    //         }
+
+    //         var tri = [
+    //           getVertex(0),
+    //           getVertex(1),
+    //           getVertex(2)
+    //         ];
+
+    //         var hitPoint = rayToTriangle(origin, direction, tri[0], tri[1], tri[2]);
+    //         if (hitPoint) {
+    //           outArray.push({
+    //             distance: hitPoint.distance,
+    //             normal: getTriangleNormal(tri),
+    //             point: hitPoint.point
+    //           });
+    //         }
+
+    //         // for (var l = 0; l < 3; l++) {
+    //         //   var currentIndex = md.indices.bufferData[k + l] * 3;
+    //         //   var vec = Vector.fromArray(md.position.bufferData, currentIndex);
+    //         //   vec = {x: vec.x, y: vec.y, z: vec.z};
+    //         //   var transVec = Matrix.transformVector(worldMatrix, vec);
+
+    //         //   trianglesArray[triangleIndex * 9 + l * 3 + 0] = transVec.x;
+    //         //   trianglesArray[triangleIndex * 9 + l * 3 + 1] = transVec.y;
+    //         //   trianglesArray[triangleIndex * 9 + l * 3 + 2] = transVec.z;
+    //         // }
+
+    //         // triangleIndex++;
+    //       }
+    //     }
+    //   }
+    // });
   
     var smallestDistance = Infinity;
     var smallestElement;
@@ -610,6 +712,13 @@ function PhysicsEngine(scene, settings = {}) {
         smallestElement = outArray[i];
       }
     }
+
+    // var smallestElement;
+    // if (outArray.length > 0) {
+    //   smallestElement = outArray.reduce(function(prev, curr) {
+    //     return prev.distance < curr.distance ? prev : curr;
+    //   });
+    // }
   
     return {
       firstHit: smallestElement,
@@ -636,7 +745,7 @@ function PhysicsEngine(scene, settings = {}) {
   }
 
   this.addMeshCollider = function(gameObject) {
-    // this._addMeshToOctree(gameObject);
+    // this._addMeshToOctree(gameObject); 
     meshCollidersToAdd.push(gameObject);
   }
 
@@ -647,11 +756,13 @@ function PhysicsEngine(scene, settings = {}) {
       aabb = settings.bounds;
     }
     else {
-      aabb = new AABB();
+      aabb = new AABB(Vector.zero(), Vector.zero()); // bruh should work without having the origin within the bounds
       for (var c of meshCollidersToAdd) {
         aabb.extend(GetMeshAABB(c, 0.1));
       }
     }
+
+    console.log(aabb);
 
     this.octree = new Octree(aabb, settings.octreeLevels ?? 4);
 
@@ -714,6 +825,7 @@ function PhysicsEngine(scene, settings = {}) {
 
     // External fixed update
     this.fixedUpdate(this.dt);
+    this.eventHandler.fireEvent("fixedUpdate", this.dt);
 
     // Find constraints
     this.scene.root.traverse(function(gameObject) {
@@ -723,9 +835,13 @@ function PhysicsEngine(scene, settings = {}) {
         allRigidbodies.push(rigidbody);
 
         rigidbody.grounded = false;
+        var hasConstraints = false;
 
+        // Sphere to world
         var sphereColliders = rigidbody.gameObject.findComponents("SphereCollider");
         for (var collider of sphereColliders) {
+          hasConstraints = true;
+
           var mat = Matrix.removeTranslation(Matrix.copy(rigidbody.gameObject.transform.worldMatrix));
           var pos = Vector.add(rigidbody.position, Matrix.transformVector(mat, collider.offset));
 
@@ -788,8 +904,11 @@ function PhysicsEngine(scene, settings = {}) {
           }
         }
 
+        // Capsule to world
         var capsuleColliders = rigidbody.gameObject.findComponents("CapsuleCollider");
         for (var collider of capsuleColliders) {
+          hasConstraints = true;
+
           var mat = Matrix.removeTranslation(Matrix.copy(rigidbody.gameObject.transform.worldMatrix));
           var a = Vector.add(rigidbody.position, Matrix.transformVector(mat, collider.a));
           var b = Vector.add(rigidbody.position, Matrix.transformVector(mat, collider.b));
@@ -845,7 +964,34 @@ function PhysicsEngine(scene, settings = {}) {
           }
         }
 
-        if (sphereColliders.length > 0 || capsuleColliders.length > 0) {
+        // Box to (unit?) plane
+        var boxColliders = rigidbody.gameObject.findComponents("BoxCollider");
+        for (var collider of boxColliders) {
+          hasConstraints = true;
+
+          var planeY = collider.planeY;
+
+          var m = collider.gameObject.transform.worldMatrix;
+          for (var point of collider.aabb.getVertices()) {
+            var transformedPoint = Matrix.transformVector(m, point);
+            
+            if (transformedPoint.y < planeY) {
+              constraintsToSolve.push({
+                C: transformedPoint.y - planeY,
+                bodies: [
+                  {
+                    collider: collider,
+                    body: rigidbody,
+                    normal: Vector.up(),
+                    p: transformedPoint
+                  }
+                ]
+              });
+            }
+          }
+        }
+
+        if (hasConstraints) {
           rigidbodiesWithColliders.push(rigidbody);
         }
 
@@ -1042,38 +1188,40 @@ function PhysicsEngine(scene, settings = {}) {
             var bias = 0;
             var friction = getCombinedFriction(constraint.bodies);
 
-            var jacobians = [ tangentJacobian, bitangentJacobian ];
-            for (var jacobian of jacobians) {
-              var effectiveMass = getEffectiveMass(jacobian, masses);
-              var frictionLambda = getLambda(effectiveMass, jacobian, velocities, bias);
-              frictionLambda = clamp(frictionLambda, -friction * lambda, friction * lambda);
-            
-              var impulses = [];
-              for (var _i = 0; _i < jacobian.length; _i++) {
-                impulses[_i] = jacobian[_i] * frictionLambda;
-              }
-
-              if (!impulses.some(item => isNaN(item))) {
-                var ind = 0;
-                for (var body of constraint.bodies) {
-                  body.body.velocity.x += impulses[ind + 0] / masses[ind + 0];
-                  body.body.velocity.y += impulses[ind + 1] / masses[ind + 1];
-                  body.body.velocity.z += impulses[ind + 2] / masses[ind + 2];
-
-                  if (!body.body.lockRotation) {
-                    body.body.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
-                    body.body.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
-                    body.body.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
-                  }
-
-                  ind += 6;
+            if (friction > 0.0001) {
+              var jacobians = [ tangentJacobian, bitangentJacobian ];
+              for (var jacobian of jacobians) {
+                var effectiveMass = getEffectiveMass(jacobian, masses);
+                var frictionLambda = getLambda(effectiveMass, jacobian, velocities, bias);
+                frictionLambda = clamp(frictionLambda, -friction * lambda, friction * lambda);
+              
+                var impulses = [];
+                for (var _i = 0; _i < jacobian.length; _i++) {
+                  impulses[_i] = jacobian[_i] * frictionLambda;
                 }
+
+                if (!impulses.some(item => isNaN(item))) {
+                  var ind = 0;
+                  for (var body of constraint.bodies) {
+                    body.body.velocity.x += impulses[ind + 0] / masses[ind + 0];
+                    body.body.velocity.y += impulses[ind + 1] / masses[ind + 1];
+                    body.body.velocity.z += impulses[ind + 2] / masses[ind + 2];
+
+                    if (!body.body.lockRotation) {
+                      body.body.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
+                      body.body.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
+                      body.body.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
+                    }
+
+                    ind += 6;
+                  }
+                }
+                // else {
+                //   console.warn("NaN in impulses", {
+                //     constraint, impulses, lambda, frictionLambda, jacobian, velocities, masses, C, dt: this.dt
+                //   });
+                // }
               }
-              // else {
-              //   console.warn("NaN in impulses", {
-              //     constraint, impulses, lambda, frictionLambda, jacobian, velocities, masses, C, dt: this.dt
-              //   });
-              // }
             }
           }
 
@@ -1314,6 +1462,7 @@ function PhysicsEngine(scene, settings = {}) {
     };
   }
   
+  this.getLambda = getLambda;
   function getLambda(effectiveMass, jacobian, velocities, bias) {
     var sum = 0;
     for (var i = 0; i < jacobian.length; i++) {
@@ -1322,6 +1471,7 @@ function PhysicsEngine(scene, settings = {}) {
     return -effectiveMass * (sum + bias);
   }
   
+  this.getEffectiveMass = getEffectiveMass;
   function getEffectiveMass(jacobian, masses) {
     var sum = 0;
     for (var i = 0; i < jacobian.length; i++) {
@@ -1349,6 +1499,53 @@ class Collider {
   }
 }
 
+class MeshCollider extends Collider {
+  constructor() {
+    super();
+    this.octree = null;
+  }
+
+  setup() {
+    if (this.gameObject && this.gameObject.meshRenderer) {
+      var aabb = GetMeshAABB(this.gameObject, 0.1);
+
+      var nrTriangles = 0;
+
+      for (var j = 0; j < this.gameObject.meshRenderer.meshData.length; j++) {
+        var md = this.gameObject.meshRenderer.meshData[j].data;
+        nrTriangles += md.indices.bufferData.length / 3;
+      }
+
+      var trianglesArray = new Float32Array(nrTriangles * 3 * 3);
+      var triangleIndex = 0;
+
+      var worldMatrix = this.gameObject.transform.worldMatrix;
+
+      for (var j = 0; j < this.gameObject.meshRenderer.meshData.length; j++) {
+        var md = this.gameObject.meshRenderer.meshData[j].data;
+
+        for (var k = 0; k < md.indices.bufferData.length; k += 3) {
+          for (var l = 0; l < 3; l++) {
+            var currentIndex = md.indices.bufferData[k + l] * 3;
+            var vec = Vector.fromArray(md.position.bufferData, currentIndex);
+            vec = {x: vec.x, y: vec.y, z: vec.z};
+            var transVec = Matrix.transformVector(worldMatrix, vec);
+
+            trianglesArray[triangleIndex * 9 + l * 3 + 0] = transVec.x;
+            trianglesArray[triangleIndex * 9 + l * 3 + 1] = transVec.y;
+            trianglesArray[triangleIndex * 9 + l * 3 + 2] = transVec.z;
+          }
+
+          triangleIndex++;
+        }
+      }
+
+      this.octree = new Octree(aabb, 3);      
+      this.octree.addTriangles(trianglesArray);
+    }
+  }
+}
+
 class SphereCollider extends Collider {
   constructor(radius, offset = Vector.zero()) {
     super();
@@ -1363,6 +1560,14 @@ class CapsuleCollider extends Collider {
     this.radius = radius;
     this.a = a;
     this.b = b;
+  }
+}
+
+class BoxCollider extends Collider {
+  constructor(aabb = new AABB(Vector.fill(-1), Vector.fill(1)), planeY = -5) {
+    super();
+    this.aabb = aabb;
+    this.planeY = planeY;
   }
 }
 
@@ -1458,11 +1663,11 @@ class Rigidbody {
       return;
     }
 
-    this.velocity = Vector.add(this.velocity, Vector.multiply(force, 1 / this.mass));
+    Vector.addTo(this.velocity, Vector.multiply(force, 1 / this.mass));
     var r = Vector.subtract(position, Vector.add(this.position, this.getWorldCOMOffset()));
     var torque = Vector.cross(r, force);
     this._updateInverseWorldInertiaMatrix(); // bruh
-    this.angularVelocity = Vector.add(this.angularVelocity, Matrix.transformVector(this.inverseWorldInertia, torque));
+    Vector.addTo(this.angularVelocity, Matrix.transformVector(this.inverseWorldInertia, torque));
     // this.angularVelocity = Vector.add(this.angularVelocity, Vector.compMultiply(torque, this.getInverseWorldInertiaMatrix()));
   }
 
@@ -1539,13 +1744,15 @@ class Rigidbody {
 export {
   CreateCubeCollider,
   AABBCollider,
-  MeshCollider,
+  // MeshCollider,
   GetMeshAABB,
   Octree,
   AABB,
   PhysicsEngine,
   Collider,
+  MeshCollider,
   SphereCollider,
   CapsuleCollider,
+  BoxCollider,
   Rigidbody
 };

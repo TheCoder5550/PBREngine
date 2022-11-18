@@ -5,8 +5,9 @@ import Vector from '../public/engine/vector.mjs';
 import LoadCollider, { CreateGameObjectFromGLTF } from "./loadCollider.mjs";
 import { PhysicsEngine, AABB } from '../public/engine/physics.mjs';
 import { lerp, inverseLerp } from '../public/engine/helper.mjs';
-import { AABBTriangleToAABB, capsuleToTriangle } from '../public/engine/algebra.mjs';
+import { distanceBetweenRayAndPoint } from '../public/engine/algebra.mjs';
 import PlayerPhysicsBase from '../public/playerPhysicsBase.mjs';
+import Quaternion from '../public/engine/quaternion.mjs';
 
 console.log("Starting server...");
 
@@ -15,8 +16,8 @@ const HttpsServer = require('https').createServer;
 const fs = require("fs");
 
 // var colliderPath = "../public/assets/models/gunTestRoom/collider.glb";
-var mapPath = "../public/assets/models/maps/dust2/dust2.glb"
-var colliderPath = "../public/assets/models/maps/dust2/dust2.glb";
+var mapPath = "../public/assets/models/checkerPlaneBig.glb";
+var colliderPath = "../public/assets/models/checkerPlaneBig.glb";
 
 var spawnPoints = [];
 var physicsEngine;
@@ -52,7 +53,7 @@ const ip = "localhost";
 const port = 8080;
 const certPath = "C:\\Users\\alfon\\Documents\\HTTPS self signed certificates\\server.crt";
 const keyPath = "C:\\Users\\alfon\\Documents\\HTTPS self signed certificates\\server.key";
-const passphrasePath = "./httpsPassphrase.txt";
+const passphrasePath = "C:\\Users\\alfon\\Documents\\HTTPS self signed certificates\\passphrase.txt";
 
 const server = HttpsServer({
   cert: fs.readFileSync(certPath),
@@ -169,13 +170,11 @@ wss.on('connection', ws => {
           ws.gameData.localUpdatedTime = parsed.clientSendTime;
         }
         else if (parsed.type == "inputs") {
-          if (ws.gameData.state == ws.gameData.STATES.PLAYING) {
-            if (Array.isArray(parsed.data)) {
-              ws.inputQueue = ws.inputQueue.concat(parsed.data);
-            }
-            else {
-              ws.inputQueue.push(parsed.data);
-            }
+          if (Array.isArray(parsed.data)) {
+            ws.inputQueue = ws.inputQueue.concat(parsed.data);
+          }
+          else {
+            ws.inputQueue.push(parsed.data);
           }
         }
         else if (parsed.type == "actionQueue") {
@@ -207,6 +206,7 @@ wss.on('connection', ws => {
                 id: client.id,
                 name: client.name,
                 data: {
+                  state: client.gameData.state,
                   position: client.gameData.position,
                   velocity: client.gameData.velocity,
                   rotation: client.gameData.rotation,
@@ -333,35 +333,47 @@ function loop() {
   for (var key in connectedClients) {
     var client = connectedClients[key];
 
-    if (client.gameData.state != client.gameData.STATES.PLAYING) {
-      continue;
-    }
+    // if (client.gameData.state != client.gameData.STATES.PLAYING) {
+    //   continue;
+    // }
 
     if (client.inputQueue.length > 0) {
       for (var snapshot of client.inputQueue) {
-        client.gameData.rotation.y = snapshot.yRotation;
-        // client.gameData.yRotation = snapshot.yRotation;
+        if (!snapshot.inputs) {
+          continue; // bruh maybe
+        }
 
-        client.gameData.applyInputs(snapshot.inputs, fixedDeltaTime);
+        if (client.gameData.state == client.gameData.STATES.PLAYING) {
+          client.gameData.rotation.y = snapshot.yRotation;
+          client.gameData.applyInputs(snapshot.inputs, fixedDeltaTime);
+
+          if (snapshot.inputs.fire) {
+            fireBullet(client);
+          }
+        }
+
         client.gameData.simulatePhysicsStep(fixedDeltaTime);
-
-        // applyInputs(client, snapshot.inputs, fixedDeltaTime);
-        // physicsStep(client, fixedDeltaTime);
       }
 
       sendGlobal(client, "getSelf", {
         gameData: {
+          state: client.gameData.state,
           position: client.gameData.position,
           velocity: client.gameData.velocity,
-          isGrounded: client.gameData.isGrounded
+          grounded: client.gameData.grounded,
+          crouching: client.gameData.crouching,
+
+          groundCounter: client.gameData.groundCounter,
+          jumpCounter: client.gameData.jumpCounter,
+          lastJumpInput: client.gameData.lastJumpInput,
+          fakeGroundNormal: client.gameData.fakeGroundNormal,
+          realGroundNormal: client.gameData.realGroundNormal
         },
-        // gameData: {...client.gameData},
         // currentSimTime: client.currentSimTime,
         lastProcessedTick: client.inputQueue[client.inputQueue.length - 1].tick
       });
 
       client.gameData.localUpdatedTime = client.inputQueue[client.inputQueue.length - 1].localTime;
-      // client.gameData.localUpdatedTime = new Date().getTime();
       client.inputQueue = [];
     }
 
@@ -485,150 +497,17 @@ function loop() {
 
 }
 
-// function applyInputs(client, inputs, dt) {
-//   // Moving
-//   var vertical = (inputs.forward || 0) - (inputs.back || 0);
-//   var horizontal = (inputs.left || 0) - (inputs.right || 0);
-
-//   if (vertical || horizontal) {
-//     var direction = Vector.rotateAround({
-//       x: vertical,
-//       y: 0,
-//       z: -horizontal
-//     }, {x: 0, y: 1, z: 0}, -client.gameData.yRotation + Math.PI / 2);
-
-//     if (client.gameData.isGrounded) {
-//       direction = Vector.normalize(Vector.projectOnPlane(direction, client.gameData.realGroundNormal));
-//     }
-    
-//     var walkSpeed = 5;
-//     client.gameData.position = Vector.add(client.gameData.position, Vector.multiply(direction, walkSpeed * dt));
-//   }
-
-//   // Jumping
-//   if (inputs.jump) {
-//     client.gameData.jumpCounter = client.gameData.jumpBuffering;
-//   }
-
-//   if (inputs.jump && client.gameData.jumpCounter > 0 && client.gameData.groundCounter > 0) {
-//     client.gameData.velocity.y = 6;
-//     client.gameData.position.y += 0.05;
-
-//     client.gameData.jumpCounter = 0;
-//     client.gameData.groundCounter = 0;
-//   }
-
-//   client.gameData.crouching = inputs.crouching;
-// }
-
-// function simulateClientToTime(client, time) {
-//   if (time <= client.currentSimTime) {
-//     // console.warn("End time is less than current time");
-//     return;
-//   }
-
-//   var millisDT = fixedDeltaTime * 1000;
-
-//   while (client.currentSimTime < time) {
-//     physicsStep(client, fixedDeltaTime);
-//     client.currentSimTime += millisDT;
-
-//     if (client.currentSimTime > time) {
-//       client.currentSimTime -= millisDT;
-//       break;
-//     }
-//   }
-
-//   var leftOverTime = time - client.currentSimTime;
-//   physicsStep(client, leftOverTime / 1000);
-
-//   client.currentSimTime = time.getTime();
-// }
-
-// function physicsStep(client, dt) {
-//   client.gameData.velocity.y -= 18 * dt;
-
-//   // Jumping
-//   if (client.gameData.isGrounded) {
-//     client.gameData.groundCounter = client.gameData.coyoteTime;
-//   }
-
-//   client.gameDatagroundCounter -= dt;
-//   client.gameDatajumpCounter -= dt;
-
-//   // Friction
-//   if (client.gameData.isGrounded) {
-//     var projectedVelocity = Vector.projectOnPlane(client.gameData.velocity, client.gameData.fakeGroundNormal);//{x: this.velocity.x, y: 0, z: this.velocity.z};
-//     var speed = Vector.length(projectedVelocity);
-//     client.gameData.velocity = Vector.add(client.gameData.velocity, Vector.multiply(Vector.normalize(projectedVelocity), -speed * dt * client.gameData.friction));
-
-//     // // Sliding / turning
-//     // if (this.crouching && speed > 10) {
-//     //   var v = Vector.rotateAround({
-//     //     x: Vector.length(Vector.projectOnPlane(this.velocity, this.fakeGroundNormal)),
-//     //     y: 0,
-//     //     z: 0
-//     //   }, this.fakeGroundNormal, -this.rotation.y + Math.PI / 2);
-      
-//     //   this.velocity.x = v.x;
-//     //   this.velocity.z = v.z;
-//     // }
-//   }
-
-//   if (client.gameData.position.y < -30) {
-//     client.gameData.position = new Vector(10, 3, 10);
-//     client.gameData.velocity = Vector.zero();
-//   }
-
-//   client.gameData.position = Vector.add(client.gameData.position, Vector.multiply(client.gameData.velocity, dt));
-
-//   solveCollision(client);
-// }
-
-// function solveCollision(client) {
-//   client.gameData.isGrounded = false;
-
-//   var colliderRadius = 0.5;
-//   var standHeight = 2;
-//   var height = 2;
-//   var collisionIterations = 3;
-
-//   var radiusOffset = new Vector(0, colliderRadius, 0);
-//   var playerAABB = new AABB(
-//     {x: client.gameData.position.x - colliderRadius * 2, y: client.gameData.position.y - colliderRadius * 2,          z: client.gameData.position.z - colliderRadius * 2},
-//     {x: client.gameData.position.x + colliderRadius * 2, y: client.gameData.position.y + colliderRadius * 2 + height, z: client.gameData.position.z + colliderRadius * 2}
-//   );
-//   var q = octree.queryAABB(playerAABB);
-
-//   for (var iter = 0; iter < collisionIterations; iter++) {
-//     if (q) {
-//       for (var k = 0; k < q.length; k++) {
-//         if (!AABBTriangleToAABB(q[k][0], q[k][1], q[k][2], playerAABB)) { // bruh redundant?
-//           continue;
-//         }
-
-//         var col = capsuleToTriangle(Vector.add(client.gameData.position, new Vector(0, standHeight / 2 - height * 0.5 + colliderRadius, 0)), Vector.subtract(Vector.add(client.gameData.position, new Vector(0, standHeight / 2 + height / 2, 0)), radiusOffset), colliderRadius, q[k][0], q[k][1], q[k][2], true);
-//         // var col = capsuleToTriangle(Vector.add(this.position, radiusOffset), Vector.subtract(Vector.add(this.position, new Vector(0, this.height, 0)), radiusOffset), this.colliderRadius, q[k][0], q[k][1], q[k][2], true);
-        
-//         if (col && !Vector.equal(col.normal, Vector.zero(), 0.001)) {
-//           var dp = Vector.dot(Vector.up(), col.normal);
-//           var normal = dp > 0.85 ? Vector.up() : col.normal;
-//           var depth = col.depth / Vector.dot(normal, col.normal);
-
-//           client.gameData.position = Vector.add(client.gameData.position, Vector.multiply(normal, depth));
-//           client.gameData.velocity = Vector.projectOnPlane(client.gameData.velocity, normal);
-
-//           var isGround = Vector.dot(normal, Vector.up()) > 0.7;
-//           if (isGround) {
-//             client.gameData.fakeGroundNormal = normal;
-//             client.gameData.realGroundNormal = col.normal;
-//             client.gameData.isGrounded = true;
-//           }
-//         }
-//       }
-//     }
-//   }
-// }
+function fireBullet(shooter) {
+  for (var key in connectedClients) {
+    var client = connectedClients[key];
+    if (client != shooter) {
+      console.log(distanceBetweenRayAndPoint({
+        origin: shooter.gameData.position,
+        direction: shooter.gameData.forward
+      }, client.gameData.position));
+    }
+  }
+}
 
 function getWorldState(time) {
   var clientHistoryCopy = [...clientHistory];

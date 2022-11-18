@@ -120,6 +120,10 @@ vec3 setNormalStrength(vec3 normal, float strength) {
   return vec3(normal.xy * strength, mix(1., normal.z, clamp(strength, 0., 1.)));
 }
 
+// vec3 sampleNormalTexture(sampler2D texture, vec2 uv) {
+//   return sampleTexture(texture, uv).rgb * 2. - 1.
+// }
+
 // Shadow functions
 bool inRange(vec3 projCoord) {
   return projCoord.x >= 0.0 &&

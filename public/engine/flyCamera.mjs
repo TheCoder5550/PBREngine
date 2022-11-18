@@ -12,6 +12,12 @@ export default function FlyCamera(renderer, cameraSettings) {
   this.camera = new Camera(cameraSettings);
   this.camera.setAspect(renderer.aspect);
 
+  var resizeEvent = () => {
+    this.camera.setAspect(renderer.aspect);
+  }
+  renderer.on("resize", resizeEvent);
+  resizeEvent();
+
   renderer.canvas.addEventListener("mousedown", function(e) {
     renderer.lockPointer();
   });
