@@ -36,7 +36,7 @@ var renderer = new Renderer({
 var scene = new Scene("Main scene");
 
 var fov = 25;
-var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 1000, layer: 0, fov: fov});
+var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 1000, fov: fov});
 // var flyCamera;
 var cameraEulerAngles = Vector.zero();
 var cameraCarForward = Vector.zero();
@@ -131,7 +131,7 @@ async function setup() {
   renderer.postprocessing.exposure = -0.5;
   renderer.add(scene);
 
-  // flyCamera = new FlyCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 20});
+  // flyCamera = new FlyCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, fov: 20});
 
   renderer.on("resize", function() {
     mainCamera.setAspect(renderer.aspect);

@@ -81,7 +81,7 @@
         res: 512
       });
 
-      var camera = new OrbitCamera(renderer, {near: 0.1, far: 300, layer: 0, fov: 20});
+      var camera = new OrbitCamera(renderer, {near: 0.1, far: 300, fov: 20});
       camera.distance = 4;
 
       var model = await renderer.loadGLTF("./assets/models/DamagedHelmet.glb");

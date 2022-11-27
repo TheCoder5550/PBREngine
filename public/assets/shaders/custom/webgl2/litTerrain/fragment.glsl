@@ -19,6 +19,8 @@ uniform sampler2D albedoTextures[nrTextures];
 uniform sampler2D normalTextures[nrTextures];
 uniform sampler2D metallicRoughnessTextures[nrTextures];
 
+uniform sampler2D heightmap;
+
 bool doNoTiling = true;
 
 // Material properties
@@ -163,6 +165,9 @@ float LayeredNoise(vec2 p) {
 }
 
 void main() {
+  // fragColor = vec4(vNormal, 1);
+  // return;
+
   vec4 currentAlbedo = vec4(1);
 
   vec3 grassAlbedo = sampleTexture(albedoTextures[0], vUV).rgb;

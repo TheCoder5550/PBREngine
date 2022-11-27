@@ -101,8 +101,8 @@
 
       var physicsEngine = new PhysicsEngine(scene);
 
-      // camera = new FlyCamera(renderer, {position: new Vector(0, 0, 3), near: 0.1, far: 300, layer: 0, fov: 20});
-      camera = new OrbitCamera(renderer, {position: new Vector(0, 0, 3), near: 0.1, far: 300, layer: 0, fov: 20});
+      // camera = new FlyCamera(renderer, {position: new Vector(0, 0, 3), near: 0.1, far: 300, fov: 20});
+      camera = new OrbitCamera(renderer, {position: new Vector(0, 0, 3), near: 0.1, far: 300, fov: 20});
 
       // await renderer.CreatePBRGrid(scene, 10, 10);
       // var model = scene.add(await renderer.loadGLTF("./assets/models/FlightHelmet.glb"));

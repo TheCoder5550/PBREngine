@@ -135,6 +135,6 @@ function GamepadManager() {
       }).then(() => {
 
       }).catch(err => console.log(err));
-  }
+    }
   }
 }

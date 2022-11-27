@@ -823,9 +823,9 @@ function PhysicsEngine(scene, settings = {}) {
     var allRigidbodies = [];
     var rigidbodiesWithColliders = [];
 
-    // External fixed update
-    this.fixedUpdate(this.dt);
-    this.eventHandler.fireEvent("fixedUpdate", this.dt);
+    // // External fixed update
+    // this.fixedUpdate(this.dt);
+    // this.eventHandler.fireEvent("fixedUpdate", this.dt);
 
     // Find constraints
     this.scene.root.traverse(function(gameObject) {
@@ -1090,6 +1090,10 @@ function PhysicsEngine(scene, settings = {}) {
     for (var rigidbody of allRigidbodies) {
       rigidbody.applyForces(this.dt);
     }
+
+    // External fixed update
+    this.fixedUpdate(this.dt);
+    this.eventHandler.fireEvent("fixedUpdate", this.dt);
 
     // Solve constraints
     var lambdaAccumulated = new Array(constraintsToSolve.length).fill(0);
@@ -1580,6 +1584,7 @@ class Rigidbody {
     this.mass = 1;
     this.position = Vector.zero();
     this.velocity = Vector.zero();
+    this.acceleration = Vector.zero();
     this.force = Vector.zero();
 
     this._inertia = Vector.one(); // Bruh
@@ -1692,6 +1697,8 @@ class Rigidbody {
       return;
     }
 
+    this.lastVelocity = Vector.copy(this.velocity);
+
     // Apply force
     this.velocity = Vector.add(this.velocity, Vector.multiply(this.force, dt / this.mass));
     this.force = Vector.zero();
@@ -1727,6 +1734,8 @@ class Rigidbody {
       );
       this.rotation = Quaternion.add(this.rotation, Quaternion.multiply(Quaternion.QxQ(w, this.rotation), dt / 2));
     }
+
+    this.acceleration = Vector.multiply(Vector.subtract(this.velocity, this.lastVelocity), dt);
 
     this.updateGameObject();
   }

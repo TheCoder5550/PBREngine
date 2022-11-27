@@ -30,7 +30,7 @@ function Terrain(scene) {
 
   var zeroTransform = new Transform();
 
-  var terrainMat;
+  this.terrainMat = null;
   this.loadMaterials = async function() {
     var litTerrain = new renderer.ProgramContainer(await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/litTerrain"));
 
@@ -46,10 +46,10 @@ function Terrain(scene) {
     var snowAlbedo = await renderer.loadTextureAsync("./assets/textures/Snow/albedo.jpg", {internalFormat: sRGBInternalFormat, format: sRGBFormat});
     var snowNormal = await renderer.loadTextureAsync("./assets/textures/Snow/normal.jpg");
 
-    terrainMat = renderer.CreateLitMaterial({}, litTerrain);
-    terrainMat.setUniform("roughness", 1);
-    terrainMat.setUniform("albedoTextures[0]", [ grassAlbedo, stoneAlbedo, snowAlbedo ]);
-    terrainMat.setUniform("normalTextures[0]", [ grassNormal, stoneNormal, snowNormal ]);
+    this.terrainMat = renderer.CreateLitMaterial({}, litTerrain);
+    this.terrainMat.setUniform("roughness", 1);
+    this.terrainMat.setUniform("albedoTextures[0]", [ grassAlbedo, stoneAlbedo, snowAlbedo ]);
+    this.terrainMat.setUniform("normalTextures[0]", [ grassNormal, stoneNormal, snowNormal ]);
   }
 
   // const myWorker = new Worker("./engine/terrainDataWorker.js");
@@ -131,7 +131,7 @@ function Terrain(scene) {
 
           if (!chunk.terrain.meshRenderer) {
             chunk.terrain.meshRenderer = new this.scene.renderer.MeshRenderer(
-              terrainMat,
+              this.terrainMat,
               new renderer.MeshData(terrainData),
             );
           }

@@ -251,8 +251,8 @@ var keybindings;
 var scene;
 
 var orbitCamera;
-var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0});
-var weaponCamera = new Camera({near: 0.005, far: 20, layer: 1, fov: 23});
+var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0b1});
+var weaponCamera = new Camera({near: 0.005, far: 20, layer: 0b10, fov: 23});
 var lobbyWeaponCamera;
 
 var defaultFov = 40;//45;//37;
@@ -364,8 +364,8 @@ async function setup() {
   // var debugFlyCamera = new FlyCamera(renderer, {near: 0.01, far: 1000});
   // debugFlyCamera.baseSpeed = 8;
   // debugFlyCamera.sprintSpeed = 50;
-  // orbitCamera = new OrbitCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0, fov: 23});
-  lobbyWeaponCamera = new OrbitCamera(renderer, {near: 0.01, far: 100, layer: 0, fov: 20}, { translate: false, scale: true, stylePointer: false });
+  // orbitCamera = new OrbitCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, fov: 23});
+  lobbyWeaponCamera = new OrbitCamera(renderer, {near: 0.01, far: 100, fov: 20}, { translate: false, scale: true, stylePointer: false });
   lobbyWeaponCamera.distance = 3;
   // lobbyWeaponCamera.rotation = new Vector(0, -Math.PI / 2, 0);
   lobbyWeaponCamera.setCenter(new Vector(0, 1.1, 0));
@@ -470,7 +470,7 @@ async function setup() {
 
   // Muzzle flash
   var muzzleFlashObject = new GameObject("Muzzle flash particles");
-  muzzleFlashObject.setLayer(1, true);
+  muzzleFlashObject.setLayer(0b10, true);
   var muzzleFlash = new renderer.ParticleSystem(await renderer.loadObj("../assets/models/bulletTrail.obj"));
   muzzleFlash.emitPosition = Vector.zero();
   muzzleFlash.emitVelocity = () => new Vector(1 * (Math.random() - 0.5), 1 * (Math.random() - 0.5), -3);
@@ -580,7 +580,7 @@ async function setup() {
 
   // // IK test
   // var soldier = scene.add(await renderer.loadGLTF("../assets/models/running/skin.glb", { disableAnimations: true }));
-  // // soldier.setLayer(1, true);
+  // // soldier.setLayer(0b10, true);
   // soldier.transform.scale = Vector.fill(1.17);
   // // soldier.transform.scale = Vector.fill(0.067);
   // // soldier.transform.position.z = 7;
@@ -2991,7 +2991,7 @@ async function setupWeapons() {
 
     scene.add(w);
     // scene.add(renderer.BatchGameObject(w));
-    w.setLayer(1, true);
+    w.setLayer(0b10, true);
     w.visible = false;
     w.setReceiveShadows(false, true);
 
@@ -3295,7 +3295,7 @@ async function renderWeaponIcons() {
   renderer.settings.enableBloom = false;
   renderer.settings.enablePostProcessing = false;
 
-  var camera = new Camera({near: 0.01, far: 300, layer: 5, fov: 10});
+  var camera = new Camera({near: 0.01, far: 300, layer: 0b100, fov: 10});
   camera.transform.matrix = Matrix.lookAt(new Vector(3.5, 0, 0), Vector.zero());
   camera.setAspect(renderer.aspect);
 
@@ -3317,7 +3317,7 @@ async function renderWeaponIcons() {
   for (var key in weaponModels) {
     // var key = Object.keys(weaponModels)[0];
     var weapon = weaponModels[key];
-    weapon.setLayer(5, true);
+    weapon.setLayer(0b100, true);
     weapon.visible = true;
 
     var aabb = GetMeshAABB(weapon);
