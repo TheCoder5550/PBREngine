@@ -2,7 +2,7 @@ import { Scene, Transform, GameObject } from "./renderer.mjs";
 import Vector from "./vector.mjs";
 import Perlin from "./perlin.mjs";
 import { MeshCollider } from "./physics.mjs";
-import { mapValue, lerp } from "./helper.mjs";
+import { mapValue, lerp, clamp } from "./helper.mjs";
 import { getTriangleNormal } from "./algebra.mjs";
 
 var perlin = new Perlin();
@@ -21,7 +21,6 @@ function Terrain(scene) {
   this.terrainSize = 1000;
   this.uvScale = 1 / 2;
   this.position = Vector.zero();
-  this.maxHeight = 400;
 
   // var chunkOrders = [];
   this.meshPool = [];
@@ -67,13 +66,37 @@ function Terrain(scene) {
   //   uvScale: uvScale,
   // });
 
-  this.getHeight = function(i, j) {
-    var power = 2;
+  this.getHeightBeforeCurve = function(i, j) {
+    var power = 1.5;
     var noiseLayers = 2;
     var noiseScale = 0.001;
+    var height = 100;
     
     var heightFalloff = 1;//1 - clamp((Vector.length(new Vector(i, j)) - 400) * 0.005, 0, 1);
-    var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * this.maxHeight * heightFalloff;
+    var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * height * heightFalloff;
+
+    return elevation;
+  }
+
+  this.getHeight = function(i, j) {
+    var power = 1.5;
+    var noiseLayers = 2;
+    var noiseScale = 0.001;
+    var height = 100;
+
+    var heightFalloff = 1;//1 - clamp((Vector.length(new Vector(i, j)) - 400) * 0.005, 0, 1);
+    var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * height * heightFalloff;
+
+    // var w = 15;
+    // var d = this.curve.distanceSqrToPoint(new Vector(i, 0, j));
+    // if (!d.point) {
+    //   console.log(d);
+    // }
+
+    // return lerp(d.point?.y ?? 0, elevation, clamp(
+    //   (d.distance - w * w) / 2500,
+    //   0, 1
+    // ));
 
     return elevation;
   }

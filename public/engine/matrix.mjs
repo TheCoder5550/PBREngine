@@ -424,7 +424,24 @@ export default class Matrix {
 
     var zAxis = Vector.normalize(Vector.subtract(cameraPosition, target));
     var xAxis = Vector.normalize(Vector.cross(up, zAxis));
-    var yAxis = Vector.normalize(Vector.cross(zAxis, xAxis));
+    var yAxis = Vector.cross(zAxis, xAxis);
+
+    _fillFloat32Array(dst,
+      xAxis.x, xAxis.y, xAxis.z, 0,
+      yAxis.x, yAxis.y, yAxis.z, 0,
+      zAxis.x, zAxis.y, zAxis.z, 0,
+      cameraPosition.x, cameraPosition.y, cameraPosition.z, 1
+    );
+
+    return dst;
+  }
+
+  static lookInDirection(cameraPosition, direction, up = Vector.up(), dst) {
+    dst = dst || new Float32Array(16);
+
+    var zAxis = Vector.normalize(direction);
+    var xAxis = Vector.normalize(Vector.cross(up, zAxis));
+    var yAxis = Vector.cross(zAxis, xAxis);
 
     _fillFloat32Array(dst,
       xAxis.x, xAxis.y, xAxis.z, 0,

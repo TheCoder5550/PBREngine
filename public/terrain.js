@@ -91,7 +91,7 @@ async function setup() {
   // physicsEngine.octree.render();
 
   // var snow = new GameObject("Snow");
-  // var snowParticles = new renderer.ParticleSystem(null/*await renderer.loadObj("./assets/models/particle.obj")*/, 4000);
+  // var snowParticles = new renderer.ParticleSystem(4000/*, null await renderer.loadObj("./assets/models/particle.obj")*/);
   // snow.addComponent(snowParticles);
   // scene.add(snow);
 

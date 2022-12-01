@@ -471,7 +471,7 @@ async function setup() {
   // Muzzle flash
   var muzzleFlashObject = new GameObject("Muzzle flash particles");
   muzzleFlashObject.setLayer(0b10, true);
-  var muzzleFlash = new renderer.ParticleSystem(await renderer.loadObj("../assets/models/bulletTrail.obj"));
+  var muzzleFlash = new renderer.ParticleSystem(200, await renderer.loadObj("../assets/models/bulletTrail.obj"));
   muzzleFlash.emitPosition = Vector.zero();
   muzzleFlash.emitVelocity = () => new Vector(1 * (Math.random() - 0.5), 1 * (Math.random() - 0.5), -3);
   muzzleFlash.startSize = new Vector(2.5, 0.25, 0.25);

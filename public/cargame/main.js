@@ -731,7 +731,7 @@ function Car(settings = {}) {
 
     var smokeObject = new GameObject("Smoke");
     this.gameObject.addChild(smokeObject);
-    var smoke = smokeObject.addComponent(new renderer.ParticleSystem(undefined, 700));
+    var smoke = smokeObject.addComponent(new renderer.ParticleSystem(700));
 
     smoke.material = renderer.CreateLitMaterial({
       albedoTexture: renderer.loadTexture("../assets/textures/smoke.png"),

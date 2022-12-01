@@ -11,6 +11,7 @@ import {
   Uint8ToUint32
 } from "./helper.mjs";
 import { getTriangleNormal } from "./algebra.mjs";
+import { LerpCurve } from "./curves.mjs";
 
 import * as litSource from "../assets/shaders/built-in/lit.glsl.mjs";
 import * as unlitSource from "../assets/shaders/built-in/unlit.glsl.mjs";
@@ -1950,7 +1951,7 @@ function Renderer(settings = {}) {
   }
 
   this.ParticleSystem = ParticleSystem;
-  function ParticleSystem(md, maxParticles = 200) {
+  function ParticleSystem(maxParticles = 200, md) {
     var system = this;
 
     this.maxParticles = maxParticles;
@@ -1997,6 +1998,10 @@ function Renderer(settings = {}) {
     this.alpha = 1;
     this.startSize = () => new Vector(0.6 * (Math.random() * 0.8 + 0.2), 0.15 * (Math.random() * 0.4 + 0.6), 1);
     this.endSize = () => Vector.zero();
+    this.alphaCurve = new LerpCurve();
+    this.alphaCurve.addStage(0, 1);
+    this.alphaCurve.addStage(0.8, 1);
+    this.alphaCurve.addStage(1, 0);
 
     this.emitHealth = 0.5;
     this.emitPosition = () => Vector.zero();
@@ -2089,7 +2094,8 @@ function Renderer(settings = {}) {
       this.active = true;
       
       this.getAlpha = function() {
-        return this.alpha * clamp(Math.exp(-3 * (1 - this.health / this.maxHealth)) - 0.1, 0, 1);
+        return this.alpha * system.alphaCurve.getValue(1 - this.health / this.maxHealth);
+        // return this.alpha * clamp(Math.exp(-3 * (1 - this.health / this.maxHealth)) - 0.1, 0, 1);
       }
 
       this.getMatrix = function() {
@@ -2115,7 +2121,9 @@ function Renderer(settings = {}) {
             Matrix.lookAt(pos, Vector.add(pos, lookDir), dir, this.matrix);
           }
           else if (system.orientation == "faceCamera") {
-            Matrix.lookAt(pos, cameraPos, Vector.up(), this.matrix);
+            // var l = Vector.add(pos, Vector.subtract(pos, cameraPos));
+            // Matrix.lookAt(pos, l, Vector.up(), this.matrix);
+            Matrix.lookInDirection(pos, Vector.subtract(cameraPos, pos), Vector.up(), this.matrix);
           }
 
           var currentSize = Vector.lerp(this.endSize, this.startSize, this.health / this.maxHealth);
@@ -3797,9 +3805,65 @@ function Renderer(settings = {}) {
           gl.bufferData(b.target, data[key].bufferData, bufferUsageMode);
         }
         else {
-          console.warn("New attribute or missmatching size, target, type or stride");
+          console.warn("New attribute or missmatching size, target, type or stride: " + key);
         }
       }
+    }
+
+    this.setAttribute = function(attribute, data) {
+      var b = this.buffers.find(b => b.attribute == attribute);
+      if (b) {
+        gl.bindBuffer(b.target, b.buffer);
+        gl.bufferData(b.target, data.bufferData, gl.STATIC_DRAW);
+
+        if ("size" in data) b.size = data.size;
+        if ("target" in data) b.target = data.target;
+        if ("type" in data) b.type = data.type;
+        if ("stride" in data) b.stride = data.stride;
+      }
+      else {
+        this.buffers.push({
+          attribute: attribute,
+          buffer: createBuffer(data.bufferData, data.target ?? gl.ARRAY_BUFFER),
+          size: data.size,
+          target: data.target ?? gl.ARRAY_BUFFER,
+          type: data.type ?? gl.FLOAT,
+          stride: data.stride ?? 0
+        });
+      }
+    }
+
+    this.recalculateNormals = function() {
+      if (!(this.data.position && this.data.indices)) {
+        throw new Error("Can't generate normals! Missing positions or indicies");
+      }
+
+      var normalData = calculateNormals(
+        this.data.position.bufferData,
+        this.data.indices.bufferData
+      );
+      
+      this.setAttribute("normal", {
+        bufferData: normalData,
+        size: 3
+      });
+    }
+
+    this.recalculateTangents = function() {
+      if (!(this.data.position && this.data.indices && this.data.uv)) {
+        throw new Error("Can't generate tangents! Missing positions, indicies or uvs");
+      }
+
+      var tangentData = calculateTangents(
+        this.data.position.bufferData,
+        this.data.indices.bufferData,
+        this.data.uv.bufferData
+      );
+
+      this.setAttribute("tangent", {
+        bufferData: tangentData,
+        size: 3
+      });
     }
 
     // bruh
@@ -3903,6 +3967,177 @@ function Renderer(settings = {}) {
       for (var buffer of this.buffers) {
         gl.deleteBuffer(buffer.buffer);
       }
+    }
+
+    function calculateNormals(vertices, indices) {
+      // bruh fix for stride
+      function getVertex(i) {
+        return {
+          x: vertices[i * 3],
+          y: vertices[i * 3 + 1],
+          z: vertices[i * 3 + 2]
+        };
+      }
+
+      if (indices) {
+        var normalTable = new Array(vertices.length / 3);
+        for (var i = 0; i < normalTable.length; i++) {
+          normalTable[i] = [];
+        }
+
+        var ib = indices;
+        for (var i = 0; i < ib.length; i += 3) {
+          var v0 = getVertex(ib[i]);
+          var v1 = getVertex(ib[i + 1]);
+          var v2 = getVertex(ib[i + 2]);
+
+          var normal = getTriangleNormal([v0, v1, v2]);
+
+          normalTable[ib[i]].push(normal);
+          normalTable[ib[i + 1]].push(normal);
+          normalTable[ib[i + 2]].push(normal);
+        }
+
+        var outNormals = [];
+        for (var i = 0; i < normalTable.length; i++) {
+          var normal = Vector.divide(normalTable[i].reduce((a, b) => {
+            return Vector.add(a, b);
+          }, Vector.zero()), normalTable[i].length);
+
+          outNormals.push(normal.x, normal.y, normal.z);
+        }
+
+        return new Float32Array(outNormals);
+      }
+      else {
+        var normals = new Float32Array(vertices.length);
+        for (var i = 0; i < vertices.length / 3; i += 3) {
+          var v0 = getVertex(i);
+          var v1 = getVertex(i + 1);
+          var v2 = getVertex(i + 2);
+
+          var normal = getTriangleNormal([v0, v1, v2]);
+
+          normals[i * 3] = normal.x;
+          normals[i * 3 + 1] = normal.y;
+          normals[i * 3 + 2] = normal.z;
+
+          normals[(i + 1) * 3] = normal.x;
+          normals[(i + 1) * 3 + 1] = normal.y;
+          normals[(i + 1) * 3 + 2] = normal.z;
+
+          normals[(i + 2) * 3] = normal.x;
+          normals[(i + 2) * 3 + 1] = normal.y;
+          normals[(i + 2) * 3 + 2] = normal.z;
+        }
+
+        return normals;
+      }
+    }
+
+    function calculateTangents(vertices, indices, uvs) {
+      // bruh use vectors instead (maybe...)
+      // bruh fix for stride
+      function getVertex(i) {
+        return [
+          vertices[i * 3],
+          vertices[i * 3 + 1],
+          vertices[i * 3 + 2]
+        ];
+      }
+
+      function getUV(i) {
+        return [
+          uvs[i * 2],
+          uvs[i * 2 + 1]
+        ];
+      }
+
+      function subtract(a, b) {
+        var out = new Array(a.length);
+        for (var i = 0; i < a.length; i++) {
+          out[i] = a[i] - b[i];
+        }
+        return out;
+      }
+
+      function setTangentVector(tangents, i0, i1, i2) {
+        var v0 = getVertex(i0);
+        var v1 = getVertex(i1);
+        var v2 = getVertex(i2);
+
+        var uv0 = getUV(i0);
+        var uv1 = getUV(i1);
+        var uv2 = getUV(i2);
+        
+        var deltaPos1 = subtract(v1, v0);
+        var deltaPos2 = subtract(v2, v0);
+
+        var deltaUV1 = subtract(uv1, uv0);
+        var deltaUV2 = subtract(uv2, uv0);
+
+        var r = 1 / (deltaUV1[0] * deltaUV2[1] - deltaUV1[1] * deltaUV2[0]);
+
+        var tangent;
+        if (isNaN(r) || !isFinite(r)) {
+          failedTangents++;
+
+          var normal = getTriangleNormal([
+            Vector.fromArray(v0),
+            Vector.fromArray(v1),
+            Vector.fromArray(v2)
+          ]);
+          tangent = Vector.toArray(Vector.findOrthogonal(normal));
+        }
+        else {
+          tangent = [
+            (deltaPos1[0] * deltaUV2[1] - deltaPos2[0] * deltaUV1[1]) * r,
+            (deltaPos1[1] * deltaUV2[1] - deltaPos2[1] * deltaUV1[1]) * r,
+            (deltaPos1[2] * deltaUV2[1] - deltaPos2[2] * deltaUV1[1]) * r
+          ];
+        }
+
+        // tangents = Vector.toArray(Vector.normalize(Vector.fromArray(tangents)));
+
+        var epsilon = 0.01;
+        tangent[0] += epsilon;
+        tangent[1] += epsilon;
+        tangent[2] += epsilon;
+
+        tangents[i0 * 3] = tangent[0];
+        tangents[i0 * 3 + 1] = tangent[1];
+        tangents[i0 * 3 + 2] = tangent[2];
+
+        tangents[i1 * 3] = tangent[0];
+        tangents[i1 * 3 + 1] = tangent[1];
+        tangents[i1 * 3 + 2] = tangent[2];
+
+        tangents[i2 * 3] = tangent[0];
+        tangents[i2 * 3 + 1] = tangent[1];
+        tangents[i2 * 3 + 2] = tangent[2];
+
+        return tangent;
+      }
+
+      var failedTangents = 0;
+      var tangents = new Float32Array(vertices.length);
+
+      if (!indices) {
+        for (var i = 0; i < vertices.length / 3; i += 3) {
+          setTangentVector(tangents, i, i + 1, i + 2);
+        }
+      }
+      else {
+        var ib = indices;
+        for (var i = 0; i < ib.length; i += 3) {
+          setTangentVector(tangents, ib[i], ib[i + 1], ib[i + 2]);
+        }
+      }
+
+      if (failedTangents.length > 0) {
+        console.warn(failedTangents + " tangents generated without UVs");
+      }
+      return tangents;
     }
   }
 

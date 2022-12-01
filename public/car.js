@@ -88,6 +88,7 @@ function Car(scene, physicsEngine, settings = {}) {
   });
   this.clutch = new Clutch();
   this.wheels = [];
+  this.wings = settings.wings ?? [];
 
   this.drivetrain = settings.drivetrain ?? "RWD";
 
@@ -98,6 +99,7 @@ function Car(scene, physicsEngine, settings = {}) {
 
   this.differentialRatio = settings.differentialRatio ?? 3.42;
   this.differentialType = settings.differential ?? Car.ENUMS.DIFFERENTIAL.OPEN;
+  this.LSDFactor = settings.LSDFactor ?? 0.05;
 
   var activateAutoCountersteer = settings.activateAutoCountersteer ?? true;
   var autoCountersteerMinVel = 2;
@@ -105,7 +107,7 @@ function Car(scene, physicsEngine, settings = {}) {
   var autoCountersteerVelocityMultiplier = 0.2;
 
   this.steerSpeed = 0.05;
-  this.steerVelocity = 50;//150;
+  this.steerVelocity = settings.steerVelocity ?? 50;//150;
   this.steerGamma = 2;
 
   var maxSteerAngle = settings.maxSteerAngle ?? 35;
@@ -357,7 +359,7 @@ function Car(scene, physicsEngine, settings = {}) {
     // Smoke
     var smokeObject = new GameObject("Smoke");
     this.gameObject.addChild(smokeObject);
-    var smoke = smokeObject.addComponent(new renderer.ParticleSystem(undefined, 700));
+    var smoke = smokeObject.addComponent(new renderer.ParticleSystem(700));
 
     smoke.material = renderer.CreateLitMaterial({
       albedoTexture: renderer.loadTexture(this.smokeTexture),
@@ -632,22 +634,28 @@ function Car(scene, physicsEngine, settings = {}) {
 
       clutchConstraint(this.engine, this.clutch, dt, 1, 1, Math.pow(1 - clutchInput, 4) * this.clutch.impulseCapacity);
 
-      if (this.differentialType == Car.ENUMS.DIFFERENTIAL.OPEN) {
+      var r = (this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio;
+      if (
+        this.differentialType == Car.ENUMS.DIFFERENTIAL.OPEN ||
+        this.differentialType == Car.ENUMS.DIFFERENTIAL.LSD
+      ) {
+        var LSDFactor = this.differentialType == Car.ENUMS.DIFFERENTIAL.LSD ? this.LSDFactor : 0;
+
         if (this.drivetrain == "RWD" || this.drivetrain == "AWD") {
-          differentialConstraint(this.clutch, this.wheels[0], this.wheels[1], dt, (this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio);
+          differentialConstraint(this.clutch, this.wheels[0], this.wheels[1], dt, r, LSDFactor);
         }
         if (this.drivetrain == "FWD" || this.drivetrain == "AWD") {
-          differentialConstraint(this.clutch, this.wheels[2], this.wheels[3], dt, (this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio);
+          differentialConstraint(this.clutch, this.wheels[2], this.wheels[3], dt, r, LSDFactor);
         }
       }
       else if (this.differentialType == Car.ENUMS.DIFFERENTIAL.LOCKED) {
         if (this.drivetrain == "RWD" || this.drivetrain == "AWD") {
-          gearConstraint(this.clutch, this.wheels[0], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
-          gearConstraint(this.clutch, this.wheels[1], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
+          gearConstraint(this.clutch, this.wheels[0], dt, 1, 1 / r);
+          gearConstraint(this.clutch, this.wheels[1], dt, 1, 1 / r);
         }
         if (this.drivetrain == "FWD" || this.drivetrain == "AWD") {
-          gearConstraint(this.clutch, this.wheels[2], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
-          gearConstraint(this.clutch, this.wheels[3], dt, 1, 1 / ((this.currentGear == 0 ? -1 : 1) * this.allGearRatios[this.currentGear] * this.differentialRatio));
+          gearConstraint(this.clutch, this.wheels[2], dt, 1, 1 / r);
+          gearConstraint(this.clutch, this.wheels[3], dt, 1, 1 / r);
         }
       }
 
@@ -957,13 +965,14 @@ function Car(scene, physicsEngine, settings = {}) {
             // wheel.angularVelocity -= (-finalForceX * wheel.radius) / wheel.inertia * dt;
           }
           
-          var driveForwardVector = Quaternion.QxV(Quaternion.angleAxis(-Math.PI / 2, sideways), wheel.groundHit.normal);
+          var driveSidewaysVector = Vector.projectOnPlane(sideways, wheel.groundHit.normal);
+          var driveForwardVector = Quaternion.QxV(Quaternion.angleAxis(-Math.PI / 2, driveSidewaysVector), wheel.groundHit.normal);
           if (!isNaN(finalForceX)) this.rb.AddImpulseAtPosition(Vector.multiply(driveForwardVector, finalForceX * dt), wheel.contactPoint);
-          if (!isNaN(finalForceY)) this.rb.AddImpulseAtPosition(Vector.multiply(sideways, finalForceY * dt), wheel.contactPoint);
+          if (!isNaN(finalForceY)) this.rb.AddImpulseAtPosition(Vector.multiply(driveSidewaysVector, finalForceY * dt), wheel.contactPoint);
 
           if (renderer.debugMode && count == 0) {
             Debug.Vector(worldPos, driveForwardVector, 1, [1, 0, 0]);
-            Debug.Vector(worldPos, sideways, 1, [0, 1, 0]);
+            Debug.Vector(worldPos, driveSidewaysVector, 1, [0, 1, 0]);
           }
 
 
@@ -1140,6 +1149,11 @@ function Car(scene, physicsEngine, settings = {}) {
           // gamepadManager.vibrate(20, 0.5, 0.1);
         }
       }
+    }
+
+    // Downforce
+    for (var wing of this.wings) {
+      wing.applyForce(this.rb, forwardVelocity);
     }
 
     // Drag
@@ -1385,7 +1399,9 @@ function Car(scene, physicsEngine, settings = {}) {
     b.angularVelocity += impulses[1] / b.inertia;
   }
 
-  function differentialConstraint(m, a, b, dt, radius) {
+  function differentialConstraint(m, a, b, dt, radius, LSDFactor = 0) {
+    var angVelDiff = (a.angularVelocity - b.angularVelocity) * LSDFactor;
+
     var biasFactor = 0;
     var maxImpulse = Infinity;
     var C = 0;
@@ -1394,6 +1410,9 @@ function Car(scene, physicsEngine, settings = {}) {
     var inertias = [a.inertia, b.inertia, m.inertia];
 
     var { impulses } = physicsEngine.getConstraintImpulse(jacobian, velocities, inertias, C, dt, biasFactor);
+
+    impulses[0] -= angVelDiff;
+    impulses[1] += angVelDiff;
 
     a.angularVelocity += impulses[0] / a.inertia;
     b.angularVelocity += impulses[1] / b.inertia;
@@ -1517,7 +1536,7 @@ function Car(scene, physicsEngine, settings = {}) {
 
       var cameraTurnAngle = deadZone(gamepadManager.getAxis("RSHorizontal")) * Math.PI;
 
-      var planeVelocity = Vector.projectOnPlane(this.rb.velocity, Vector.up());
+      // var planeVelocity = Vector.projectOnPlane(this.rb.velocity, Vector.up());
       var currentForward = Matrix.getForward(this.gameObject.transform.worldMatrix);
       currentForward = Quaternion.QxV(Quaternion.angleAxis(cameraTurnAngle, this.gameObject.transform.up/*Vector.up()*/), currentForward);
       cameraCarForward = Vector.slerp(cameraCarForward, currentForward, followSpeed);
@@ -1600,8 +1619,21 @@ Car.ControlScheme = {
   Controller: 1,
 }
 
+function Wing(position, liftCoeff = 0.1) {
+  this.position = position;
+  this.liftCoeff = liftCoeff;
+
+  this.applyForce = function(rb, velocity) {
+    var force = Vector.multiply(Vector.down(), this.liftCoeff * velocity * velocity);
+    var position = Matrix.transformVector(rb.gameObject.transform.worldMatrix, this.position);
+
+    rb.AddForceAtPosition(force, position);
+  }
+}
+
 export {
-  Car
+  Car,
+  Wing
 };
 
 function deadZone(x, zone = 0.1) {

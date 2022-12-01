@@ -34,6 +34,7 @@
   </style>
 </head>
 <body>
+  <script src="./gameCanvas-5.0.js"></script>
   <script type="module">
 
     import Renderer, { Scene, GameObject, Transform, Camera, FindMaterials } from "./engine/renderer.mjs";
@@ -44,13 +45,19 @@
     import Quaternion from "./engine/quaternion.mjs";
     import GLDebugger from "./engine/GLDebugger.mjs";
     import Terrain from "./engine/terrain.mjs";
+    import { LerpCurve } from "./engine/curves.mjs";
+    import { lerp } from "./engine/helper.mjs";
 
-    import { PhysicsEngine } from "./engine/physics.mjs";
-    import { Car } from "./car.js";
+    import { PhysicsEngine, MeshCollider } from "./engine/physics.mjs";
+    import { Car, Wing } from "./car.js";
     var physicsEngine;
 
     var stats = new Stats();
     document.body.appendChild(stats.dom);
+
+    var ui = new GameCanvas({publicMethods: false});
+    ui.canvas.classList.add("ingameUICanvas");
+    ui.canvas.style.zIndex = 2;
 
     var renderer;
     var scene;
@@ -59,7 +66,8 @@
     var snowCamera;
 
     (async function() {
-      renderer = new Renderer({ renderScale: 1, debug: true });
+      renderer = new Renderer({ renderScale: 1, debug: false });
+      renderer.canvas.style.position = "fixed";
 
       scene = new Scene();
       scene.environmentIntensity = 1.5;
@@ -69,7 +77,7 @@
       renderer.add(scene);
 
       await scene.loadEnvironment({
-        // hdr: "./assets/hdri/hilly_terrain_01_1k.hdr",
+        // hdr: "./assets/hdri/wide_street_01_1k.hdr",
         hdrFolder: "./assets/hdri/snowy_field_1k",
         res: 512
       });
@@ -91,12 +99,12 @@
       });
       snowCamera.transform.matrix = Matrix.lookAt(new Vector(0, 40, 0), Vector.zero(), new Vector(0, 0, -1));
 
-      // camera = new OrbitCamera(renderer, {near: 0.1, far: 5000, layer: 0, fov: 20});
+      // camera = new OrbitCamera(renderer, {near: 0.1, far: 5000, fov: 20});
       // camera.distance = 4;
-      // camera = new FlyCamera(renderer, {near: 0.1, far: 10000, layer: 0, fov: 35});
-      // camera.sprintSpeed = 250;
+      camera = new FlyCamera(renderer, {near: 0.1, far: 10000, fov: 35});
+      camera.sprintSpeed = 250;
 
-      // camera = new Camera({near: 0.1, far: 100, layer: 0, fov: 35});
+      // camera = new Camera({near: 0.1, far: 100, fov: 35});
       // camera.transform.position = new Vector(0, 0, 7);
 
       // // var mapPath = "./assets/models/brickPlane.glb";
@@ -114,6 +122,40 @@
       // physicsEngine.addMeshCollider(collider);
       // physicsEngine.setupMeshCollider();
 
+      var car = new Car(scene, physicsEngine, {
+        drivetrain: "RWD",
+        friction: 1.2,
+        forwardFriction: 1,
+        sidewaysFriction: 1.05,
+        maxSteerAngle: 40,
+        steerVelocity: 100,
+        torque: 800,
+
+        suspensionForce: 90_000,
+        suspensionDamping: 3000,
+        suspensionTravel: 0.1,
+        rideHeightOffset: 0.08,
+
+        controlScheme: Car.ControlScheme.Controller,
+        activateAutoCountersteer: true,
+
+        ABS: true,
+        differential: Car.ENUMS.DIFFERENTIAL.LSD,
+
+        wings: [
+          new Wing(new Vector(0, 0.5, -2.3), 0.4),
+          new Wing(new Vector(0, -0.4, 2.2), 0.42),
+        ]
+      });
+      await car.setup("./assets/models/aventador.glb");
+      // await car.setup("./assets/models/ford_ranger_police.glb");
+      // await car.setup("./assets/models/PH_orange.glb");
+      // await car.setup("./assets/models/toyota_ae86.glb");
+      // await car.setup("./assets/models/audi_rs6.glb");
+      // await car.setup("./cargame/porsche.glb");
+
+
+      
       // var car = new Car(scene, physicsEngine, {
       //   drivetrain: "RWD",
       //   friction: 1,
@@ -131,47 +173,45 @@
       //   activateAutoCountersteer: true,
 
       //   ABS: false,
-      //   differential: Car.ENUMS.DIFFERENTIAL.LOCKED,
+      //   differential: Car.ENUMS.DIFFERENTIAL.LSD,
       // });
-      // // await car.setup("./assets/models/ford_ranger_police.glb");
-      // // await car.setup("./assets/models/PH_orange.glb");
-      // await car.setup("./assets/models/toyota_ae86.glb");
-      // // await car.setup("./assets/models/audi_rs6.glb");
-      // // await car.setup("./cargame/porsche.glb");
+      // await car.setup("./assets/models/volvov70.glb");
+      // car.rb.COMOffset.y -= 0.2;
+      // // await car.setup("./assets/models/toyota_ae86.glb");
 
 
 
-      var car = new Car(scene, physicsEngine, {
-        mass: 1900,
+      // var car = new Car(scene, physicsEngine, {
+      //   mass: 1900,
 
-        drivetrain: "RWD",
-        differentialRatio: 7,
+      //   drivetrain: "RWD",
+      //   differentialRatio: 7,
 
-        friction: 1,
-        forwardFriction: 1,
-        sidewaysFriction: 1,
-        maxSteerAngle: 40,
-        torque: 500,
+      //   friction: 1,//0.5,
+      //   forwardFriction: 1,
+      //   sidewaysFriction: 1,
+      //   maxSteerAngle: 40,
+      //   torque: 500,
 
-        suspensionForce: 45_000,
-        suspensionDamping: 4000,
-        suspensionTravel: 0.3,
-        rideHeightOffset: 0.3,
-        antiRoll: 15_000,
+      //   suspensionForce: 45_000,
+      //   suspensionDamping: 4000,
+      //   suspensionTravel: 0.3,
+      //   rideHeightOffset: 0.3,
+      //   antiRoll: 15_000,
 
-        controlScheme: Car.ControlScheme.Controller,
-        activateAutoCountersteer: true,
+      //   controlScheme: Car.ControlScheme.Controller,
+      //   activateAutoCountersteer: true,
 
-        ABS: true,
-      });
-      await car.setup("./assets/models/ford_ranger_police.glb");
+      //   ABS: true,
+      // });
+      // await car.setup("./assets/models/ford_ranger_police.glb");
 
 
 
       car.resetPosition = new Vector(0, 13, 0);
 
-      car.camera.followDistance = 4;//5;
-      car.camera.followHeight = 0.2;//0.3;
+      car.camera.followDistance = 5;//4
+      car.camera.followHeight = 0.25;//0.3;
       car.camera.pitch = 0.1;
 
       // car.getWheel("fr").sidewaysFriction = 1.3;
@@ -185,35 +225,164 @@
       });
 
       var terrain = new Terrain(scene);
-      terrain.chunkRes = 101;
+
+      var controlPoints = [
+        // new Vector(0, 0, -50),
+        // new Vector(10, 0, -20),
+        // new Vector(-5, 0, 30),
+        // new Vector(0, 0, 100),
+        // new Vector(-150, 0, 130),
+      ];
+
+      for (var i = 0; i < Math.PI * 2; i += Math.PI * 2 / 10) {
+        var r = 300 + (Math.random() - 0.5) * 200;
+
+        var controlPoint = new Vector(
+          r * Math.cos(i),
+          0,
+          r * Math.sin(i)
+        );
+        controlPoint.y = terrain.getHeightBeforeCurve(controlPoint.x, controlPoint.z);
+
+        controlPoints.push(controlPoint);
+
+        // var c = scene.add(renderer.CreateShape("sphere"));
+        // c.transform.scale = Vector.fill(30);
+        // c.transform.position = controlPoint;
+        // c.meshRenderer.materials[0].setUniform("albedo", [1, 0, 0, 1]);
+      }
+
+      var crSegment = new CatmullRomCurve(controlPoints, 0.5);
+
+      // for (var t = 0; t <= 1; t += 0.005) {
+      //   var c = scene.add(renderer.CreateShape("sphere"));
+      //   c.transform.scale = Vector.fill(5);
+      //   c.transform.position = crSegment.getPoint(t);
+      //   c.meshRenderer.materials[0].setUniform("albedo", [0, 1, 0, 1]);
+      // }
+
+      terrain.curve = crSegment;
+      terrain.chunkRes = 51//101;
       // terrain.chunkUpdatesPerFrame = 100;
       // terrain.quadtree.placeTransform(camera.camera.transform);
       await terrain.loadMaterials();
-      terrain.terrainMat.setUniform("maxHeight", 0.3);
-      terrain.terrainMat.setUniform("cameraSize", 50);
-      terrain.terrainMat.setUniform("heightmap", snowRenderTexture.colorTexture);
+      // terrain.terrainMat.setUniform("maxHeight", 0.3);
+      // terrain.terrainMat.setUniform("cameraSize", 50);
+      // terrain.terrainMat.setUniform("heightmap", snowRenderTexture.colorTexture);
+
+      // initSnow();
+      // await initTrees();
+
+      var road = new GameObject("Road");
+      road.transform.position.y = 0.3;
+      var roadMaterial = renderer.CreateLitMaterial({
+        albedoColor: [0.3, 0.3, 0.3, 1],
+        albedoTexture: renderer.loadTexture("./assets/textures/asphalt_01_1k/asphalt_01_diff_1k.jpg"),
+        normalTexture: renderer.loadTexture("./assets/textures/asphalt_01_1k/asphalt_01_nor_gl_1k.png"),
+      });
+      // roadMaterial.setUniform("albedo", [1, 1, 1, 1]);
+      // roadMaterial.setUniform("albedoTexture", renderer.loadTexture("./assets/textures/checkerboard2.png"));
+
+      var distanceAlongPath = 0;
+
+      var indices = [];
+      var vertices = [];
+      var uvs = [];
+
+      var width = 12;
+      var step = 0.0005;
+      for (var t = 0; t <= 1; t += step) {
+        var center = crSegment.getPoint(t);
+
+        var diff = Vector.subtract(
+          crSegment.getPoint((t + step) % 1),
+          center
+        );
+        var tangent = Vector.normalize(diff);
+
+        var normal = Quaternion.QxV(Quaternion.angleAxis(Math.PI / 2, tangent), Vector.up());
+        
+        var edge = Vector.multiply(normal, width / 2);
+        var margin = Vector.multiply(normal, width / 2 * 1.6);
+
+        var e1 = Vector.add(center, edge);
+        var m1 = Vector.add(center, margin);
+        m1.y -= width * 0.1;
+        var e2 = Vector.subtract(center, edge);
+        var m2 = Vector.subtract(center, margin);
+        m2.y -= width * 0.1;
+
+        vertices.push(m1.x, m1.y, m1.z);
+        vertices.push(e1.x, e1.y, e1.z);
+        vertices.push(e1.x, e1.y, e1.z);
+        vertices.push(e2.x, e2.y, e2.z);
+        vertices.push(e2.x, e2.y, e2.z);
+        vertices.push(m2.x, m2.y, m2.z);
+
+        var v = distanceAlongPath / width * 3;
+        uvs.push(-0.5, v);
+        uvs.push(0, v);
+        uvs.push(0, v);
+        uvs.push(3, v);
+        uvs.push(3, v);
+        uvs.push(3.5, v);
+
+        distanceAlongPath += Vector.length(diff);
+      }
+
+      for (var i = 0; i < vertices.length / 3 * 3; i += 6) {
+        var w = vertices.length / 3;
+        indices.push(
+          (i + 0) % w,
+          (i + 6) % w,
+          (i + 1) % w,
+
+          (i + 1) % w,
+          (i + 6) % w,
+          (i + 7) % w,
+
+          (i + 2) % w,
+          (i + 8) % w,
+          (i + 3) % w,
+
+          (i + 3) % w,
+          (i + 8) % w,
+          (i + 9) % w,
+
+          (i + 4) % w,
+          (i + 10) % w,
+          (i + 5) % w,
+
+          (i + 5) % w,
+          (i + 10) % w,
+          (i + 11) % w,
+        );
+      }
+
+      var roadMeshData = new renderer.MeshData({
+        indices: {
+          bufferData: new Uint32Array(indices),
+          target: renderer.gl.ELEMENT_ARRAY_BUFFER
+        },
+        position: {
+          bufferData: new Float32Array(vertices),
+          size: 3
+        },
+        uv: {
+          bufferData: new Float32Array(uvs),
+          size: 2
+        }
+      });
+      roadMeshData.recalculateNormals();
+      roadMeshData.recalculateTangents();
+
+      road.meshRenderer = new renderer.MeshRenderer(roadMaterial, roadMeshData);
+      road.addComponent(new MeshCollider());
+      scene.add(road);
 
       // var model = await renderer.loadGLTF("./assets/models/audi_rs6.glb");
       // model.transform.position.y = terrain.getHeight(model.transform.position.x, model.transform.position.z);
       // scene.add(model);
-
-      var tree = scene.add(await renderer.loadGLTF("./assets/models/treePbr.glb"));
-      tree.children[0].meshRenderer = tree.children[0].meshRenderer.getInstanceMeshRenderer();
-
-      for (var i = 0; i < 100; i++) {
-        var pos = new Vector((Math.random() - 0.5) * 100, 0, (Math.random() - 0.5) * 100);
-        pos.y = terrain.getHeight(pos.x, pos.z);
-        
-        tree.children[0].meshRenderer.addInstance(Matrix.transform([
-          ["translate", pos],
-          ["scale", Vector.fill(0.8 + Math.random() * 0.4)],
-          ["ry", Math.random() * Math.PI * 2]
-        ]));
-      }
-
-      var mainCamera = car.mainCamera;
-      // var mainCamera = camera.camera;
-      // var mainCamera = camera;
 
       // var tt = scene.add(new GameObject("Trail test"));
       // var tr = tt.addComponent(new renderer.TrailRenderer());
@@ -222,34 +391,25 @@
       //   tr.emit = !tr.emit;
       // }, 1000);
 
-      var snow = new GameObject("Snow");
-      var snowParticles = new renderer.ParticleSystem(null/*await renderer.loadObj("./assets/models/particle.obj")*/, 4000);
-      
-      snowParticles.material = renderer.CreateLitMaterial({
-        albedoTexture: renderer.loadTexture("./assets/textures/snowParticle.png"),
-        albedoColor: [1, 1, 1, 1],
-      }, renderer.programContainers.particle);
-      snowParticles.material.doubleSided = true;
+      // for (var x = -50; x < 50; x++) {
+      //   for (var y = -10; y < 10; y++) {
+      //     for (var z = -10; z < 80; z++) {
+      //       if (crSegment.distanceSqrToPoint(new Vector(x, y, z)) < 20) {
+      //         var c = scene.add(renderer.CreateShape("cube"));
+      //         c.transform.scale = Vector.fill(0.2);
+      //         c.transform.position = new Vector(x, y, z);
+      //         c.meshRenderer.materials[0].setUniform("albedo", [1, 0, 0, 1]);
+      //       }
+      //     }
+      //   }
+      // }
 
-      snowParticles.emitHealth = 5;
-      snowParticles.orientation = "faceCamera";
-      snowParticles.startSize = Vector.fill(0.05 + Math.random() * 0.07)
-      snow.addComponent(snowParticles);
-      scene.add(snow);
-
-      snowParticles.emitPosition = () => {
-        return Vector.add(mainCamera.transform.position, new Vector((Math.random() - 0.5) * 50, 5, (Math.random() - 0.5) * 50));
-      }
-      snowParticles.emitVelocity = () => {
-        return new Vector(0, -4, 0);
-      }
-
-      setInterval(_ => {
-        snowParticles.emit(15);
-      }, 20);
+      var mainCamera = car.mainCamera;
+      // var mainCamera = camera.camera;
+      // var mainCamera = camera;
 
       renderer.on("renderloop", function(frameTime, totalTime) {
-        // camera.update(frameTime);
+        camera.update?.(frameTime);
 
         // tt.transform.position.x = Math.cos(totalTime) * 3;
         // tt.transform.position.z = Math.sin(totalTime) * 3;
@@ -263,7 +423,10 @@
         }
 
         scene.update(frameTime);
-        renderer.render(mainCamera, [ snowCamera ]);
+        renderer.render(mainCamera/*, [ snowCamera ]*/);
+
+        ui.clearScreen();
+        car.renderUI(ui);
 
         stats.update();
       });
@@ -274,6 +437,195 @@
       window.physicsEngine = physicsEngine;
       window.camera = camera;
       window.terrain = terrain;
+
+      async function initTrees() {
+        var tree = scene.add(await renderer.loadGLTF("./assets/models/treePbr.glb"));
+        tree.children[0].meshRenderer = tree.children[0].meshRenderer.getInstanceMeshRenderer();
+
+        for (var i = 0; i < 100; i++) {
+          var pos = new Vector((Math.random() - 0.5) * 100, 0, (Math.random() - 0.5) * 100);
+          pos.y = terrain.getHeight(pos.x, pos.z);
+          
+          tree.children[0].meshRenderer.addInstance(Matrix.transform([
+            ["translate", pos],
+            ["scale", Vector.fill(0.8 + Math.random() * 0.4)],
+            ["ry", Math.random() * Math.PI * 2]
+          ]));
+        }
+      }
+
+      function initSnow() {
+        var snow = new GameObject("Snow");
+        var snowParticles = new renderer.ParticleSystem(5000);
+        
+        var m = new renderer.Material(renderer.programContainers.particle);
+        m.setUniform("albedoTexture", renderer.loadTexture("./assets/textures/snowParticle32x32.png"));
+        snowParticles.material = m;
+
+        snowParticles.alphaCurve = new LerpCurve();
+        snowParticles.alphaCurve.addStage(0, 0);
+        snowParticles.alphaCurve.addStage(0.15, 1);
+        snowParticles.alphaCurve.addStage(0.9, 1);
+        snowParticles.alphaCurve.addStage(1, 0);
+
+        snowParticles.emitHealth = 9;
+        snowParticles.orientation = "faceCamera";
+        snowParticles.startSize = Vector.fill(0.05 + Math.random() * 0.07);
+
+        snowParticles.emitPosition = () => {
+          return Vector.add(mainCamera.transform.position, new Vector((Math.random() - 0.5) * 50, 10, (Math.random() - 0.5) * 50));
+        }
+        snowParticles.emitVelocity = () => {
+          return new Vector(0, -4, 0);
+        }
+
+        snow.addComponent(snowParticles);
+        scene.add(snow);
+
+        setInterval(_ => {
+          snowParticles.emit(5);
+        }, 20);
+      }
+
+
+      function CatmullRomCurve(points, alpha = 0.5) {
+        this.alpha = alpha;
+        this.points = points;
+        var segments = [];
+
+        for (var i = 0; i < points.length; i++) {
+          segments.push(new CatmullRomSegment(
+            points[(i + 0) % points.length],
+            points[(i + 1) % points.length],
+            points[(i + 2) % points.length],
+            points[(i + 3) % points.length],
+            this.alpha
+          ));
+        }
+
+        this.distanceToPoint = function(p) {
+          var d = this.distanceSqrToPoint(p);
+          return {
+            distance: Math.sqrt(d.distance),
+            point: d.point,
+          };
+        }
+
+        this.distanceSqrToPoint = function(p) {
+          var closestDistance = Infinity;
+          var closestPoint;
+
+          for (var segment of segments) {
+            var d = segment.distanceSqrToPoint(p);
+            if (d.distance < closestDistance) {
+              closestDistance = d.distance;
+              closestPoint = d.point;
+            }
+          }
+
+          return {
+            distance: closestDistance,
+            point: closestPoint,
+          };
+        }
+
+        this.getPoint = function(t) {
+          var segment = Math.floor(t * segments.length);
+          return segments[segment].getPoint((t * segments.length) % 1);
+        }
+      }
+
+      function CatmullRomSegment(p0, p1, p2, p3, alpha = 0.5) {
+        this.p0 = p0;
+        this.p1 = p1;
+        this.p2 = p2;
+        this.p3 = p3;
+        this.alpha = alpha;
+
+        this.distanceToPoint = function(p) {
+          var d = this.distanceSqrToPoint(p);
+          return {
+            distance: Math.sqrt(d.distance),
+            point: d.point
+          };
+        }
+
+        this.distanceSqrToPoint = function(p) {
+          var closestDistance = Infinity;
+          var closestPoint;
+
+          var projP = Vector.copy(p);
+          projP.y = 0;
+
+          var d;
+          var step = 0.5;
+          var start = 0;
+          var end = 1;
+          while (step >= 0.01) {
+            d = this._getClosestDistanceInRange(projP, start, end, step);
+            start = d.t - step;
+            end = d.t + step;
+            step /= 2;
+          }
+
+          return {
+            distance: d.distance,
+            point: d.point,
+            t: d.t,
+          };
+        }
+
+        this._getClosestDistanceInRange = function(projP, start, end, step) {
+          var closestDistance = Infinity;
+          var closestPoint;
+          var closestT;
+
+          start = Math.max(0, start);
+          end = Math.min(1, end);
+
+          for (var t = start; t <= end; t += step) {
+            var curvePoint = this.getPoint(t);
+
+            var d = Vector.distanceSqr(projP, new Vector(curvePoint.x, 0, curvePoint.z));
+            if (d < closestDistance) {
+              closestDistance = d;
+              closestPoint = curvePoint;
+              closestT = t;
+            }
+          }
+
+          return {
+            distance: closestDistance,
+            point: closestPoint,
+            t: closestT,
+          };
+        }
+
+        this.getPoint = function(t) {
+          var k0 = 0;
+          var k1 = GetKnotInterval(this.p0, this.p1);
+          var k2 = GetKnotInterval(this.p1, this.p2) + k1;
+          var k3 = GetKnotInterval(this.p2, this.p3) + k2;
+
+          var u = lerp(k1, k2, t);
+          var A1 = Remap(k0, k1, this.p0, this.p1, u);
+          var A2 = Remap(k1, k2, this.p1, this.p2, u);
+          var A3 = Remap(k2, k3, this.p2, this.p3, u);
+          var B1 = Remap(k0, k2, A1, A2, u);
+          var B2 = Remap(k1, k3, A2, A3, u);
+
+          return Remap(k1, k2, B1, B2, u);
+        }
+
+        function Remap(a, b, c, d, u) {
+          return Vector.lerp(c, d, (u - a) / (b - a));
+        }
+
+        function GetKnotInterval(a, b) {
+          return Math.pow(Vector.distanceSqr(a, b), alpha / 2);
+        }
+      }
+
     })();
 
   </script>

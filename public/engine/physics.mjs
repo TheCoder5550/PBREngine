@@ -33,6 +33,7 @@ import {
   closestPointOnPlane,
   closestPointOnTriangle,
   rayToTriangle,
+  rayToAABBTriangle,
   rayToPlane,
   AABBTriangleToAABB,
   AABBToTriangle,
@@ -629,7 +630,8 @@ function PhysicsEngine(scene, settings = {}) {
       // var meshColliders = gameObject.findComponents("MeshCollider");
       var components = gameObject.getComponents();
       for (var component of components) {
-        if (component instanceof MeshCollider) {
+        if (component.type == "MeshCollider") {
+        // if (component instanceof MeshCollider) {
           var meshCollider = component;
 
           if (!meshCollider.octree) {
@@ -640,6 +642,10 @@ function PhysicsEngine(scene, settings = {}) {
             var q = meshCollider.octree.query(origin, direction);
             if (q) {
               for (var k = 0; k < q.length; k++) {
+                // if (!rayToAABBTriangle(origin, direction, q[k][0], q[k][1], q[k][2])) {
+                //   continue;
+                // }
+
                 var hitPoint = rayToTriangle(origin, direction, q[k][0], q[k][1], q[k][2]);
                 if (hitPoint) {
                   outArray.push({
@@ -1507,6 +1513,8 @@ class MeshCollider extends Collider {
   constructor() {
     super();
     this.octree = null;
+
+    this.type = "MeshCollider";
   }
 
   setup() {

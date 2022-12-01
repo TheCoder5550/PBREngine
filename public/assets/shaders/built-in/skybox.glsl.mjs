@@ -22,12 +22,19 @@ var output = {
         
         uniform samplerCube skybox;
         uniform mat4 viewDirectionProjectionInverse;
+
+        // #define USEFOG
+        const vec4 fogColor = vec4(0.23, 0.24, 0.26, 1);
         
         void main() {
           vec4 t = viewDirectionProjectionInverse * vPosition;
           vec3 col = textureCube(skybox, normalize(t.xyz / t.w)).rgb;
         
-          gl_FragColor = vec4(col, 1);
+          #ifdef USEFOG
+            fragColor = fogColor;
+          #else
+            fragColor = vec4(col, 1);
+          #endif
         }
       `
     }
@@ -59,12 +66,19 @@ var output = {
         uniform float environmentIntensity;
         uniform samplerCube skybox;
         uniform mat4 viewDirectionProjectionInverse;
+
+        // #define USEFOG
+        const vec4 fogColor = vec4(0.23, 0.24, 0.26, 1);
         
         void main() {
           vec4 t = viewDirectionProjectionInverse * vPosition;
           vec3 col = texture(skybox, normalize(t.xyz / t.w)).rgb * environmentIntensity;
         
-          fragColor = vec4(col, 1);
+          #ifdef USEFOG
+            fragColor = fogColor;
+          #else
+            fragColor = vec4(col, 1);
+          #endif
         }
       `
     }

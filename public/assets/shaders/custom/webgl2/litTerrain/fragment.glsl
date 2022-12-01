@@ -164,6 +164,16 @@ float LayeredNoise(vec2 p) {
   return _noise;
 }
 
+const vec4 fogColor = vec4(0.23, 0.24, 0.26, 1);
+const float density = 0.005;
+
+vec4 applyFog(vec4 color) {
+  float distance = length(vec3(inverseViewMatrix * vec4(0, 0, 0, 1)) - vPosition);
+  float fogAmount = exp(-pow(distance * density, 2.));
+  
+  return mix(fogColor, color, fogAmount);
+}
+
 void main() {
   // fragColor = vec4(vNormal, 1);
   // return;
@@ -181,7 +191,13 @@ void main() {
   vec3 stoneNormal = sampleTexture(normalTextures[1], vUV).rgb * 2. - 1.;
   vec3 snowNormal = sampleTexture(normalTextures[2], vUV).rgb * 2. - 1.;
 
-  fragColor = lit(vec4(snowAlbedo, 1), 0.5, vec3(0), snowNormal, 0., 0.95, 1.);
+  vec4 litColor = lit(vec4(snowAlbedo, 1), 0.5, vec3(0), snowNormal, 0., 0.95, 1.);
+  
+  #ifdef USEFOG
+    litColor = applyFog(litColor);
+  #endif
+  
+  fragColor = litColor;
   return;
 
   vec3 up = vec3(0, 1, 0);
@@ -197,7 +213,7 @@ void main() {
   vec3 newNormal = normalize(mix(steepness, snowNormal, smoothstep(20., 35., vPosition.y)));
 
   // vec3 _tangentNormal = grassNormal * 2. - 1.;//newNormal * 2. - 1.;
-  vec3 _tangentNormal = snowNormal;
+  vec3 _tangentNormal = grassNormal;
   // _tangentNormal.g *= -1.;
 
   // fragColor = vec4(currentAlbedo.rgb * clamp(dot(sunDirection, vNormal), 0., 1.), currentAlbedo.a);

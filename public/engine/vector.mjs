@@ -1,4 +1,4 @@
-import { clamp, lerp } from "./helper.mjs";
+import { clamp, inverseLerp, lerp } from "./helper.mjs";
 
 export default class Vector {
   constructor(x = 0, y = 0, z = 0) {
@@ -266,6 +266,14 @@ export default class Vector {
       x: lerp(a.x, b.x, t),
       y: lerp(a.y, b.y, t),
       z: lerp(a.z, b.z, t)
+    };
+  }
+
+  static inverseLerp(a, b, t) {
+    return {
+      x: inverseLerp(a.x, b.x, t),
+      y: inverseLerp(a.y, b.y, t),
+      z: inverseLerp(a.z, b.z, t)
     };
   }
 

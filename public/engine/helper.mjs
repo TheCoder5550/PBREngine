@@ -4,6 +4,10 @@ function xor(a, b) {
   return (a && !b) || (!a && b);
 }
 
+function mod(n, m) {
+  return ((n % m) + m) % m;
+}
+
 function clamp(x, a, b) {
   return Math.max(a, Math.min(b, x));
 }
@@ -166,6 +170,7 @@ function cloneTemplate(template) {
 
 export {
   xor,
+  mod,
   clamp,
   lerp,
   inverseLerp,

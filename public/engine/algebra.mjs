@@ -278,6 +278,22 @@ var aabbEdges = [
 //   return false;
 // }
 
+function rayToAABBTriangle(origin, direction, p1, p2, p3) {
+  var aabb = {
+    bl: new Vector(
+      Math.min(p1.x, p2.x, p3.x),
+      Math.min(p1.y, p2.y, p3.y),
+      Math.min(p1.z, p2.z, p3.z),
+    ),
+    tr: new Vector(
+      Math.max(p1.x, p2.x, p3.x),
+      Math.max(p1.y, p2.y, p3.y),
+      Math.max(p1.z, p2.z, p3.z),
+    ),
+  };
+  return rayToAABB(origin, direction, aabb);
+}
+
 function rayToAABB(origin, direction, AABB) {
   var dirfrac = {
     x: 1 / direction.x,
@@ -496,6 +512,7 @@ export {
   rayToPlane,
   AABBTriangleToAABB,
   AABBToTriangle,
+  rayToAABBTriangle,
   rayToAABB,
   getTriangleNormal,
   sphereToTriangle,
