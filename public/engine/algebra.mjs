@@ -288,18 +288,6 @@ function rayToAABBTriangle(origin, direction, p1, p2, p3) {
       Math.max(p1.y, p2.y, p3.y),
       Math.max(p1.z, p2.z, p3.z),
     ),
-<<<<<<< HEAD
-=======
-  };
-  return rayToAABB(origin, direction, aabb);
-}
-
-function rayToAABB(origin, direction, AABB) {
-  var dirfrac = {
-    x: 1 / direction.x,
-    y: 1 / direction.y,
-    z: 1 / direction.z
->>>>>>> e92af2fb97450cc0620a24e05f9c5061080434f7
   };
   return rayToAABB(origin, direction, aabb);
 }

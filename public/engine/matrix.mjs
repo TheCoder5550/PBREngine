@@ -492,13 +492,9 @@ export default class Matrix {
     dst = dst || new Float32Array(16);
 
     var zAxis = Vector.normalize(direction);
-<<<<<<< HEAD
     var c = Vector.cross(up, zAxis);
     var xAxis = Vector.normalizeTo(c);
     // var xAxis = Vector.normalize(Vector.cross(up, zAxis));
-=======
-    var xAxis = Vector.normalize(Vector.cross(up, zAxis));
->>>>>>> e92af2fb97450cc0620a24e05f9c5061080434f7
     var yAxis = Vector.cross(zAxis, xAxis);
 
     _fillFloat32Array(dst,

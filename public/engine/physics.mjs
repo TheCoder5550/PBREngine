@@ -15,11 +15,6 @@ import { xor, clamp } from "./helper.mjs";
 import {
   AABBToAABB,
   rayToTriangle,
-<<<<<<< HEAD
-=======
-  rayToAABBTriangle,
-  rayToPlane,
->>>>>>> e92af2fb97450cc0620a24e05f9c5061080434f7
   AABBTriangleToAABB,
   AABBToTriangle,
   rayToAABB,

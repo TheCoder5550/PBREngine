@@ -31,15 +31,9 @@ var output = {
           vec3 col = textureCube(skybox, normalize(t.xyz / t.w)).rgb;
         
           #ifdef USEFOG
-<<<<<<< HEAD
             gl_FragColor = fogColor;
           #else
             gl_FragColor = vec4(col, 1);
-=======
-            fragColor = fogColor;
-          #else
-            fragColor = vec4(col, 1);
->>>>>>> e92af2fb97450cc0620a24e05f9c5061080434f7
           #endif
         }
       `
@@ -86,17 +80,10 @@ var output = {
           vec3 col = texture(skybox, lookDir).rgb * environmentIntensity;
         
           #ifdef USEFOG
-<<<<<<< HEAD
             col = mix(fogColor.rgb, col, clamp(lookDir.y * 10., 0., 1.));
           #endif
           
           fragColor = vec4(col, 1);
-=======
-            fragColor = fogColor;
-          #else
-            fragColor = vec4(col, 1);
-          #endif
->>>>>>> e92af2fb97450cc0620a24e05f9c5061080434f7
         }
       `
     }

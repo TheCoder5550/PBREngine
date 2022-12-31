@@ -70,27 +70,6 @@ function Terrain(scene) {
   //   uvScale: uvScale,
   // });
 
-<<<<<<< HEAD
-  this.getHeight = function(i, j) {
-=======
-  this.getHeightBeforeCurve = function(i, j) {
->>>>>>> e92af2fb97450cc0620a24e05f9c5061080434f7
-    var power = 1.5;
-    var noiseLayers = 2;
-    var noiseScale = 0.001;
-    var height = 100;
-<<<<<<< HEAD
-
-    var heightFalloff = 1;//1 - clamp((Vector.length(new Vector(i, j)) - 400) * 0.005, 0, 1);
-    var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * height * heightFalloff;
-=======
-    
-    var heightFalloff = 1;//1 - clamp((Vector.length(new Vector(i, j)) - 400) * 0.005, 0, 1);
-    var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * height * heightFalloff;
-
-    return elevation;
-  }
-
   this.getHeight = function(i, j) {
     var power = 1.5;
     var noiseLayers = 2;
@@ -99,18 +78,6 @@ function Terrain(scene) {
 
     var heightFalloff = 1;//1 - clamp((Vector.length(new Vector(i, j)) - 400) * 0.005, 0, 1);
     var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * height * heightFalloff;
-
-    // var w = 15;
-    // var d = this.curve.distanceSqrToPoint(new Vector(i, 0, j));
-    // if (!d.point) {
-    //   console.log(d);
-    // }
-
-    // return lerp(d.point?.y ?? 0, elevation, clamp(
-    //   (d.distance - w * w) / 2500,
-    //   0, 1
-    // ));
->>>>>>> e92af2fb97450cc0620a24e05f9c5061080434f7
 
     return elevation;
   }
