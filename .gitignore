@@ -14,3 +14,5 @@ node_modules
 /public/assets/models/swatStatic.glb
 
 /public/cargame/map.glb
+
+/public/cardemo/*.glb
