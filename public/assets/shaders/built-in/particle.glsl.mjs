@@ -4,8 +4,49 @@ var output = {
   webgl1: {
     particle: {
       vertex: `
+        attribute vec3 position;
+        attribute vec3 normal;
+        attribute vec3 tangent;
+        attribute vec4 color;
+        attribute vec2 uv;
+        attribute mat4 modelMatrix;
+
+        uniform mat4 projectionMatrix;
+        uniform mat4 viewMatrix;
+
+        varying vec3 vNormal;
+        varying vec3 vTangent;
+        varying vec4 vColor;
+        varying vec2 vUV;
+
+        void main() {
+          vNormal = normal;
+          vTangent = tangent;
+          vUV = uv;
+          vColor = color;
+          
+          gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+        }
       `,
       fragment: `
+        precision highp float;
+
+        uniform sampler2D albedoTexture;
+        uniform bool useTexture;
+        uniform vec4 albedo;
+
+        varying vec3 vNormal;
+        varying vec3 vTangent;
+        varying vec4 vColor;
+        varying vec2 vUV;
+
+        void main() {
+          vec4 currentAlbedo = useTexture ? texture2D(albedoTexture, vUV) : vec4(1);
+          currentAlbedo *= albedo;
+          currentAlbedo *= vColor;
+
+          gl_FragColor = currentAlbedo;
+        }
       `
     }
   },
@@ -44,6 +85,7 @@ var output = {
         precision highp float;
 
         layout (location = 0) out vec4 fragColor;
+        layout (location = 1) out vec2 motionVector;
 
         uniform sampler2D albedoTexture;
         uniform bool useTexture;
@@ -60,6 +102,7 @@ var output = {
           currentAlbedo *= vColor;
 
           fragColor = currentAlbedo;
+          motionVector = vec2(0.5);
         }
       `
     }

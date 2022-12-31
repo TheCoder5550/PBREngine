@@ -5,6 +5,7 @@ precision mediump int;
 const float PI = 3.141592;
 
 layout (location = 0) out vec4 fragColor;
+layout (location = 1) out vec2 motionVector;
 
 // Attributes
 in vec3 vPosition;
@@ -175,6 +176,8 @@ vec4 applyFog(vec4 color) {
 }
 
 void main() {
+  motionVector = vec2(0.5);
+  
   // fragColor = vec4(vNormal, 1);
   // return;
 

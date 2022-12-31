@@ -77,6 +77,30 @@ export default class Matrix {
     return dst;
   }
 
+  static add(a, b, dst) {
+    dst = dst || new Float32Array(16);
+    _fillFloat32Array(dst,
+      a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3],
+      a[4] + b[4], a[5] + b[5], a[6] + b[6], a[7] + b[7],
+      a[8] + b[8], a[9] + b[9], a[10] + b[10], a[11] + b[11],
+      a[12] + b[12], a[13] + b[13], a[14] + b[14], a[15] + b[15],
+    );
+
+    return dst;
+  }
+
+  static subtract(a, b, dst) {
+    dst = dst || new Float32Array(16);
+    _fillFloat32Array(dst,
+      a[0] - b[0], a[1] - b[1], a[2] - b[2], a[3] - b[3],
+      a[4] - b[4], a[5] - b[5], a[6] - b[6], a[7] - b[7],
+      a[8] - b[8], a[9] - b[9], a[10] - b[10], a[11] - b[11],
+      a[12] - b[12], a[13] - b[13], a[14] - b[14], a[15] - b[15],
+    );
+
+    return dst;
+  }
+
   static lerp(a, b, t, dst) {
     dst = dst || new Float32Array(16);
     _fillFloat32Array(dst,
@@ -308,6 +332,34 @@ export default class Matrix {
     return dst;
   }
 
+  static scaleWithScalar(m, scale) {
+    m[0] *= scale;
+    m[1] *= scale;
+    m[2] *= scale;
+
+    m[4] *= scale;
+    m[5] *= scale;
+    m[6] *= scale;
+
+    m[8] *= scale;
+    m[9] *= scale;
+    m[10] *= scale;
+  }
+
+  static scaleWithVector(m, scale) {
+    m[0] *= scale.x;
+    m[1] *= scale.x;
+    m[2] *= scale.x;
+
+    m[4] *= scale.y;
+    m[5] *= scale.y;
+    m[6] *= scale.y;
+
+    m[8] *= scale.z;
+    m[9] *= scale.z;
+    m[10] *= scale.z;
+  }
+
   static setScale(m, scale) {
     var sx = Vector.length({x: m[0], y: m[1], z: m[2]}) / scale.x;
     var sy = Vector.length({x: m[4], y: m[5], z: m[6]}) / scale.y;
@@ -440,7 +492,13 @@ export default class Matrix {
     dst = dst || new Float32Array(16);
 
     var zAxis = Vector.normalize(direction);
+<<<<<<< HEAD
+    var c = Vector.cross(up, zAxis);
+    var xAxis = Vector.normalizeTo(c);
+    // var xAxis = Vector.normalize(Vector.cross(up, zAxis));
+=======
     var xAxis = Vector.normalize(Vector.cross(up, zAxis));
+>>>>>>> e92af2fb97450cc0620a24e05f9c5061080434f7
     var yAxis = Vector.cross(zAxis, xAxis);
 
     _fillFloat32Array(dst,

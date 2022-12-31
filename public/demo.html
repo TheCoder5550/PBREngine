@@ -34,15 +34,30 @@
   </style>
 </head>
 <body>
+  <script src="https://aaserver.net/libraries/gameCanvas/gameCanvasPerlin.js"></script>
   <script type="module">
 
     // import Renderer, { Scene, GameObject } from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/renderer.mjs";
     // import OrbitCamera from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/orbitCamera.mjs";
     // import Vector from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/vector.mjs";
 
-    import Renderer, { Scene } from "./engine/renderer.mjs";
+    import Renderer, { GameObject, Scene, Light } from "./engine/renderer.mjs";
     import OrbitCamera from "./engine/orbitCamera.mjs";
     import Vector from "./engine/vector.mjs";
+    import Quaternion from "./engine/quaternion.mjs";
+    import Matrix from "./engine/matrix.mjs";
+
+    import * as simpleFoliage from "./assets/shaders/custom/simpleFoliage.glsl.mjs";
+    import * as roadSource from "./assets/shaders/custom/road.glsl.mjs";
+    import * as terrainSource from "./cardemo/terrain.glsl.mjs";
+
+    import Terrain from "./engine/terrain.mjs";
+
+    import { PhysicsEngine } from "./engine/physics.mjs";
+    import { Car } from "./car.js";
+    import * as carSettings from "./cardemo/carSettings.mjs";
+
+    var perlin = new Perlin();
 
     var stats = new Stats();
     document.body.appendChild(stats.dom);
@@ -52,31 +67,271 @@
     var camera;
 
     (async function() {
-      renderer = new Renderer();
+      renderer = new Renderer({ debug: true, renderScale: 1 });
+      renderer.settings.enableShadows = false;
 
       scene = new Scene();
-      scene.environmentIntensity = 1.25;
-      scene.sunIntensity = Vector.fill(4);
-      scene.smoothSkybox = true;
+
+      // scene.environmentIntensity = 1;//1.25;
+      // scene.sunIntensity = Vector.fill(4);
+      scene.environmentIntensity = 0.5;
+      scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(5200, 12));
+      // renderer.postprocessing.contrast.value = 0.1;
+      // renderer.postprocessing.saturation.value = 0.1;
+      renderer.postprocessing.vignette.amount.value = 0.3;
+      renderer.postprocessing.vignette.falloff.value = 0.3;
+
+      // scene.smoothSkybox = true;
       renderer.add(scene);
 
+      // var test1 = await renderer.loadGLTF("./assets/models/test/NormalTangentTest.glb");
+      // test1.transform.position.x = -1.5;
+      // test1.transform.rotation = Quaternion.euler(-Math.PI / 2, 0, 0);
+      // test1.transform.position.y = 0.1;
+      // var test2 = await renderer.loadGLTF("./assets/models/test/NormalTangentMirrorTest.glb");
+      // test2.transform.position.x = 1.5;
+
+      // scene.add(test1);
+      // scene.add(test2);
+
+      // scene.add(renderer.BatchGameObject(test1)).transform.position.y = 3;
+      // scene.add(renderer.BatchGameObject(test2)).transform.position.y = 3;
+
+      var model = await renderer.loadGLTF("./assets/models/toyota_ae86.glb");
+      model.transform.position.y = -0.07;
+      var batched = scene.add(renderer.BatchGameObject(model));
+      batched.meshRenderer.materials[2].setUniform("albedo", [1, 1, 1, 1]);
+      batched.meshRenderer.materials[2].setUniform("metallic", 0);
+      batched.meshRenderer.materials[2].setUniform("roughness", 0.35);
+
+      var roadProgram = new renderer.CustomProgram(roadSource);
+      // var road = scene.add(await renderer.loadGLTF("./cardemo/road.glb"));
+      // road.transform.position.y = 0.005;
+      // road.children[0].meshRenderer.materials[0].programContainer = roadProgram;
+
+      var driftTrack = scene.add(await renderer.loadGLTF("./cardemo/driftTrack.glb"));
+      driftTrack.children[0].meshRenderer.materials[0].setUniform("normalStrength", 3);
+
+      var physicsEngine = new PhysicsEngine(scene);
+      var collider = await renderer.loadGLTF("./cardemo/driftTrackCollider.glb");
+      physicsEngine.addMeshCollider(collider);
+      physicsEngine.setupMeshCollider();
+
+      var car = new Car(scene, physicsEngine, {
+        ...carSettings.drift.settings
+      });
+      car.resetPosition = new Vector(5, 5, 0);
+      await car.setup("./assets/models/toyota_ae86.glb");
+      window.car = car;
+
       await scene.loadEnvironment({
-        hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed", 
-        res: 512
+        // hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed", 
+        hdrFolder: "./assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k_precomputed",
+        // res: 512
       });
 
-      camera = new OrbitCamera(renderer, {near: 0.1, far: 300, fov: 20});
+      camera = new OrbitCamera(renderer, {near: 0.1, far: 3000, fov: 20});
       camera.distance = 4;
 
-      var model = await renderer.loadGLTF("./assets/models/audi_rs6.glb");
-      scene.add(renderer.BatchGameObject(model));
+      // var grassMat = new renderer.LitMaterial({
+      //   // albedoColor: [0.2, 0, 0, 1],
+      //   roughness: 1,
+      //   albedoTexture: await renderer.loadTextureAsync("./assets/textures/GroundForest003/GroundForest003_COL_VAR1_3K.jpg", { ...renderer.getSRGBFormats() }),
+      //   normalTexture: await renderer.loadTextureAsync("./assets/textures/GroundForest003/GroundForest003_NRM_3K.jpg"),
+      // });
+      // grassMat.setUniform("normalStrength", 3);
+      // grassMat.setUniform("doNoTiling", 1);
 
-      renderer.on("renderloop", function(frameTime) {
+      var grassAlbedo = await renderer.loadTextureAsync("./assets/textures/GroundForest003/GroundForest003_COL_VAR1_3K.jpg", { ...renderer.getSRGBFormats() });
+      var grassNormal = await renderer.loadTextureAsync("./assets/textures/GroundForest003/GroundForest003_NRM_3K.jpg");
+
+      var stoneAlbedo = await renderer.loadTextureAsync("./assets/textures/rocks_ground_03_2k_jpg/rocks_ground_03_diff_2k.jpg", { ...renderer.getSRGBFormats() });
+      var stoneNormal = await renderer.loadTextureAsync("./assets/textures/rocks_ground_03_2k_jpg/rocks_ground_03_nor_2k.jpg");
+
+      var terrainProgram = new renderer.CustomProgram(terrainSource);
+      var terrainMat = renderer.CreateLitMaterial({}, terrainProgram);
+      terrainMat.setUniform("roughness", 1);
+      terrainMat.setUniform("albedoTextures[0]", [ grassAlbedo, stoneAlbedo ]);
+      terrainMat.setUniform("normalTextures[0]", [ grassNormal, stoneNormal ]);
+
+      var uvScale = 60 * 3;
+      var grassPlane = scene.add(renderer.CreateShape("plane", terrainMat));
+      grassPlane.transform.rotation = Quaternion.euler(-Math.PI / 2, 0, 0);
+      grassPlane.transform.scale = Vector.fill(uvScale);
+
+      grassPlane.meshRenderer.meshData[0].setAttribute("uv", { bufferData: new Float32Array([
+        uvScale, uvScale,
+        0, uvScale,
+        0, 0,
+        uvScale, 0
+      ]) });
+
+      var terrain = new Terrain(scene);
+      terrain.chunkRes = 21;
+      await terrain.loadMaterials(terrainMat);
+
+      var simpleFoliageProgram = new renderer.CustomProgram(simpleFoliage);
+
+      var mat = new renderer.LitMaterial();
+      var mat2 = new renderer.LitMaterial({albedoColor: [1, 0, 0, 1]});
+      var sphere = renderer.getSphereData(2);
+      var cube = new renderer.MeshData(renderer.getCubeData());
+
+      var tree = await renderer.loadGLTF("./assets/models/treePbr.glb");
+      tree.children[0].meshRenderer.materials[0].programContainer = simpleFoliageProgram;
+      var treeBillboard = await renderer.loadGLTF("./assets/models/treePbrBillboard.glb");
+      treeBillboard.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlit;
+      treeBillboard.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.8);
+
+      // var lodTree = scene.add(new GameObject("LOD Tree"));
+      // lodTree.addComponent(new LOD([
+      //   { meshRenderer: tree.children[0].meshRenderer, upToDistance: 50 },
+      //   { meshRenderer: treeBillboard.children[0].meshRenderer, upToDistance: 4000 },
+      // ]));
+
+      var treeArea = 120 * 3;
+      var trees = 400;
+      for (var i = 0; i < trees; i++) {
+        var origin = new Vector((Math.random() - 0.5) * treeArea, 0, (Math.random() - 0.5) * treeArea);
+        // origin.y = terrain.getHeight(origin.x, origin.z);
+
+        if (!physicsEngine.Raycast(new Vector(origin.x, 100, origin.z), Vector.down()).firstHit && perlin.noise(origin.x / 30, origin.z / 30) > 0) {
+          var lodTree = scene.add(new GameObject("LOD Tree"));
+          lodTree.transform.matrix = Matrix.transform([
+            ["translate", origin],
+            ["scale", Vector.fill(0.5 + Math.random() * 0.5)],
+            ["ry", Math.random() * 2 * Math.PI],
+            ["rx", (Math.random() - 0.5) * 0.09],
+            ["rz", (Math.random() - 0.5) * 0.09],
+          ]);
+          lodTree.addComponent(new LOD([
+            { meshRenderer: tree.children[0].meshRenderer, upToDistance: 50 },
+            { meshRenderer: treeBillboard.children[0].meshRenderer, upToDistance: 500 },
+          ]));
+        }
+      }
+
+      var grass = scene.add(await renderer.loadGLTF("./cardemo/grass1.glb"));
+      grass.children[0].meshRenderer = grass.children[0].meshRenderer.getInstanceMeshRenderer();
+      grass.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;//simpleFoliageProgram;
+      grass.children[0].meshRenderer.materials[0].setUniform("albedo", [3, 3, 3, 1]);
+
+      // for (var i = 0; i < 30_000; i++) {
+      //   var origin = new Vector((Math.random() - 0.5) * 120, 0, (Math.random() - 0.5) * 120);
+
+      //   if (perlin.noise(origin.x / 30, origin.z / 30) * 0.5 + 0.5 > Math.random() + 0.2 && Math.abs(origin.x) > 5) {
+      //     grass.children[0].meshRenderer.addInstance(Matrix.transform([
+      //       ["translate", origin],
+      //       ["scale", Vector.fill(0.6 + Math.random() * 0.6)],
+      //       ["ry", Math.random() * 2 * Math.PI],
+      //       ["rx", (Math.random() - 0.5) * 0.09],
+      //       ["rz", (Math.random() - 0.5) * 0.09],
+      //     ]));
+      //   }
+      // }
+
+      var grassArea = 120 * 3;
+      var grassChunkSize = 25 * 2;
+      var grassDensity = 1000;
+
+      for (var x = -grassArea / 2; x <= grassArea / 2; x += grassChunkSize) {
+        for (var z = -grassArea / 2; z <= grassArea / 2; z += grassChunkSize) {
+          var grassMesh = grass.copy();
+          var meshRenderer = grassMesh.children[0].meshRenderer;
+
+          for (var i = 0; i < grassDensity; i++) {
+            var origin = new Vector(
+              x + (Math.random() - 0.5) * grassChunkSize,
+              0,
+              z + (Math.random() - 0.5) * grassChunkSize
+            );
+            // origin.y = terrain.getHeight(origin.x, origin.z);
+
+            if (!physicsEngine.Raycast(new Vector(origin.x, 100, origin.z), Vector.down()).firstHit && perlin.noise(origin.x / 30, origin.z / 30) * 0.5 + 0.5 > Math.random() + 0.2) {
+              meshRenderer.addInstance(Matrix.transform([
+                ["translate", origin],
+                ["scale", Vector.fill(0.6 + Math.random() * 0.6)],
+                ["ry", Math.random() * 2 * Math.PI],
+                ["rx", (Math.random() - 0.5) * 0.09],
+                ["rz", (Math.random() - 0.5) * 0.09],
+              ]));
+              }
+          }
+          
+          var lodGrass = scene.add(new GameObject("LOD Grass " + x + " " + z));
+          lodGrass.transform.position = new Vector(x, 0, z);
+          lodGrass.addComponent(new LOD([
+            { meshRenderer, upToDistance: 100 },
+          ]));
+        }
+      }
+
+      var rock = await renderer.loadGLTF("./assets/models/rock_photogrammetry_scan.glb"); 
+
+      for (var i = 0; i < 10; i++) {
+        var origin = new Vector((Math.random() - 0.5) * 120, 0.5, (Math.random() - 0.5) * 120);
+        // origin.y = terrain.getHeight(origin.x, origin.z);
+
+        if (!physicsEngine.Raycast(new Vector(origin.x, 100, origin.z), Vector.down()).firstHit) {
+          var rockCopy = scene.add(rock.copy());
+          rockCopy.transform.matrix = Matrix.transform([
+            ["translate", origin],
+            ["scale", Vector.fill(1 + Math.random() * 0.5)],
+            ["ry", Math.random() * 2 * Math.PI]
+          ]);
+        }
+      }
+
+      window.renderer = renderer;
+      window.scene = scene;
+
+      renderer.on("renderloop", function(frameTime, totalTime) {
+        // scene.sunDirection = Vector.normalize(new Vector(
+        //   Math.cos(totalTime),
+        //   1,
+        //   Math.sin(totalTime)
+        // ));
+
+        // terrain.update();
+        physicsEngine.update(frameTime);
+        car.update(frameTime);
+
         renderer.update(frameTime);
-        renderer.render(camera.camera);
+        renderer.render(car.mainCamera);
+        // renderer.render(camera.camera);
 
         stats.update();
       });
+
+      function LOD(levels = []) {
+        this.levels = levels;
+        this.gameObject = null;
+
+        this.currentLevel = null;
+        var i = Math.floor(Math.random() * 10);
+
+        this.render = function(camera, currentMatrix, shadowPass, opaquePass) {
+          if (i % 10 == 0) {
+            if (camera.transform) {
+              var cameraPos = camera.transform.position;
+              var distanceToCenter = Vector.distanceSqr(this.gameObject.transform.worldPosition, cameraPos);
+              this.currentLevel = this.levels.find(l => distanceToCenter < l.upToDistance * l.upToDistance);
+            }
+            else {
+              this.currentLevel = this.levels[0];
+            }
+          }
+
+          if (this.currentLevel) {
+            var prevModelMatrix = this.gameObject.prevModelMatrix;
+            var meshRenderer = this.currentLevel.meshRenderer;
+            meshRenderer.render(camera, currentMatrix, shadowPass, opaquePass, prevModelMatrix);
+          }
+          
+          i++;
+        }
+      }
+
     })();
 
   </script>

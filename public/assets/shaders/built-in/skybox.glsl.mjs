@@ -31,9 +31,15 @@ var output = {
           vec3 col = textureCube(skybox, normalize(t.xyz / t.w)).rgb;
         
           #ifdef USEFOG
+<<<<<<< HEAD
+            gl_FragColor = fogColor;
+          #else
+            gl_FragColor = vec4(col, 1);
+=======
             fragColor = fogColor;
           #else
             fragColor = vec4(col, 1);
+>>>>>>> e92af2fb97450cc0620a24e05f9c5061080434f7
           #endif
         }
       `
@@ -44,6 +50,7 @@ var output = {
     skybox: {
       vertex: `
         #version 300 es
+        
         in vec4 position;
         
         out vec4 vPosition;
@@ -60,6 +67,7 @@ var output = {
         precision mediump float;
         
         layout (location = 0) out vec4 fragColor;
+        layout (location = 1) out vec2 motionVector;
         
         in vec4 vPosition;
         
@@ -71,14 +79,24 @@ var output = {
         const vec4 fogColor = vec4(0.23, 0.24, 0.26, 1);
         
         void main() {
+          motionVector = vec2(0.5);
+
           vec4 t = viewDirectionProjectionInverse * vPosition;
-          vec3 col = texture(skybox, normalize(t.xyz / t.w)).rgb * environmentIntensity;
+          vec3 lookDir = normalize(t.xyz / t.w);
+          vec3 col = texture(skybox, lookDir).rgb * environmentIntensity;
         
           #ifdef USEFOG
+<<<<<<< HEAD
+            col = mix(fogColor.rgb, col, clamp(lookDir.y * 10., 0., 1.));
+          #endif
+          
+          fragColor = vec4(col, 1);
+=======
             fragColor = fogColor;
           #else
             fragColor = vec4(col, 1);
           #endif
+>>>>>>> e92af2fb97450cc0620a24e05f9c5061080434f7
         }
       `
     }

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+  <title>Car demo</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+
+  <!-- <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;400&display=swap" rel="stylesheet"> -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@48,400,1,0" />
+
+  <link rel="stylesheet" href="style.css">
+
+  <script src="../Stats.js"></script>
+  <script src="../gameCanvas-5.0.js"></script>
+</head>
+<body>
+  <div class="overlay loading">
+    <h1>WebGL - Realistic Car Demo</h1>
+    <h3 class="subheading">by <a href="https://aaserver.net/">Alfons Nilsson</a></h3>
+    <!-- <img src="garageIcon.png"> -->
+
+    <h3>Loading</h3>
+    <div class="progressBar">
+      <div class="progress"></div>
+    </div>
+    <h3 class="progressStatus"></h3>
+  </div>
+
+  <div class="overlay pauseOverlay hidden">
+    <div class="menu">
+      <h1>Paused</h1>
+      <div class="Playground">
+        <button onclick="gotoGarage()">
+          <img src="garageIcon.png">
+          <span>Garage</span>
+        </button>
+        <button onclick="openSettings()"><span class="material-symbols-outlined">settings</span>Settings</button>
+        <button onclick="resetCar()"><span class="material-symbols-outlined">restart_alt</span>Reset car</button>
+        <button onclick="resume()">Resume</button>
+        <button onclick=""><span class="material-symbols-outlined">location_on</span>Teleport</button>
+      </div>
+
+      <div class="Garage hidden">
+        <button onclick="gotoPlayground()">Go back</button>
+        <button onclick="openSettings()"><span class="material-symbols-outlined">settings</span>Settings</button>
+        <button onclick="resume()">Resume</button>
+      </div>
+    </div>
+
+    <div class="tooltip">
+      <div>
+        <img src="../assets/textures/keyIcons/Xbox Series/XboxSeriesX_A.png">
+        <span>Select</span>
+      </div>
+      <div>
+        <img src="../assets/textures/keyIcons/Xbox Series/XboxSeriesX_B.png">
+        <img src="../assets/textures/keyIcons/Xbox Series/XboxSeriesX_Menu.png">
+        <span>Back</span>
+      </div>
+      <div>
+        <img src="../assets/textures/keyIcons/Xbox Series/XboxSeriesX_Dpad.png">
+        <span>Navigate</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay garage hidden">
+    <div class="info glass">
+      <span class="carName">Lamborghini Aventador</span>
+
+      <span>Stats</span>
+      <div class="stats">
+        <div class="glass">
+          <span class="name">Drivetrain</span>
+          <span class="value">RWD</span>
+        </div>
+        <div class="glass">
+          <span class="name">Differential</span>
+          <span class="value">Limited Slip Differential</span>
+        </div>
+        <div class="glass">
+          <span class="name">Torque</span>
+          <span class="value">800 Nm</span>
+        </div>
+        <div class="glass">
+          <span class="name">Friction</span>
+          <span class="value">1.2</span>
+        </div>
+      </div>
+    </div>
+
+    <button class="selectCar" onclick="selectCar()">
+      <img src="../assets/textures/keyIcons/Xbox Series/XboxSeriesX_A.png">
+      <span>Select</span>
+    </button>
+  </div>
+
+  <div class="overlay settings hidden">
+    <div class="settingsContainer">
+      <h1>Settings</h1>
+      <div class="items"></div>
+    </div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

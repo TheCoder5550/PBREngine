@@ -39,12 +39,12 @@ export default class Vector {
     return {x: v.x, y: v.y, z: v.z};
   }
 
-  static fromArray(a, offset = 0, inc = 1) {
+  static fromArray(a, offset = 0, inc = 1, len = 4) {
     return {
-      x: a[offset] ?? 0,
-      y: a[offset + inc] ?? 0,
-      z: a[offset + inc * 2] ?? 0,
-      w: a[offset + inc * 3] ?? 0
+      x: len >= 1 ? a[offset] ?? 0 : 0,
+      y: len >= 2 ? a[offset + inc] ?? 0 : 0,
+      z: len >= 3 ? a[offset + inc * 2] ?? 0 : 0,
+      w: len >= 4 ? a[offset + inc * 3] ?? 0 : 0
     };
   }
 
@@ -246,6 +246,14 @@ export default class Vector {
     else
       return Vector.divide(v, len);
   }
+
+  static normalizeTo(v) {
+    var len = Vector.length(v);
+    if (len < 1e-6)
+      return v;
+    else
+      return Vector.divideTo(v, len);
+  }
   
   static dot(a, b) {
     var sum = a.x * b.x + a.y * b.y;
@@ -295,6 +303,14 @@ export default class Vector {
       clamp(v.y, minIsVector ? min.y : min, maxIsVector ? max.y : max),
       clamp(v.z, minIsVector ? min.z : min, maxIsVector ? max.z : max)
     );
+  }
+
+  static map(v, f) {
+    return {
+      x: f(v.x),
+      y: f(v.y),
+      z: f(v.z),
+    };
   }
 }
 

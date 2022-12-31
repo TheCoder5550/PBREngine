@@ -10,38 +10,22 @@ if (typeof window == "undefined") {
 import Vector from "./vector.mjs";
 import Matrix from "./matrix.mjs";
 import Quaternion from "./quaternion.mjs";
-
-import {
-  xor,
-  clamp,
-  lerp,
-  inverseLerp,
-  roundNearest,
-  Float32ToFloat16,
-  Uint8ToUint32,
-  Float32Concat,
-  watchGlobal,
-  isMobile,
-  fadeOutElement,
-  hideElement,
-  showElement
-} from "./helper.mjs";
+import { xor, clamp } from "./helper.mjs";
 
 import {
   AABBToAABB,
-  closestPointToTriangle,
-  closestPointOnPlane,
-  closestPointOnTriangle,
   rayToTriangle,
+<<<<<<< HEAD
+=======
   rayToAABBTriangle,
   rayToPlane,
+>>>>>>> e92af2fb97450cc0620a24e05f9c5061080434f7
   AABBTriangleToAABB,
   AABBToTriangle,
   rayToAABB,
   getTriangleNormal,
   sphereToTriangle,
   capsuleToTriangle,
-  ClosestPointOnLineSegment
 } from "./algebra.mjs";
 import { EventHandler } from "./renderer.mjs";
 
@@ -575,7 +559,7 @@ function PhysicsEngine(scene, settings = {}) {
   var physicsEngine = this;
   this.scene = scene;
 
-  // this.gravity = new Vector(0, -9.82, 0);
+  this.gravity = new Vector(0, -9.82, 0);
 
   var constraintsToSolve = [];
   this.constraintIterations = 20;//5;
@@ -585,6 +569,7 @@ function PhysicsEngine(scene, settings = {}) {
   var lastTime = performance.now();
   var accumulator = 0;
   this.time = 0;
+  this.multipleTimestepsPerFrame = settings.multipleTimestepsPerFrame ?? true;
 
   this.fixedUpdate = () => {};
 
@@ -767,8 +752,6 @@ function PhysicsEngine(scene, settings = {}) {
         aabb.extend(GetMeshAABB(c, 0.1));
       }
     }
-
-    console.log(aabb);
 
     this.octree = new Octree(aabb, settings.octreeLevels ?? 4);
 
@@ -1420,20 +1403,22 @@ function PhysicsEngine(scene, settings = {}) {
   }
 
   this.update = function() {
-    // updatePhysics();
-    // this.time += this.dt;
-    // return;
+    if (this.multipleTimestepsPerFrame) {
+      var newTime = performance.now();
+      var frameTime = (newTime - lastTime) / 1000;
+      frameTime = Math.min(frameTime, 0.4);
+      lastTime = newTime;
 
-    var newTime = performance.now();
-    var frameTime = (newTime - lastTime) / 1000;
-    frameTime = Math.min(frameTime, 0.4);
-    lastTime = newTime;
+      accumulator += frameTime;
 
-    accumulator += frameTime;
-
-    while (accumulator >= this.dt) {
+      while (accumulator >= this.dt) {
+        updatePhysics();
+        accumulator -= this.dt;
+        this.time += this.dt;
+      }
+    }
+    else {
       updatePhysics();
-      accumulator -= this.dt;
       this.time += this.dt;
     }
   }
@@ -1552,7 +1537,7 @@ class MeshCollider extends Collider {
         }
       }
 
-      this.octree = new Octree(aabb, 3);      
+      this.octree = new Octree(aabb, 4);
       this.octree.addTriangles(trianglesArray);
     }
   }

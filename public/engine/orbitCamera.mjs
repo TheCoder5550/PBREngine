@@ -197,6 +197,11 @@ export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
       ["rx", rotation.x]
     ], rotationMatrix);
   }
+
+  // renderer.on("renderloop", function() {
+  //   _this.camera.transform.rotation = Quaternion.slerp(_this.camera.transform.rotation, Quaternion.eulerVector(rotation), 0.3);
+  //   _this.camera.transform.position = Vector.lerp(_this.camera.transform.position, Vector.add(center, Vector.multiply(_this.camera.transform.forward, -_this.distance)), 0.3);
+  // });
   
   function updateCameraMatrix() {
     _this.camera.transform.rotation = Quaternion.eulerVector(rotation);

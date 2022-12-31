@@ -30,20 +30,24 @@ function Terrain(scene) {
   var zeroTransform = new Transform();
 
   this.terrainMat = null;
-  this.loadMaterials = async function() {
-    var litTerrain = new renderer.ProgramContainer(await renderer.createProgramFromFile("./assets/shaders/custom/webgl2/litTerrain"));
+  this.loadMaterials = async function(material) {
+    if (material) {
+      this.terrainMat = material;
+      return;
+    }
 
-    var gl = renderer.gl;
-    var sRGBInternalFormat = renderer.version == 1 ? (renderer.sRGBExt && (renderer.floatTextures || renderer.textureHalfFloatExt) ? renderer.sRGBExt.SRGB_ALPHA_EXT : gl.RGBA) : gl.SRGB8_ALPHA8;
-    var sRGBFormat = renderer.version == 1 ? (renderer.sRGBExt && (renderer.floatTextures || renderer.textureHalfFloatExt) ? renderer.sRGBExt.SRGB_ALPHA_EXT : gl.RGBA) : gl.RGBA;
-    var grassAlbedo = await renderer.loadTextureAsync("./assets/textures/Ground037_4K-JPG/Ground037_4K_Color.jpg", {internalFormat: sRGBInternalFormat, format: sRGBFormat});
-    var grassNormal = await renderer.loadTextureAsync("./assets/textures/Ground037_4K-JPG/Ground037_4K_Normal.jpg");
+    var litTerrain = new renderer.ProgramContainer(await renderer.createProgramFromFile(renderer.path + "assets/shaders/custom/webgl2/litTerrain"));
 
-    var stoneAlbedo = await renderer.loadTextureAsync("./assets/textures/rocks_ground_06/diffuse.jpg", {internalFormat: sRGBInternalFormat, format: sRGBFormat});
-    var stoneNormal = await renderer.loadTextureAsync("./assets/textures/rocks_ground_06/normal.png");
+    var SRGBFormat = renderer.getSRGBFormats();
 
-    var snowAlbedo = await renderer.loadTextureAsync("./assets/textures/Snow/albedo.jpg", {internalFormat: sRGBInternalFormat, format: sRGBFormat});
-    var snowNormal = await renderer.loadTextureAsync("./assets/textures/Snow/normal.jpg");
+    var grassAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/Ground037_4K-JPG/Ground037_4K_Color.jpg", { ...SRGBFormat });
+    var grassNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/Ground037_4K-JPG/Ground037_4K_Normal.jpg");
+
+    var stoneAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/rocks_ground_06/diffuse.jpg", { ...SRGBFormat });
+    var stoneNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/rocks_ground_06/normal.png");
+
+    var snowAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/Snow/albedo.jpg", { ...SRGBFormat });
+    var snowNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/Snow/normal.jpg");
 
     this.terrainMat = renderer.CreateLitMaterial({}, litTerrain);
     this.terrainMat.setUniform("roughness", 1);
@@ -66,11 +70,20 @@ function Terrain(scene) {
   //   uvScale: uvScale,
   // });
 
+<<<<<<< HEAD
+  this.getHeight = function(i, j) {
+=======
   this.getHeightBeforeCurve = function(i, j) {
+>>>>>>> e92af2fb97450cc0620a24e05f9c5061080434f7
     var power = 1.5;
     var noiseLayers = 2;
     var noiseScale = 0.001;
     var height = 100;
+<<<<<<< HEAD
+
+    var heightFalloff = 1;//1 - clamp((Vector.length(new Vector(i, j)) - 400) * 0.005, 0, 1);
+    var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * height * heightFalloff;
+=======
     
     var heightFalloff = 1;//1 - clamp((Vector.length(new Vector(i, j)) - 400) * 0.005, 0, 1);
     var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * height * heightFalloff;
@@ -97,6 +110,7 @@ function Terrain(scene) {
     //   (d.distance - w * w) / 2500,
     //   0, 1
     // ));
+>>>>>>> e92af2fb97450cc0620a24e05f9c5061080434f7
 
     return elevation;
   }

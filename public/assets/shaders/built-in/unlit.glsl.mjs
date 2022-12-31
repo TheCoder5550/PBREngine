@@ -17,19 +17,33 @@ var webgl2Fragment = `
 ${lit.shaderBase}
 
 layout (location = 0) out vec4 fragColor;
+layout (location = 1) out vec2 motionVector;
 
 uniform sampler2D albedoTexture;
 uniform bool useTexture;
 uniform vec4 albedo;
 
-float alphaCutoff = 0.5;
+uniform float alphaCutoff; // uniform alphaCutoff = 0.5;
 
+in vec3 vPosition;
 in vec3 vNormal;
 in vec3 vTangent;
 in vec3 vColor;
 in vec2 vUV;
 
+const int levels = 2;
+uniform sharedPerScene {
+  mat4 projectionMatrix;
+  mat4 viewMatrix;
+  mat4 inverseViewMatrix;
+  float biases[levels];
+};
+
+${lit.fogBase}
+
 void main() {
+  motionVector = vec2(0.5);
+
   vec4 currentAlbedo = useTexture ? texture(albedoTexture, vUV) : vec4(1);
   currentAlbedo *= albedo;
   currentAlbedo.xyz *= vec3(1) - vColor.xyz;
@@ -37,6 +51,10 @@ void main() {
   if (currentAlbedo.a < alphaCutoff) {
     discard;
   }
+
+  #ifdef USEFOG
+    currentAlbedo = applyFog(currentAlbedo);
+  #endif
 
   fragColor = currentAlbedo;
 }
@@ -52,9 +70,18 @@ in vec4 color;
 in vec2 uv;
 in mat4 modelMatrix;
 
-uniform mat4 projectionMatrix;
-uniform mat4 viewMatrix;
+// uniform mat4 projectionMatrix;
+// uniform mat4 viewMatrix;
 
+const int levels = 2;
+uniform sharedPerScene {
+  mat4 projectionMatrix;
+  mat4 viewMatrix;
+  mat4 inverseViewMatrix;
+  float biases[levels];
+};
+
+out vec3 vPosition;
 out vec3 vNormal;
 out vec3 vTangent;
 out vec4 vColor;
@@ -65,6 +92,7 @@ void main() {
   vTangent = tangent;
   vUV = uv;
   vColor = color;
+  vPosition = vec3(modelMatrix * vec4(position, 1.0));
   
   gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
 }
@@ -74,19 +102,33 @@ var webgl2FragmentInstanced = `
 ${lit.shaderBase}
 
 layout (location = 0) out vec4 fragColor;
+layout (location = 1) out vec2 motionVector;
 
 uniform sampler2D albedoTexture;
 uniform bool useTexture;
 uniform vec4 albedo;
 
-float alphaCutoff = 0.5;
+uniform float alphaCutoff; // uniform alphaCutoff = 0.5;
 
+in vec3 vPosition;
 in vec3 vNormal;
 in vec3 vTangent;
 in vec4 vColor;
 in vec2 vUV;
 
+const int levels = 2;
+uniform sharedPerScene {
+  mat4 projectionMatrix;
+  mat4 viewMatrix;
+  mat4 inverseViewMatrix;
+  float biases[levels];
+};
+
+${lit.fogBase}
+
 void main() {
+  motionVector = vec2(0.5);
+  
   vec4 currentAlbedo = useTexture ? texture(albedoTexture, vUV) : vec4(1);
   currentAlbedo *= albedo;
   currentAlbedo.xyz *= vec3(1) - vColor.xyz;
@@ -94,6 +136,10 @@ void main() {
   if (currentAlbedo.a < alphaCutoff) {
     discard;
   }
+
+  #ifdef USEFOG
+    currentAlbedo = applyFog(currentAlbedo);
+  #endif
 
   fragColor = currentAlbedo;
 }

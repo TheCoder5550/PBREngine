@@ -9,6 +9,7 @@ function Keybindings(renderer, gamepadManager, bindings = {
   }
 }) {
   var bindings = bindings;
+  this.gamepadManager = gamepadManager;
 
   this.setBindings = function(newBindings = {}) {
     bindings = newBindings;
@@ -30,12 +31,12 @@ function Keybindings(renderer, gamepadManager, bindings = {
         keyboardValue = renderer.getKey(bindings[name].keyboard) ? 1 : 0;
       }
 
-      var controllerValue = gamepadManager.getButton(bindings[name].controller) ?? gamepadManager.getAxis(bindings[name].controller) ?? 0;
+      var controllerValue = this.gamepadManager.getButton(bindings[name].controller) ?? this.gamepadManager.getAxis(bindings[name].controller) ?? 0;
 
       return Math.abs(keyboardValue) > Math.abs(controllerValue) ? keyboardValue : controllerValue;
     }
 
-    throw new Error("Invalid keybinding name: " + name);
+    // throw new Error("Invalid keybinding name: " + name);
   }
 
   this.getInputDown = function(name) {
@@ -50,12 +51,12 @@ function Keybindings(renderer, gamepadManager, bindings = {
         keyboardValue = renderer.getKeyDown(bindings[name].keyboard) ? 1 : 0;
       }
 
-      var controllerValue = gamepadManager.getButtonDown(bindings[name].controller) ?? gamepadManager.getAxis(bindings[name].controller) ?? 0;
+      var controllerValue = this.gamepadManager.getButtonDown(bindings[name].controller) ?? this.gamepadManager.getAxis(bindings[name].controller) ?? 0;
 
       return Math.abs(keyboardValue) > Math.abs(controllerValue) ? keyboardValue : controllerValue;
     }
 
-    throw new Error("Invalid keybinding name: " + name);
+    // throw new Error("Invalid keybinding name: " + name);
   }
 }
 

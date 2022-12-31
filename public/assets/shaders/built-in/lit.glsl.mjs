@@ -22,6 +22,111 @@ precision highp float;
 precision mediump int;
 `;
 
+var litAttributesAndUniforms = `
+layout (location = 0) out vec4 fragColor;
+layout (location = 1) out vec2 motionVector;
+
+// Attributes
+in vec3 vPosition;
+in vec3 vNormal;
+in vec4 vTangent; // in vec3 vTangent;
+in vec3 vColor;
+in vec2 vUV;
+in mat3 vTBN;
+
+// Motion blur
+in vec4 clipSpace;
+in vec4 prevClipSpace;
+//#in
+
+// Material properties
+uniform sampler2D albedoTexture;
+uniform bool useTexture;
+uniform sampler2D normalTexture;
+uniform bool useNormalTexture;
+uniform sampler2D metallicRoughnessTexture;
+uniform bool useMetallicRoughnessTexture;
+uniform sampler2D emissiveTexture;
+uniform bool useEmissiveTexture;
+uniform sampler2D occlusionTexture;
+uniform bool useOcclusionTexture;
+
+uniform vec4 albedo;
+uniform float metallic;
+uniform float roughness;
+uniform vec3 emissiveFactor;
+float ao = 1.;
+uniform bool opaque;
+uniform float alphaCutoff;
+uniform float normalStrength;
+uniform bool doNoTiling;
+
+// bruh make shared uniform into uniform block
+// Light info
+struct LightInfo {
+  int type;
+  vec3 position;
+  vec3 direction;
+  float angle;
+  vec3 color;
+};
+const int maxLights = 16;
+uniform LightInfo lights[maxLights];
+uniform int nrLights;
+uniform vec3 sunDirection;
+uniform vec3 sunIntensity;
+
+// Environment
+uniform float environmentIntensity;
+uniform samplerCube u_diffuseIBL;
+uniform samplerCube u_specularIBL;
+uniform sampler2D u_splitSum;
+
+// Shadows
+const int levels = 2;
+in vec4 projectedTexcoords[levels];
+// uniform float biases[levels];
+uniform sampler2D projectedTextures[levels];
+
+uniform int shadowQuality; // = 2;
+float shadowDarkness = 0.;
+// vec2 shadowStepSize = 1. / vec2(1024) * 10.; // bruh
+const float shadowKernalSize = 2.;
+mat3 shadowKernel = mat3(
+  1, 2, 1,
+  2, 4, 2,
+  1, 2, 1
+);
+vec2 poissonDisk[16] = vec2[]( 
+   vec2( -0.94201624, -0.39906216 ), 
+   vec2( 0.94558609, -0.76890725 ), 
+   vec2( -0.094184101, -0.92938870 ), 
+   vec2( 0.34495938, 0.29387760 ), 
+   vec2( -0.91588581, 0.45771432 ), 
+   vec2( -0.81544232, -0.87912464 ), 
+   vec2( -0.38277543, 0.27676845 ), 
+   vec2( 0.97484398, 0.75648379 ), 
+   vec2( 0.44323325, -0.97511554 ), 
+   vec2( 0.53742981, -0.47373420 ), 
+   vec2( -0.26496911, -0.41893023 ), 
+   vec2( 0.79197514, 0.19090188 ), 
+   vec2( -0.24188840, 0.99706507 ), 
+   vec2( -0.81409955, 0.91437590 ), 
+   vec2( 0.19984126, 0.78641367 ), 
+   vec2( 0.14383161, -0.14100790 ) 
+);
+
+// uniform mat4 inverseViewMatrix;
+uniform mat4 modelMatrix;
+
+uniform sharedPerScene {
+  mat4 projectionMatrix;
+  mat4 viewMatrix;
+  mat4 inverseViewMatrix;
+  float biases[levels];
+};
+`;
+
 var litBase = `
 const float PI = 3.141592;
 
@@ -250,7 +355,8 @@ float getShadowAmount(float cosTheta) {
 
 // PBR
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
-  return F0 + (1.0 - F0) * pow(max(1.0 - cosTheta, 0.0), 5.0);
+  return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0); // trying this
+  // return F0 + (1.0 - F0) * pow(max(1.0 - cosTheta, 0.0), 5.0);
 }
 
 vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
@@ -290,7 +396,7 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
 }
 
 vec3 IBL (vec3 N, vec3 V, vec3 R, vec3 albedo, float metallic, float roughness, float scalarF0) {
-  vec3 F0 = vec3(scalarF0); 
+  vec3 F0 = vec3(scalarF0);
   F0 = mix(F0, albedo, metallic);
   vec3 F = fresnelSchlickRoughness(max(dot(N, V), 0.), F0, roughness);
 
@@ -325,14 +431,16 @@ vec3 DirectionalLight (vec3 worldPos, vec3 N, vec3 V, vec3 lightDir, vec3 lightC
   float NDF = DistributionGGX(N, H, roughness);       
   float G   = GeometrySmith(N, V, L, roughness);     
   vec3 nominator    = NDF * G * F;
-  float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001; 
-  vec3 specular     = nominator / denominator;       
+  float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001;
+  vec3 specular     = nominator / denominator;
   vec3 kS = F;
   vec3 kD = vec3(1.0) - kS;
 
   kD *= 1.0 - metallic;
   float NdotL = max(dot(N, L), 0.0);
-  return (kD * albedo / PI + specular) * radiance * NdotL;  
+
+  vec3 finalColor = (kD * albedo / PI + specular) * radiance * NdotL;
+  return finalColor;
 }
 
 vec3 PositionalLight (vec3 worldPos, vec3 N, vec3 V, vec3 lightPos, vec3 lightColor, vec3 albedo, float metallic, float roughness, float scalarF0) {
@@ -380,11 +488,14 @@ vec3 Spotlight (vec3 worldPos, vec3 N, vec3 V, vec3 lightPos, vec3 dir, float an
   vec3 kD = vec3(1.0) - kS;
     
   kD *= 1.0 - metallic;     
-  float NdotL = max(dot(N, L), 0.0);        
+  float NdotL = max(dot(N, L), 0.0);
+  
   return (kD * albedo / PI + specular) * radiance * NdotL;  
 }
 
 vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, float _metallic, float _roughness, float _ao) {
+  _roughness = clamp(_roughness, 0.01, 0.99);
+  
   if (_albedo.a <= _alphaCutoff) {
     discard;
   }
@@ -397,7 +508,7 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
   vec3 V = normalize(vec3(inverseViewMatrix * vec4(0, 0, 0, 1)) - vPosition);
 
   vec3 N;
-  if (vTangent != vec3(0)) {
+  if (vTangent.xyz != vec3(0)) { //if (vTangent != vec3(0)) {
     N = normalize(vTBN * _tangentNormal);
   }
   else {
@@ -439,8 +550,9 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 `;
 
 var fogBase = `
+#define USEFOG
 const vec4 fogColor = vec4(0.23, 0.24, 0.26, 1);
-const float density = 0.005;
+const float density = 0.0035;
 
 vec4 applyFog(vec4 color) {
   float distance = length(vec3(inverseViewMatrix * vec4(0, 0, 0, 1)) - vPosition);
@@ -448,6 +560,12 @@ vec4 applyFog(vec4 color) {
   
   return mix(fogColor, color, fogAmount);
 }
+`;
+
+var motionBlurMain = `
+vec3 NDCPos = (clipSpace / clipSpace.w).xyz;
+vec3 PrevNDCPos = (prevClipSpace / prevClipSpace.w).xyz;
+motionVector = (NDCPos - PrevNDCPos).xy * 0.5 + 0.5;
 `;
 
 /*
@@ -462,18 +580,24 @@ ${shaderBase}
 
 in vec3 position;
 in vec3 normal;
-in vec3 tangent;
+in vec4 tangent; // in vec3 tangent;
 in vec3 color;
 in vec2 uv;
 //#in
 
 out vec3 vPosition;
 out vec3 vNormal;
-out vec3 vTangent;
+out vec4 vTangent; // out vec3 vTangent;
 out vec3 vColor;
 out vec2 vUV;
 out mat3 vTBN;
 //#out
+
+// Motion blur
+out vec4 clipSpace;
+out vec4 prevClipSpace;
+uniform mat4 prevViewMatrix;
+uniform mat4 prevModelMatrix;
 
 const int levels = 2;
 
@@ -500,8 +624,8 @@ void main() {
   vUV = uv;
   vColor = color;
 
-  vec3 _T = normalize(vec3(modelMatrix * vec4(vTangent, 0.0)));
-  vec3 _B = normalize(vec3(modelMatrix * vec4(cross(vNormal, vTangent), 0.0)));
+  vec3 _T = normalize(vec3(modelMatrix * vec4(vTangent.xyz, 0.0)));
+  vec3 _B = normalize(vec3(modelMatrix * vec4(cross(vNormal, vTangent.xyz) * vTangent.w, 0.0))); // bruh According to comment on stackoverflow (https://blender.stackexchange.com/questions/220756/why-does-blender-output-vec4-tangents-for-gltf), tangents are vec4 and .w is used for bitangent sign (who could have known... :(
   vec3 _N = normalize(vec3(modelMatrix * vec4(vNormal, 0.0)));
   vTBN = mat3(_T, _B, _N);
 
@@ -512,7 +636,13 @@ void main() {
 
   vPosition = vec3(worldPosition);
   
-  gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+  // Motion blur
+  vec4 prevCs = projectionMatrix * prevViewMatrix * prevModelMatrix * vec4(position, 1.0);
+  vec4 cs = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+
+  prevClipSpace = prevCs;
+  clipSpace = cs;
+  gl_Position = cs;
 }
 `;
 
@@ -521,18 +651,24 @@ ${shaderBase}
 
 in vec3 position;
 in vec3 normal;
-in vec3 tangent;
+in vec4 tangent; //in vec3 tangent;
 in vec3 color;
 in vec2 uv;
 in mat4 modelMatrix;
 
 out vec3 vPosition;
 out vec3 vNormal;
-out vec3 vTangent;
+out vec4 vTangent; //out vec3 vTangent;
 out vec3 vColor;
 out vec2 vUV;
 out mat4 vModelMatrix;
 out mat3 vTBN;
+
+// Motion blur
+out vec4 clipSpace;
+out vec4 prevClipSpace;
+uniform mat4 prevViewMatrix;
+uniform mat4 prevModelMatrix;
 
 const int levels = 2;
 
@@ -554,8 +690,8 @@ void main() {
   vColor = color;
   vModelMatrix = modelMatrix;
 
-  vec3 _T = normalize(vec3(modelMatrix * vec4(vTangent, 0.0)));
-  vec3 _B = normalize(vec3(modelMatrix * vec4(cross(vNormal, vTangent), 0.0)));
+  vec3 _T = normalize(vec3(modelMatrix * vec4(vTangent.xyz, 0.0)));
+  vec3 _B = normalize(vec3(modelMatrix * vec4(cross(vNormal, vTangent.xyz) * vTangent.w, 0.0)));
   vec3 _N = normalize(vec3(modelMatrix * vec4(vNormal, 0.0)));
   vTBN = mat3(_T, _B, _N);
 
@@ -671,109 +807,15 @@ webgl2VertexTrail = webgl2VertexTrail.replace("//#main", "vAlpha = alpha;");
 var webgl2Fragment = `
 ${shaderBase}
 
-layout (location = 0) out vec4 fragColor;
-
-// Attributes
-in vec3 vPosition;
-in vec3 vNormal;
-in vec3 vTangent;
-in vec3 vColor;
-in vec2 vUV;
-in mat3 vTBN;
-//#in
-
-// Material properties
-uniform sampler2D albedoTexture;
-uniform bool useTexture;
-uniform sampler2D normalTexture;
-uniform bool useNormalTexture;
-uniform sampler2D metallicRoughnessTexture;
-uniform bool useMetallicRoughnessTexture;
-uniform sampler2D emissiveTexture;
-uniform bool useEmissiveTexture;
-uniform sampler2D occlusionTexture;
-uniform bool useOcclusionTexture;
-
-uniform vec4 albedo;
-uniform float metallic;
-uniform float roughness;
-uniform vec3 emissiveFactor;
-float ao = 1.;
-uniform bool opaque;
-uniform float alphaCutoff;
-uniform float normalStrength;
-uniform bool doNoTiling;
-
-// bruh make shared uniform into uniform block
-// Light info
-struct LightInfo {
-  int type;
-  vec3 position;
-  vec3 direction;
-  float angle;
-  vec3 color;
-};
-const int maxLights = 16;
-uniform LightInfo lights[maxLights];
-uniform int nrLights;
-uniform vec3 sunDirection;
-uniform vec3 sunIntensity;
-
-// Environment
-uniform float environmentIntensity;
-uniform samplerCube u_diffuseIBL;
-uniform samplerCube u_specularIBL;
-uniform sampler2D u_splitSum;
-
-// Shadows
-const int levels = 2;
-in vec4 projectedTexcoords[levels];
-// uniform float biases[levels];
-uniform sampler2D projectedTextures[levels];
-
-uniform int shadowQuality; // = 2;
-float shadowDarkness = 0.;
-// vec2 shadowStepSize = 1. / vec2(1024) * 10.; // bruh
-const float shadowKernalSize = 2.;
-mat3 shadowKernel = mat3(
-  1, 2, 1,
-  2, 4, 2,
-  1, 2, 1
-);
-vec2 poissonDisk[16] = vec2[]( 
-   vec2( -0.94201624, -0.39906216 ), 
-   vec2( 0.94558609, -0.76890725 ), 
-   vec2( -0.094184101, -0.92938870 ), 
-   vec2( 0.34495938, 0.29387760 ), 
-   vec2( -0.91588581, 0.45771432 ), 
-   vec2( -0.81544232, -0.87912464 ), 
-   vec2( -0.38277543, 0.27676845 ), 
-   vec2( 0.97484398, 0.75648379 ), 
-   vec2( 0.44323325, -0.97511554 ), 
-   vec2( 0.53742981, -0.47373420 ), 
-   vec2( -0.26496911, -0.41893023 ), 
-   vec2( 0.79197514, 0.19090188 ), 
-   vec2( -0.24188840, 0.99706507 ), 
-   vec2( -0.81409955, 0.91437590 ), 
-   vec2( 0.19984126, 0.78641367 ), 
-   vec2( 0.14383161, -0.14100790 ) 
-);
-
-// uniform mat4 inverseViewMatrix;
-uniform mat4 modelMatrix;
-
-uniform sharedPerScene {
-  mat4 projectionMatrix;
-  mat4 viewMatrix;
-  mat4 inverseViewMatrix;
-  float biases[levels];
-};
+${litAttributesAndUniforms}
 
 ${litBase}
 
 ${fogBase}
 
 void main() {
+  ${motionBlurMain}
+
   // fragColor = vec4(vNormal, 1);
   // return;
 
@@ -782,9 +824,9 @@ void main() {
   currentAlbedo.xyz *= vec3(1) - vColor;
   //#currentAlbedo
 
-  if (doNoTiling) {
-    currentAlbedo.rgb *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(vUV / 40.), 0., 1.));
-  }
+  // if (doNoTiling) {
+  //   currentAlbedo.rgb *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(vUV / 40.), 0., 1.));
+  // }
 
   vec3 _emission = emissiveFactor;
   if (useEmissiveTexture) {
@@ -804,11 +846,17 @@ void main() {
     _roughness *= ts.g;
   }
 
-  _roughness = clamp(_roughness, 0.01, 0.99);
-
   vec3 _tangentNormal = vec3(0, 0, 1);
   if (useNormalTexture) {
-    _tangentNormal = sampleTexture(normalTexture, vUV).rgb * 2. - 1.;
+    _tangentNormal = sampleTexture(normalTexture, vUV).rgb;
+    
+    // Accoring to GLTF NormalTangentTest, it's correct to flip none of the channels here! Update: yup, should not flip anything here
+    // _tangentNormal.r = 1. - _tangentNormal.r;
+    // _tangentNormal.g = 1. - _tangentNormal.g; // Convert from DirectX to OpenGL normal map format (remove this line if the normal map looks inverted)
+
+    // _tangentNormal.rg = _tangentNormal.gr;
+
+    _tangentNormal = _tangentNormal * 2. - 1.;
     _tangentNormal = setNormalStrength(_tangentNormal, normalStrength);
   }
 
@@ -825,6 +873,8 @@ void main() {
 var webgl2FragmentInstanced = webgl2Fragment;
 webgl2FragmentInstanced = webgl2FragmentInstanced.replace(/modelMatrix/g, "vModelMatrix");
 webgl2FragmentInstanced = webgl2FragmentInstanced.replace(/uniform mat4 vModelMatrix/g, "in mat4 vModelMatrix");
+// bruh
+webgl2FragmentInstanced = webgl2FragmentInstanced.replace(`motionVector = (NDCPos - PrevNDCPos).xy * 0.5 + 0.5;`, "motionVector = vec2(0.5);");
 
 var webgl2FragmentSkinned = webgl2Fragment;
 
@@ -1020,8 +1070,6 @@ void main() {
     _roughness *= ts.g;
   }
 
-  _roughness = clamp(_roughness, 0.01, 0.99);
-
   vec3 _tangentNormal = vec3(0, 0, 1);
   if (useNormalTexture) {
     _tangentNormal = sampleTexture(normalTexture, vUV).rgb * 2. - 1.;
@@ -1196,6 +1244,8 @@ vec3 Spotlight (vec3 worldPos, vec3 N, vec3 V, vec3 lightPos, vec3 dir, float an
 }
 
 vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, float _metallic, float _roughness, float _ao) {
+  _roughness = clamp(_roughness, 0.01, 0.99);
+
   if (_albedo.a <= _alphaCutoff) {
     discard;
   }
@@ -1513,8 +1563,6 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 //     _roughness *= ts.g;
 //   }
 
-//   _roughness = clamp(_roughness, 0.01, 0.99);
-
 //   float _ao = ao;
 //   if (useOcclusionTexture) {
 //     _ao *= sampleTexture(occlusionTexture, vUV).r;
@@ -1523,7 +1571,7 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 //   vec3 N = normalize(mat3(modelMatrix) * vNormal);
 //   vec3 V = normalize(vec3(inverseViewMatrix * vec4(0, 0, 0, 1)) - vPosition);
 
-//   if (useNormalTexture && vTangent != vec3(0)) {
+//   if (useNormalTexture && vTangent.xyz != vec3(0)) {
 //     vec3 tangentNormal = sampleTexture(normalTexture, vUV).rgb * 2. - 1.;
 //     N = normalize(vTBN * tangentNormal);
 //   }
@@ -1603,6 +1651,8 @@ export {
   shaderBase,
   litBase,
   fogBase,
+  motionBlurMain,
+  litAttributesAndUniforms,
   webgl1,
   webgl2
 };

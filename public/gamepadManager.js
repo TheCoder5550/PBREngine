@@ -138,3 +138,5 @@ function GamepadManager() {
     }
   }
 }
+
+export default GamepadManager;

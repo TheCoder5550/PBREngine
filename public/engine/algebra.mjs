@@ -1,4 +1,4 @@
-import { clamp } from "./helper.mjs";
+import { saturate } from "./helper.mjs";
 import Vector from "./vector.mjs";
 
 function AABBToAABB(a, b) {
@@ -80,9 +80,6 @@ function rayToTriangle(rayOrigin, rayVector, a, b, c) {
   var vertex0 = a;
   var vertex1 = b;
   var vertex2 = c;
-
-  var h, s, q;
-  var a,f,u,v;
 
   var edge1 = Vector.subtract(vertex1, vertex0);
   var edge2 = Vector.subtract(vertex2, vertex0);
@@ -172,7 +169,8 @@ function AABBToTriangle(box, triangle) {
       var axis = Vector.cross(triangleEdges[i], boxNormals[i]);
       var [boxMin, boxMax] = Project(boxVertices, axis);
       var [triangleMin, triangleMax] = Project(triangle, axis);
-      if (boxMax <= triangleMin || boxMin >= triangleMax)
+      if (boxMax < triangleMin || boxMin > triangleMax)
+      // if (boxMax <= triangleMin || boxMin >= triangleMax)
         return false; // No intersection possible
     }
   }
@@ -290,6 +288,8 @@ function rayToAABBTriangle(origin, direction, p1, p2, p3) {
       Math.max(p1.y, p2.y, p3.y),
       Math.max(p1.z, p2.z, p3.z),
     ),
+<<<<<<< HEAD
+=======
   };
   return rayToAABB(origin, direction, aabb);
 }
@@ -299,14 +299,18 @@ function rayToAABB(origin, direction, AABB) {
     x: 1 / direction.x,
     y: 1 / direction.y,
     z: 1 / direction.z
+>>>>>>> e92af2fb97450cc0620a24e05f9c5061080434f7
   };
+  return rayToAABB(origin, direction, aabb);
+}
 
-  var t1 = (AABB.bl.x - origin.x) * dirfrac.x;
-  var t2 = (AABB.tr.x - origin.x) * dirfrac.x;
-  var t3 = (AABB.bl.y - origin.y) * dirfrac.y;
-  var t4 = (AABB.tr.y - origin.y) * dirfrac.y;
-  var t5 = (AABB.bl.z - origin.z) * dirfrac.z;
-  var t6 = (AABB.tr.z - origin.z) * dirfrac.z;
+function rayToAABB(origin, direction, AABB) {
+  var t1 = (AABB.bl.x - origin.x) / direction.x;
+  var t2 = (AABB.tr.x - origin.x) / direction.x;
+  var t3 = (AABB.bl.y - origin.y) / direction.y;
+  var t4 = (AABB.tr.y - origin.y) / direction.y;
+  var t5 = (AABB.bl.z - origin.z) / direction.z;
+  var t6 = (AABB.tr.z - origin.z) / direction.z;
 
   var tmin = Math.max(Math.max(Math.min(t1, t2), Math.min(t3, t4)), Math.min(t5, t6));
   var tmax = Math.min(Math.min(Math.max(t1, t2), Math.max(t3, t4)), Math.max(t5, t6));
@@ -317,6 +321,12 @@ function rayToAABB(origin, direction, AABB) {
     min: tmin,
     max: tmax
   };
+}
+
+function getTriangleArea(a, b, c) {
+  var ab = Vector.subtract(b, a);
+  var ac = Vector.subtract(c, a);
+  return Vector.length(Vector.cross(ab, ac)) / 2;
 }
 
 function getTriangleNormal(triangle) {
@@ -493,10 +503,6 @@ function ClosestPointOnLineSegment(A, B, Point) {
   return Vector.add(A, Vector.multiply(AB, saturate(t))); // saturate(t) can be written as: min((max(t, 0), 1)
 }
 
-function saturate(t) {
-  return clamp(t, 0, 1);
-}
-
 function distanceBetweenRayAndPoint(ray, point) {
   var RP = Vector.subtract(point, ray.origin);
   var p = Vector.dot(ray.direction, RP);
@@ -514,6 +520,7 @@ export {
   AABBToTriangle,
   rayToAABBTriangle,
   rayToAABB,
+  getTriangleArea,
   getTriangleNormal,
   sphereToTriangle,
   capsuleToTriangle,

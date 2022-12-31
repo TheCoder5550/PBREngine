@@ -6,7 +6,7 @@ function GLDebugger(scene) {
   var renderer = scene.renderer;
 
   var aabbVis;
-  renderer.createProgramFromFile("./assets/shaders/custom/webgl2/solidColor").then(r => {
+  renderer.createProgramFromFile(renderer.path + "assets/shaders/custom/webgl2/solidColor").then(r => {
     var solidColorInstanceProgram = new renderer.ProgramContainer(r);
     aabbVis = scene.add(new GameObject("AABB", {
       meshRenderer: new renderer.MeshInstanceRenderer([new renderer.Material(solidColorInstanceProgram)], [new renderer.MeshData(renderer.getLineCubeData())], {drawMode: renderer.gl.LINES}),

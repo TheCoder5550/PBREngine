@@ -12,6 +12,10 @@ function clamp(x, a, b) {
   return Math.max(a, Math.min(b, x));
 }
 
+function saturate(t) {
+  return clamp(t, 0, 1);
+}
+
 function lerp(x, y, a) {
   return x * (1 - a) + y * a;
 }
@@ -37,7 +41,15 @@ function mapValue(x, in_min, in_max, out_min, out_max) {
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
+function isPowerOf2(value) {
+  return (value & (value - 1)) == 0;
+}
+
 // Other
+
+function randomFromArray(array) {
+  return array[Math.floor(Math.random() * array.length)];
+}
 
 function Float32ToFloat16(arr) {
   var newArr = new Uint16Array(arr.length);
@@ -132,6 +144,34 @@ function isMobile() {
   return check;
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function objectIsEmpty(obj) {
+  return !obj || Object.keys(obj).length === 0;
+}
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    let img = new Image();
+    img.addEventListener('load', e => resolve(img));
+    img.addEventListener('error', () => {
+      reject(new Error(`Failed to load image's URL: ${url}`));
+    });
+    img.src = url;
+  });
+}
+
+function getImagePixelData(image, width, height) {
+  var canvas = document.createElement("canvas");
+  canvas.width = width ?? image.width;
+  canvas.height = height ?? image.height;
+  var ctx = canvas.getContext("2d");
+  ctx.drawImage(image, 0, 0);
+  return ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+}
+
 // HTML helper
 
 function removeChildren(parent) {
@@ -168,24 +208,62 @@ function cloneTemplate(template) {
   return template.content.cloneNode(true);
 }
 
+function cloneCanvas(canvas, top = 0, left = 0) {
+  var cc = document.body.appendChild(document.createElement("canvas"));
+  cc.style = `
+    position: fixed;
+    top: ${top}px;
+    left: ${left}px;
+    z-index: 10000;
+  `;
+  cc.width = canvas.width;
+  cc.height = canvas.height;
+  var ctx = cc.getContext("2d");
+  ctx.drawImage(canvas, 0, 0);
+}
+
+function saveCanvasAsImage(canvas, name = "download") {
+  var link = document.createElement('a');
+  link.download = name + ".png";
+  link.href = canvas.toDataURL()
+  link.click();
+}
+
+function downloadURL(url, name = "download") {
+  var link = document.createElement('a');
+  link.download = name + ".png";
+  link.href = url;
+  link.click();
+}
+
 export {
   xor,
   mod,
   clamp,
+  saturate,
   lerp,
   inverseLerp,
   roundNearest,
   roundToPlaces,
   mapValue,
+  isPowerOf2,
+  randomFromArray,
   Float32ToFloat16,
   Uint8ToUint32,
   Float32Concat,
   watchGlobal,
   isMobile,
+  sleep,
+  objectIsEmpty,
+  loadImage,
+  getImagePixelData,
   removeChildren,
   fadeOutElement,
   hideElement,
   showElement,
   resetAnimations,
-  cloneTemplate
+  cloneTemplate,
+  cloneCanvas,
+  saveCanvasAsImage,
+  downloadURL
 };
