@@ -8,6 +8,7 @@ import Matrix from "../engine/matrix.mjs";
 import Quaternion from "../engine/quaternion.mjs";
 import { clamp, lerp } from "../engine/helper.mjs";
 import Keybindings from "../keybindingsController.mjs";
+import GamepadManager from "../gamepadManager.js";
 
 window.Vector = Vector;
 
