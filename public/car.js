@@ -349,7 +349,11 @@ function Car(scene, physicsEngine, settings = {}) {
         radius: radius,
       });
       this.wheels[i].wheelModel = wheelModel;
-      this.wheels[i].skidmarks = wheelObject.addComponent(new renderer.TrailRenderer());
+
+      // Skidmarks
+      var skidmarks = wheelObject.addComponent(new renderer.TrailRenderer());
+      // skidmarks.width = Math.min(...Vector.toArray(wheelAABB.getSize())) * 0.95;
+      this.wheels[i].skidmarks = skidmarks;
 
       this.bottomOffset.y = position.y - radius - this.wheels[i].suspensionTravel - this.gameObject.transform.position.y;
 
@@ -443,7 +447,7 @@ function Car(scene, physicsEngine, settings = {}) {
       albedoColor: [2, 2, 2, 1],
     }, renderer.programContainers.particle);
     smoke.material.doubleSided = true;
-1
+
     smoke.emitPosition = () => new Vector(0, 2, 0);
     smoke.emitVelocity = () => new Vector((Math.random() - 0.5), (Math.random() - 0.5) + 0.5, -2);
     smoke.startSize = () => Vector.fill(Math.random() * 0.4 + 0.2);

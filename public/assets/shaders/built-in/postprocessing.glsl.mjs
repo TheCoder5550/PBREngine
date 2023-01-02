@@ -35,6 +35,8 @@ var output = {
         #ifdef ENABLE_MOTIONBLUR
         uniform float motionBlurStrength;
         #endif
+
+        uniform sampler2D rainTexture;
         
         vec3 godrays(float density, float weight, float decay, float exposure, vec2 screenSpaceLightPos, vec2 uv);
         vec3 ACESFilm(vec3 x);
@@ -93,10 +95,12 @@ var output = {
           // vec3 vb = normalize(vec3(0, size, s12 - s10));
           // vec3 normal = cross(va, vb);
         
-          // // gl_FragColor = vec4(normal, 1);
-          // // return;
+          // gl_FragColor = vec4(normal, 1);
+          // return;
         
-          // float screenDistance = 0.1;
+          // Rain drops
+          // vec3 normal = texture(rainTexture, uv * 3.).rgb * 2. - 1.;
+          // float screenDistance = 0.07;
           // vec2 uvOffset = normal.xy * screenDistance;
           // uv += uvOffset;
         

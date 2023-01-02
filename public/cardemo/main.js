@@ -206,6 +206,7 @@ document.addEventListener("DOMContentLoaded", function () {
     renderer.postprocessing.exposure.value = -1;
     // renderer.postprocessing.saturation.value = 0.4;
     renderer.settings.enableShadows = false;
+    renderer.postprocessing.rainTexture = await renderer.loadTextureAsync("../assets/textures/rain-normal-map.jpg");
     renderer.add(scene);
 
     await scene.loadEnvironment({
@@ -335,6 +336,7 @@ document.addEventListener("DOMContentLoaded", function () {
     mapBatched.meshRenderer.materials[1].setUniform("normalTextures[0]", [ grassNormal, stoneNormal ]);
     // mapBatched.meshRenderer.materials[1].setUniform("albedo", [0.25, 0.25, 0.25, 1]);
     mapBatched.meshRenderer.materials[2].setUniform("normalStrength", 2.5);
+    mapBatched.meshRenderer.materials[6].programContainer = renderer.programContainers.unlit;
 
     var collider = await renderer.loadGLTF(colliderPath, { loadMaterials: false, loadNormals: false, loadTangents: false });
     collider.transform.set(map.transform);
@@ -440,7 +442,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // var grassJson = [];
 
-    for (var i = 0; i < 10_000; i++) {
+    for (let i = 0; i < 1_000; i++) {
       var origin = new Vector((Math.random() - 0.5) * 500, 1000, (Math.random() - 0.5) * 500);
 
       var hit = physicsEngine.Raycast(origin, Vector.down());
@@ -470,7 +472,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // scene.skyboxCubemap = oldSkybox;
     // scene.environmentIntensity = 1;
 
-    document.addEventListener('visibilitychange', function() {
+    document.addEventListener("visibilitychange", function() {
       if (document.hidden) {
         paused = true;
       }
@@ -527,9 +529,9 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!paused) renderer.render(garageCamera);
       }
 
-      scene.root.traverse(o => {
-        o.prevModelMatrix = Matrix.copy(o.transform.worldMatrix);
-      });
+      // scene.root.traverse(o => {
+      //   o.prevModelMatrix = Matrix.copy(o.transform.worldMatrix);
+      // });
 
       stats.update();
     });
@@ -617,17 +619,17 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       selectCarButton.disabled = loadedCar == selectedCar;
-    }
+    };
 
     window.gotoPlayground = function() {
       setActiveScene(scene);
       window.resume();
-    }
+    };
 
     window.gotoGarage = function() {
       setActiveScene(garageScene);
       window.resume();
-    }
+    };
 
     window.resetCar = function() {
       car.reset();
@@ -635,17 +637,17 @@ document.addEventListener("DOMContentLoaded", function () {
       // car.rb.position.y = terrain.getHeight(car.rb.position.x, car.rb.position.z) + 1;
 
       window.resume();
-    }
+    };
 
     window.resume = function() {
       paused = false;
       handlePauseChange();
-    }
+    };
 
     window.openSettings = function() {
       settingsOpened = true;
       showElement(settingsOverlay);
-    }
+    };
 
     function setProgress(currentTask, totalTasks, textStatus) {
       progressBar.querySelector(".progress").style.width = `${currentTask / totalTasks * 100}%`;
@@ -665,7 +667,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (keybindings.getInputDown("menuDown")) {
           selectedItem++;
 
-          var buttons = document.querySelector(".menu > ." + renderer.activeScene().name).querySelectorAll("button").length;
+          let buttons = document.querySelector(".menu > ." + renderer.activeScene().name).querySelectorAll("button").length;
           selectedItem = clamp(selectedItem, 0, buttons - 1);
 
           getSelectedItemDOM().focus();
@@ -673,7 +675,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (keybindings.getInputDown("menuUp")) {
           selectedItem--;
           
-          var buttons = document.querySelector(".menu > ." + renderer.activeScene().name).querySelectorAll("button").length;
+          let buttons = document.querySelector(".menu > ." + renderer.activeScene().name).querySelectorAll("button").length;
           selectedItem = clamp(selectedItem, 0, buttons - 1);
 
           getSelectedItemDOM().focus();
@@ -805,7 +807,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       // car.rb.rotation = Quaternion.euler(0, Math.PI, 0);
 
-      car.mainCamera = new Camera({near: 0.1, far: 5000, fov: 35});
+      car.mainCamera = new Camera({near: 0.1, far: 15000, fov: 35});
       car.mainCamera.setAspect(renderer.aspect);
 
       return car;
