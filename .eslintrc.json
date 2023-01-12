@@ -11,7 +11,7 @@
     },
     "rules": {
         "indent": [
-            "error",
+            "warn",
             2,
             {
                 "SwitchCase": 1
@@ -39,6 +39,9 @@
         ],
         "no-loop-func": [
             "error"
+        ],
+        "no-empty": [
+            "warn"
         ]
     }
 }

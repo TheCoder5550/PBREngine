@@ -128,7 +128,7 @@ function GamepadManager() {
   this.vibrate = function(duration, weakMagnitude = 0.5, strongMagnitude = 0.5, gamepadIndex) {
     var gamepad = this.getGamepad(gamepadIndex);
     if (gamepad) {
-      gamepad.vibrationActuator?.playEffect?.('dual-rumble', {
+      gamepad.vibrationActuator?.playEffect?.("dual-rumble", {
         duration: duration,
         strongMagnitude: strongMagnitude,
         weakMagnitude: weakMagnitude 
@@ -139,4 +139,20 @@ function GamepadManager() {
   }
 }
 
+function deadZone(x, zone = 0.1) {
+  if (Math.abs(x) < zone) {
+    return 0;
+  }
+
+  return x;
+}
+
+function quadraticCurve(x) {
+  return Math.abs(x) * x;
+}
+
 export default GamepadManager;
+export {
+  deadZone,
+  quadraticCurve,
+};

@@ -10,7 +10,7 @@ layout (location = 0) out vec4 fragColor;
 // Attributes
 in vec3 vPosition;
 in vec3 vNormal;
-in vec3 vTangent;
+in vec4 vTangent;
 in vec3 vColor;
 in vec2 vUV;
 in mat3 vTBN;

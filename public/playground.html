@@ -43,8 +43,6 @@
 
     // window.mobileCheck() && new FakeConsole("right", 300);
   </script>
-
-  <script src="gamepadManager.js"></script>
   
   <script type="module">
 
@@ -54,6 +52,7 @@
     import Vector from "./engine/vector.mjs";
     import Quaternion from "./engine/quaternion.mjs";
     import Matrix from "./engine/matrix.mjs";
+    import GamepadManager from "./gamepadManager.js";
 
     var stats = new Stats();
     stats.showPanel(0);
@@ -83,7 +82,8 @@
         shadowBiases: [-0.0006, -0.0015]
       });
 
-      renderer.postprocessing.exposure = 0;
+      renderer.postprocessing.exposure.value = 0;
+      // renderer.postprocessing.motionBlurStrength.value = 0;
       // renderer.settings.enableShadows = false;
 
       scene = new Scene();
@@ -218,6 +218,31 @@
       // cube.transform.scale = Vector.fill(3);
       // cube.transform.position = new Vector(0, 6, 0);
       // scene.add(cube);
+
+      var skin1 = scene.add(await renderer.loadGLTF("./assets/models/dancingMonster.glb"));
+      skin1.transform.position.x = 1.5;
+      skin1.animationController.loop = true;
+      skin1.animationController.speed = 5;
+      skin1.animationController.play();
+
+      var skin2 = scene.add(await renderer.loadGLTF("./assets/models/dancingMonster.glb"));
+      skin2.transform.position.x = -1.5;
+      skin2.animationController.loop = true;
+      skin2.animationController.play();
+
+      var skin3 = scene.add(skin2.copy());
+      skin3.transform.position.x = -3;
+      skin3.animationController.speed = 1.5;
+      // skin3.animationController.loop = true;
+      // skin3.animationController.play();
+
+      for (let i = 0; i < 30; i++) {
+        var skin4 = scene.add(skin2.copy());
+        skin4.transform.position.x = -(30 - 1) / 2 + i;
+        skin4.transform.position.z = -4;
+        skin4.animationController.speed = Math.random() * 2;
+        skin4.animationController = null;
+      }
 
       var skin = scene.add(await renderer.loadGLTF("./assets/models/running/skinWithGun.glb"));
 

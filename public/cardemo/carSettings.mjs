@@ -21,8 +21,6 @@ var aventador = {
     suspensionTravel: 0.1,
     rideHeightOffset: 0.08,
 
-    controlScheme: Car.ControlScheme.Controller,
-
     ABS: true,
     differential: Car.ENUMS.DIFFERENTIAL.LSD,
 
@@ -48,7 +46,7 @@ var drift = {
     friction: 1,
     forwardFriction: 1 * 0.9,
     sidewaysFriction: 1.1,
-    maxSteerAngle: 60, //53
+    maxSteerAngle: 70, //53
     torque: 400,
 
     suspensionForce: 90_000,
@@ -56,8 +54,6 @@ var drift = {
     suspensionTravel: 0.1,
     rideHeightOffset: 0.08,
     antiRoll: 16_000,
-
-    controlScheme: Car.ControlScheme.Controller,
 
     ABS: false,
     TCS: false,
@@ -95,8 +91,6 @@ var ranger = {
     rideHeightOffset: 0.3,
     antiRoll: 15_000,
 
-    controlScheme: Car.ControlScheme.Controller,
-
     TCS: true,
     ABS: true,
 
@@ -113,4 +107,4 @@ export {
   drift,
   drift2,
   ranger
-}
+};

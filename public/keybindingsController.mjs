@@ -8,16 +8,15 @@ function Keybindings(renderer, gamepadManager, bindings = {
     controller: "LSHorizontal"
   }
 }) {
-  var bindings = bindings;
   this.gamepadManager = gamepadManager;
 
   this.setBindings = function(newBindings = {}) {
     bindings = newBindings;
-  }
+  };
 
   this.setBinding = function(name, inputs = {}) {
     bindings[name] = inputs;
-  }
+  };
 
   this.getInput = function(name) {
     if (bindings[name]) {
@@ -37,7 +36,7 @@ function Keybindings(renderer, gamepadManager, bindings = {
     }
 
     // throw new Error("Invalid keybinding name: " + name);
-  }
+  };
 
   this.getInputDown = function(name) {
     if (bindings[name]) {
@@ -57,7 +56,7 @@ function Keybindings(renderer, gamepadManager, bindings = {
     }
 
     // throw new Error("Invalid keybinding name: " + name);
-  }
+  };
 }
 
 export default Keybindings;

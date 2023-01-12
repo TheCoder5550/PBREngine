@@ -46,6 +46,7 @@ import * as brokenPlasterSource from "../assets/shaders/custom/brokenPlaster.gls
 import * as waterSource from "../assets/shaders/custom/water.glsl.mjs";
 import Keybindings from "../keybindingsController.mjs";
 import { Car } from "../car.js";
+import GamepadManager, { deadZone } from "../gamepadManager.js";
 
 var perlin = new Perlin();
 
@@ -3844,14 +3845,6 @@ function SetupEvents() {
       }
     }
   }
-}
-
-function deadZone(x, zone = 0.1) {
-  if (Math.abs(x) < zone) {
-    return 0;
-  }
-
-  return x;
 }
 
 // bruh performance intensive

@@ -8,7 +8,7 @@ import Matrix from "../engine/matrix.mjs";
 import Quaternion from "../engine/quaternion.mjs";
 import { clamp, lerp } from "../engine/helper.mjs";
 import Keybindings from "../keybindingsController.mjs";
-import GamepadManager from "../gamepadManager.js";
+import GamepadManager, { deadZone, quadraticCurve } from "../gamepadManager.js";
 
 window.Vector = Vector;
 
@@ -1519,24 +1519,6 @@ function Car(settings = {}) {
 Car.ENUMS = {
   DIFFERENTIAL: { OPEN: 0, LOCKED: 1, LSD: 2 }
 };
-
-/*
-
-  Controller helpers
-
-*/
-
-function deadZone(x, zone = 0.1) {
-  if (Math.abs(x) < zone) {
-    return 0;
-  }
-
-  return x;
-}
-
-function quadraticCurve(x) {
-  return Math.abs(x) * x;
-}
 
 function DebugLines() {
   var matrices = [];

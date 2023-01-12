@@ -77,6 +77,7 @@ uniform vec3 sunDirection;
 uniform vec3 sunIntensity;
 
 // Environment
+uniform vec3 ambientColor;
 uniform float environmentIntensity;
 uniform samplerCube u_diffuseIBL;
 uniform samplerCube u_specularIBL;
@@ -524,6 +525,7 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
   float f0 = 0.04;
 
   vec3 col = vec3(0);
+  col += ambientColor;
   col += IBL(N, V, R, _albedo.rgb, _metallic, _roughness, f0) * _ao;
   
   if (sunIntensity.xyz != vec3(0)) {
@@ -575,6 +577,21 @@ motionVector = (NDCPos - PrevNDCPos).xy * 0.5 + 0.5;
 */
 
 // vertex
+var vertexMotionBlur = `
+// Motion blur
+out vec4 clipSpace;
+out vec4 prevClipSpace;
+uniform mat4 prevViewMatrix;
+uniform mat4 prevModelMatrix;
+`;
+
+var vertexMotionBlurMain = `
+// Motion blur
+vec4 prevCs = projectionMatrix * prevViewMatrix * prevModelMatrix * vec4(position, 1.0);
+prevClipSpace = prevCs;
+clipSpace = gl_Position;
+`;
+
 var webgl2Vertex = `
 ${shaderBase}
 
@@ -593,12 +610,6 @@ out vec2 vUV;
 out mat3 vTBN;
 //#out
 
-// Motion blur
-out vec4 clipSpace;
-out vec4 prevClipSpace;
-uniform mat4 prevViewMatrix;
-uniform mat4 prevModelMatrix;
-
 const int levels = 2;
 
 uniform sharedPerScene {
@@ -615,6 +626,8 @@ uniform mat4 modelMatrix;
 //Shadows
 uniform mat4 textureMatrices[levels];
 out vec4 projectedTexcoords[levels];
+
+${vertexMotionBlur}
 
 void main() {
   //#main
@@ -636,13 +649,9 @@ void main() {
 
   vPosition = vec3(worldPosition);
   
-  // Motion blur
-  vec4 prevCs = projectionMatrix * prevViewMatrix * prevModelMatrix * vec4(position, 1.0);
-  vec4 cs = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * viewMatrix * worldPosition;
 
-  prevClipSpace = prevCs;
-  clipSpace = cs;
-  gl_Position = cs;
+  ${vertexMotionBlurMain}
 }
 `;
 
@@ -664,12 +673,6 @@ out vec2 vUV;
 out mat4 vModelMatrix;
 out mat3 vTBN;
 
-// Motion blur
-out vec4 clipSpace;
-out vec4 prevClipSpace;
-uniform mat4 prevViewMatrix;
-uniform mat4 prevModelMatrix;
-
 const int levels = 2;
 
 uniform sharedPerScene {
@@ -682,6 +685,8 @@ uniform sharedPerScene {
 //Shadows
 uniform mat4 textureMatrices[levels];
 out vec4 projectedTexcoords[levels];
+
+${vertexMotionBlur}
 
 void main() {
   vNormal = normal;
@@ -703,6 +708,8 @@ void main() {
   vPosition = vec3(worldPosition);
   
   gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+
+  ${vertexMotionBlurMain}
 }
 `;
 
@@ -711,13 +718,13 @@ ${shaderBase}
 
 in vec3 position;
 in vec3 normal;
-in vec3 tangent;
+in vec4 tangent;
 in vec3 color;
 in vec2 uv;
 
 out vec3 vPosition;
 out vec3 vNormal;
-out vec3 vTangent;
+out vec4 vTangent;
 out vec3 vColor;
 out vec2 vUV;
 out mat3 vTBN;
@@ -763,10 +770,16 @@ mat4 getBoneMatrix(float jointNdx) {
 uniform mat4 textureMatrices[levels];
 out vec4 projectedTexcoords[levels];
 
+${vertexMotionBlur}
+
 void main() {
   vTangent = tangent;
   vUV = uv;
   vColor = color;
+
+  vNormal = normal;
+  // vNormal = mat3(inverse(modelMatrix * skinMatrix)) * normal;
+  // vNormal = mat3(world * inverse(modelMatrix)) * normal;
 
   mat4 skinMatrix = getBoneMatrix(joints[0]) * weights[0] +
                     getBoneMatrix(joints[1]) * weights[1] +
@@ -778,8 +791,11 @@ void main() {
   // mat4 world = modelMatrix;
 
   mat4 TBNWorld = modelMatrix * skinMatrix * modelMatrix;
-  vec3 _T = normalize(vec3(TBNWorld * vec4(tangent, 0.0)));
-  vec3 _B = normalize(vec3(TBNWorld * vec4(cross(normal, tangent), 0.0)));
+  // vec3 _T = normalize(vec3(TBNWorld * vec4(tangent, 0.0)));
+  // vec3 _B = normalize(vec3(TBNWorld * vec4(cross(normal, tangent), 0.0)));
+  // vec3 _N = normalize(vec3(TBNWorld * vec4(normal, 0.0)));
+  vec3 _T = normalize(vec3(TBNWorld * vec4(vTangent.xyz, 0.0)));
+  vec3 _B = normalize(vec3(TBNWorld * vec4(cross(normal, vTangent.xyz) * vTangent.w, 0.0))); // bruh According to comment on stackoverflow (https://blender.stackexchange.com/questions/220756/why-does-blender-output-vec4-tangents-for-gltf), tangents are vec4 and .w is used for bitangent sign (who could have known... :(
   vec3 _N = normalize(vec3(TBNWorld * vec4(normal, 0.0)));
   vTBN = mat3(_T, _B, _N);
 
@@ -790,11 +806,13 @@ void main() {
   
   gl_Position = projectionMatrix * viewMatrix * worldPosition;
   vPosition = worldPosition.xyz;
-  vNormal = normal;
-  // vNormal = mat3(inverse(modelMatrix * skinMatrix)) * normal;
-  // vNormal = mat3(world * inverse(modelMatrix)) * normal;
 
   vSkin = skinMatrix;
+
+  // Motion blur
+  vec4 prevCs = projectionMatrix * prevViewMatrix * prevModelMatrix * skinMatrix * vec4(position, 1.0);
+  prevClipSpace = prevCs;
+  clipSpace = gl_Position;
 }
 `;
 
@@ -874,7 +892,7 @@ var webgl2FragmentInstanced = webgl2Fragment;
 webgl2FragmentInstanced = webgl2FragmentInstanced.replace(/modelMatrix/g, "vModelMatrix");
 webgl2FragmentInstanced = webgl2FragmentInstanced.replace(/uniform mat4 vModelMatrix/g, "in mat4 vModelMatrix");
 // bruh
-webgl2FragmentInstanced = webgl2FragmentInstanced.replace(`motionVector = (NDCPos - PrevNDCPos).xy * 0.5 + 0.5;`, "motionVector = vec2(0.5);");
+webgl2FragmentInstanced = webgl2FragmentInstanced.replace("motionVector = (NDCPos - PrevNDCPos).xy * 0.5 + 0.5;", "motionVector = vec2(0.5);");
 
 var webgl2FragmentSkinned = webgl2Fragment;
 

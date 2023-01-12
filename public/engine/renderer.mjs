@@ -3673,6 +3673,7 @@ function Renderer(settings = {}) {
       if (getUniformLocation("sunDirection") != null)         gl.uniform3fv(getUniformLocation("sunDirection"), Vector.toArray(currentScene.sunDirection)); // bruh gc
       if (getUniformLocation("sunIntensity") != null)         gl.uniform3fv(getUniformLocation("sunIntensity"), Vector.toArray(currentScene.sunIntensity)); // ^
       if (getUniformLocation("environmentIntensity") != null) gl.uniform1f(getUniformLocation("environmentIntensity"), currentScene.environmentIntensity);
+      if (getUniformLocation("ambientColor") != null)         gl.uniform3fv(getUniformLocation("ambientColor"), currentScene.ambientColor);
 
       var sps = this.programContainer.uniformBuffers["sharedPerScene"];
       if (sps && currentScene.sharedUBO) {
@@ -3749,7 +3750,7 @@ function Renderer(settings = {}) {
     this.jointMatrices = [];
     this.jointData = new Float32Array(joints.length * 16);
     this.textureIndex = 25; // bruh
-    this.parentNode;// = scene.root; // Bruh
+    this.parentNode = null;
 
     var initialUpdate = true;
   
@@ -3782,7 +3783,10 @@ function Renderer(settings = {}) {
       // }
     }
   
-    this.bindTexture = function() {
+    this.bindTexture = function(mat) {
+      gl.uniform1i(mat.programContainer.getUniformLocation("u_jointTexture"), this.textureIndex);
+      gl.uniform1f(mat.programContainer.getUniformLocation("u_numJoints"), this.joints.length);
+
       gl.activeTexture(gl.TEXTURE0 + this.textureIndex);
       gl.bindTexture(gl.TEXTURE_2D, this.jointTexture);
     }
@@ -3815,7 +3819,7 @@ function Renderer(settings = {}) {
       this.skin.update();
     }
   
-    this.render = function(camera, matrix, shadowPass = false, opaquePass = true) {
+    this.render = function(camera, matrix, shadowPass = false, opaquePass = true, prevMatrix) {
       for (var i = 0; i < this.meshData.length; i++) {
         var md = this.meshData[i];
         var mat = this.materials[i];
@@ -3826,8 +3830,12 @@ function Renderer(settings = {}) {
   
         useProgram(mat.program);
         md.bindBuffers(mat.programContainer);
+
+        // gl.uniform1i(mat.programContainer.getUniformLocation("u_jointTexture"), this.skin.textureIndex);
+        // gl.uniform1f(mat.programContainer.getUniformLocation("u_numJoints"), this.skin.joints.length);
   
-        mat.bindModelMatrixUniform(matrix);
+        // mat.bindModelMatrixUniform(matrix);
+        mat.bindModelMatrixUniform(matrix, prevMatrix, camera.prevViewMatrix);
         mat.bindUniforms(camera);
         if (!shadowPass && renderer.shadowCascades) {
           renderer.shadowCascades.setUniforms(mat);
@@ -3835,15 +3843,15 @@ function Renderer(settings = {}) {
 
         // bruh why does order matter ^^^ (activeTexture and bindTexture (skin) vvvvvvv)
         // if (!shadowPass) {
-          gl.uniform1i(mat.programContainer.getUniformLocation("u_jointTexture"), this.skin.textureIndex);
-          gl.uniform1f(mat.programContainer.getUniformLocation("u_numJoints"), this.skin.joints.length);
+          // gl.uniform1i(mat.programContainer.getUniformLocation("u_jointTexture"), this.skin.textureIndex);
+          // gl.uniform1f(mat.programContainer.getUniformLocation("u_numJoints"), this.skin.joints.length);
         // }
 
         if (shadowPass) {
           gl.uniform1iv(mat.programContainer.getUniformLocation("projectedTextures[0]"), [ 0, 0 ]);
         }
 
-        this.skin.bindTexture();
+        this.skin.bindTexture(mat);
   
         mat.setCulling(shadowPass);
         md.drawCall(this.drawMode);
@@ -3896,6 +3904,11 @@ function Renderer(settings = {}) {
     }
   
     this.updateInstance = function(instance, newMatrix, updateBuffer = true) {
+      if (needsBufferUpdate) {
+        this.updateMatrixData();
+        needsBufferUpdate = false;
+      }
+
       Matrix.copy(newMatrix, instance);
       this.matrixData.set(instance, this.matrices.indexOf(instance) * 16);
   
@@ -4545,8 +4558,6 @@ function Renderer(settings = {}) {
 
       gl.bindTexture(gl.TEXTURE_2D, texture);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, metalImage.width, metalImage.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, imageData);
-
-      console.log("Metal/roughness loaded");
     }).catch(err => {
       throw err;
     });
@@ -4647,7 +4658,7 @@ function Renderer(settings = {}) {
   */
 
   this.loadGLTF = async function(path, loadSettings = {}) {
-    console.groupCollapsed('Load GLTF: ' + path);
+    console.groupCollapsed("Load GLTF: " + path);
     var gltfData = await this.getGLTFData(path);
     var gameObject = await this.createGameObjectFromGLTFData(gltfData, loadSettings);
     console.groupEnd();
@@ -4810,8 +4821,8 @@ function Renderer(settings = {}) {
 
           var outBuf = outputBuffer;
           if (outputAccessor.type == "VEC3") {
-            var outputVectors = [];
-            for (var k = 0; k < outputBuffer.byteLength / 4; k += 3) {
+            let outputVectors = [];
+            for (let k = 0; k < outputBuffer.byteLength / 4; k += 3) {
               outputVectors.push({
                 x: outputBuffer[k],
                 y: outputBuffer[k + 1],
@@ -4822,8 +4833,8 @@ function Renderer(settings = {}) {
             outBuf = outputVectors;
           }
           else if (outputAccessor.type == "VEC4") {
-            var outputVectors = [];
-            for (var k = 0; k < outputBuffer.byteLength / 4; k += 4) {
+            let outputVectors = [];
+            for (let k = 0; k < outputBuffer.byteLength / 4; k += 4) {
               outputVectors.push({
                 x: outputBuffer[k],
                 y: outputBuffer[k + 1],
@@ -4835,12 +4846,23 @@ function Renderer(settings = {}) {
             outBuf = outputVectors;
           }
 
+          var inputTangents;
+          var outputTangents;
+
+          if (sampler.interpolation == "CUBICSPLINE") {
+            inputTangents = outBuf.filter((e, i) => i % 3 == 0);
+            outputTangents = outBuf.filter((e, i) => i % 3 == 0);
+            outBuf = outBuf.filter((e, i) => i % 3 == 1);
+          }
+
           currentChannels.push({
             "target": currentNodes[channel.target.node],
             "path": channel.target.path,
             "interpolation": sampler.interpolation,
             "inputBuffer": inputBuffer,
-            "outputBuffer": outBuf
+            "outputBuffer": outBuf,
+            "inputTangents": inputTangents,
+            "outputTangents": outputTangents,
           });
         }
 
@@ -4858,7 +4880,7 @@ function Renderer(settings = {}) {
           outJoints[j] = match;
         }
         else {
-          console.log("Invalid joint index!");
+          console.warn("Invalid joint index!");
         }
       }
 
@@ -4971,7 +4993,6 @@ function Renderer(settings = {}) {
           if (loadNormals) {
             var normals = getAccessorAndBuffer(currentPrimitive.attributes.NORMAL);
             if (normals) {
-              console.log("Using supplied normals", normals);
               meshData.normal = { bufferData: normals.buffer, size: normals.size, stride: normals.stride };
             }
             else {
@@ -4983,7 +5004,6 @@ function Renderer(settings = {}) {
           if (loadTangents) {
             var tangents = getAccessorAndBuffer(currentPrimitive.attributes.TANGENT);
             if (tangents) {
-              console.log("Using supplied tangents", tangents);
               meshData.tangent = { bufferData: tangents.buffer, size: tangents.size, stride: tangents.stride };
             }
             else if (uvs) {
@@ -5010,8 +5030,6 @@ function Renderer(settings = {}) {
               stride: accAndBuffer.stride
             };
           }
-
-          // console.log(meshData);
 
           var loadMaterials = loadSettings.loadMaterials ?? true;
 
@@ -5116,8 +5134,6 @@ function Renderer(settings = {}) {
               meshMaterial.doubleSided = doubleSided;
               meshMaterial.name = material.name || "No name!";
               materialsCreated[materialIndex] = meshMaterial;
-
-              // console.log(material, meshMaterial);
             }
           }
     
@@ -6728,6 +6744,7 @@ function Scene(name) {
   this.skyboxVisible = true;
   this.smoothSkybox = false;
   this.environmentIntensity = 1;
+  this.ambientColor = [0, 0, 0];
 
   var lights = [];
 
@@ -6844,6 +6861,7 @@ function Scene(name) {
   }
 
   this.update = function(dt) {
+    this.updateLights(); // bruh should probably only be run when a light changes
     this.root.update(dt);
   }
 
@@ -7146,8 +7164,6 @@ function AnimationController(animations = []) {
       }
     }
 
-    
-
     return newAC;
   }
 
@@ -7255,7 +7271,7 @@ function AnimationController(animations = []) {
       return;
     }
 
-    var lowerName = matchName.toLowerCase();
+    var lowerName = matchName?.toLowerCase();
 
     for (var animation of this.animations) {
       if (matchName != undefined && animation.name.toLowerCase().indexOf(lowerName) == -1) continue;
@@ -7284,44 +7300,34 @@ function AnimationController(animations = []) {
 
       var indexData = this.getClosestIndex(channel.inputBuffer, t);
       
-      // bruh interpolation mode
       // if (true || (channel.outputBuffer[indexData.indices[0]] && channel.outputBuffer[indexData.indices[1]])) {
-        if (channel.path == "translation") {
-          var pos = Vector.lerp(
-            channel.outputBuffer[indexData.indices[0]],
-            channel.outputBuffer[indexData.indices[1]],
-            indexData.lerpTime
-          );
-
-          currentOut.translation = pos;
-        }
-        else if (channel.path == "rotation") {
-          // console.log(
-          //   channel,
-          //   indexData.indices[0],
-          //   indexData.indices[1],
-          //   channel.outputBuffer[indexData.indices[0]],
-          //   channel.outputBuffer[indexData.indices[1]],
-          //   indexData.lerpTime
-          // );
-          
-          var rot = Quaternion.slerp(
-            channel.outputBuffer[indexData.indices[0]],
-            channel.outputBuffer[indexData.indices[1]],
-            indexData.lerpTime
-          );
-          
-          currentOut.rotation = Quaternion.normalize(rot);
-        }
-        else if (channel.path == "scale") {
-          var scale = Vector.lerp(
-            channel.outputBuffer[indexData.indices[0]],
-            channel.outputBuffer[indexData.indices[1]],
-            indexData.lerpTime
-          );
-
-          currentOut.scale = scale;
-        }
+      if (channel.path == "translation") {
+        currentOut.translation = interpolateVector(
+          channel,
+          indexData.indices[0],
+          indexData.indices[1],
+          indexData.lerpTime,
+          channel.interpolation
+        );
+      }
+      else if (channel.path == "rotation") {
+        currentOut.rotation = interpolateQuaternion(
+          channel,
+          indexData.indices[0],
+          indexData.indices[1],
+          indexData.lerpTime,
+          channel.interpolation
+        );
+      }
+      else if (channel.path == "scale") {
+        currentOut.scale = interpolateVector(
+          channel,
+          indexData.indices[0],
+          indexData.indices[1],
+          indexData.lerpTime,
+          channel.interpolation
+        );
+      }
       // }
 
       output.push(currentOut);
@@ -7330,7 +7336,87 @@ function AnimationController(animations = []) {
     return output;
   }
 
+  function interpolateVector(channel, prevIndex, nextIndex, t, mode = "LINEAR") {
+    var prevPoint = channel.outputBuffer[prevIndex];
+    var nextPoint = channel.outputBuffer[nextIndex];
+
+    if (mode == "LINEAR") {
+      return Vector.lerp(prevPoint, nextPoint, t);
+    }
+    else if (mode == "STEP") {
+      return Vector.copy(nextPoint);
+    }
+    else if (mode == "CUBICSPLINE") {
+      if (channel.inputTangents && channel.outputTangents) {
+        var deltaTime = channel.inputBuffer[prevIndex] - channel.inputBuffer[nextIndex];
+        var prevTangent = Vector.multiply(channel.inputTangents[prevIndex], deltaTime);
+        var nextTangent = Vector.multiply(channel.outputTangents[prevIndex], deltaTime);
+
+        t = 1 - t;
+        return cubicSplineVector(nextPoint, prevTangent, prevPoint, nextTangent, t);
+      }
+    }
+
+    return Vector.zero();
+  }
+
+  function interpolateQuaternion(channel, prevIndex, nextIndex, t, mode = "LINEAR") {
+    var prevPoint = channel.outputBuffer[prevIndex];
+    var nextPoint = channel.outputBuffer[nextIndex];
+
+    if (mode == "LINEAR") {
+      return Quaternion.slerp(prevPoint, nextPoint, t);
+    }
+    else if (mode == "STEP") {
+      return Quaternion.copy(nextPoint);
+    }
+    else if (mode == "CUBICSPLINE") {
+      if (channel.inputTangents && channel.outputTangents) {
+        var deltaTime = channel.inputBuffer[prevIndex] - channel.inputBuffer[nextIndex];
+        var prevTangent = Quaternion.multiply(channel.inputTangents[prevIndex], deltaTime);
+        var nextTangent = Quaternion.multiply(channel.outputTangents[prevIndex], deltaTime);
+
+        t = 1 - t;
+        return cubicSplineQuaternion(nextPoint, prevTangent, prevPoint, nextTangent, t);
+      }
+    }
+
+    return Quaternion.identity();
+  }
+
+  function cubicSplineVector(prevPoint, prevTangent, nextPoint, nextTangent, t) {
+    var t2 = t * t;
+    var t3 = t2 * t;
+
+    var a = Vector.multiply(prevPoint, 2 * t3 - 3 * t2 + 1);
+    var b = Vector.multiply(prevTangent, t3 - 2 * t2 + t);
+    var c = Vector.multiply(nextPoint, -2 * t3 + 3 * t2);
+    var d = Vector.multiply(nextTangent, t3 - t2);
+    
+    return Vector.add(Vector.add(a, b), Vector.add(c, d));
+  }
+
+  function cubicSplineQuaternion(prevPoint, prevTangent, nextPoint, nextTangent, t) {
+    var t2 = t * t;
+    var t3 = t2 * t;
+
+    var a = Quaternion.multiply(prevPoint, 2 * t3 - 3 * t2 + 1);
+    var b = Quaternion.multiply(prevTangent, t3 - 2 * t2 + t);
+    var c = Quaternion.multiply(nextPoint, -2 * t3 + 3 * t2);
+    var d = Quaternion.multiply(nextTangent, t3 - t2);
+    
+    return Quaternion.add(Quaternion.add(a, b), Quaternion.add(c, d));
+  }
+
   this.getClosestIndex = function(arr, t) {
+    // var i = arr.findIndex(a => t < a);
+    // if (i !== -1) {
+    //   return {
+    //     indices: [i, Math.max(0, i - 1)],
+    //     lerpTime: inverseLerp(arr[i], arr[Math.max(0, i - 1)], t)
+    //   };
+    // }
+
     for (var i = 0; i < arr.length; i++) {
       if (t < arr[i]) {
         return {

@@ -11,7 +11,7 @@ import { GetMeshAABB, PhysicsEngine, MeshCollider } from "../engine/physics.mjs"
 import { Car } from "../car.js";
 import * as carSettings from "./carSettings.mjs";
 import Keybindings from "../keybindingsController.mjs";
-import GamepadManager from "../gamepadManager.js";
+import GamepadManager, { quadraticCurve, deadZone } from "../gamepadManager.js";
 
 // import * as roadSource from "../assets/shaders/custom/road.glsl.mjs";
 import * as carPaintShader from "../assets/shaders/custom/carPaint.glsl.mjs";
@@ -277,7 +277,7 @@ document.addEventListener("DOMContentLoaded", function () {
         twoTone: 0,
         color1: [0.05, 0.05, 0.05],
       }),
-    }
+    };
 
     // // Snow heightmap
     // var snowRenderTexture = new renderer.RenderTexture(512, 512, {
@@ -407,15 +407,6 @@ document.addEventListener("DOMContentLoaded", function () {
     var carModel = scene.add(models[carKey].copy());
     var car = await loadCar(carSettings[carKey].settings, carModel);
 
-    // var resetPosition = Vector.copy(carResetPosition);
-    // resetPosition.y = terrain.getHeight(resetPosition.x, resetPosition.z) + 0.5;
-    // var spawnPoints = map.getChildren("SpawnPoint");
-    // var spawnPoint = randomFromArray(spawnPoints);
-    // var carResetPosition = Vector.subtract(spawnPoint.transform.worldPosition, car.bottomOffset);
-    // car.resetPosition = Vector.copy(carResetPosition);
-    // car.rb.position = car.gameObject.transform.position = Vector.copy(carResetPosition);
-    // car.rb.rotation = Quaternion.euler(0, Math.PI, 0);
-
     // var controlPoints = JSON.parse('[{"x":238.9905803198908,"y":11.010891524613218,"z":0},{"x":248.35707929750777,"y":12.723226116925797,"z":180.44198024083917},{"x":86.43430472565373,"y":2.3016814664524694,"z":266.0174367013337},{"x":-68.42980023211553,"y":0.19100462446428695,"z":210.60526962657337},{"x":-291.0143147923255,"y":11.280076252913517,"z":211.43427595496414},{"x":-367.37847338756524,"y":44.89847560608845,"z":4.4990887150972286e-14},{"x":-244.37662920532279,"y":21.023621965313925,"z":-177.55001396826387},{"x":-88.49153796618087,"y":6.502505256081859,"z":-272.34894957783365},{"x":75.79755225098485,"y":0.26559658178005546,"z":-233.28087872103728},{"x":209.2681935881474,"y":11.838977337235947,"z":-152.04224240064795}]');
     // var crCurve = new CatmullRomCurve(controlPoints, 0.5);
     // initRoad(crCurve);
@@ -431,7 +422,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // Grass
-    setProgress(10, totalTasks, "Planting grass");
+    setProgress(10, totalTasks, "Planting trees");
     var grass = scene.add(await renderer.loadGLTF("./pine.glb"));
     // var grass = scene.add(await renderer.loadGLTF("../assets/models/stylizedTree.glb"));
     // var grass = scene.add(await renderer.loadGLTF("../cargame/grass.glb"));
@@ -496,7 +487,7 @@ document.addEventListener("DOMContentLoaded", function () {
         // terrain.update();
 
         if (!paused) {
-          scene.updateLights();
+          // scene.updateLights();
 
           physicsEngine.update();
           car.update(frameTime);
@@ -542,20 +533,6 @@ document.addEventListener("DOMContentLoaded", function () {
     window.camera = camera;
     // window.terrain = terrain;
     window.car = car;
-
-    // bruh
-    function deadZone(x, zone = 0.1) {
-      if (Math.abs(x) < zone) {
-        return 0;
-      }
-    
-      return x;
-    }
-    
-    // bruh
-    function quadraticCurve(x) {
-      return Math.abs(x) * x;
-    }
 
     window.isDay = function(day) {
       if (day) {
@@ -767,6 +744,7 @@ document.addEventListener("DOMContentLoaded", function () {
       var car = new Car(scene, physicsEngine, {
         path: renderer.path,
         keybindings,
+        controlScheme: Car.ControlScheme.Controller,
 
         ...settings
       });
@@ -829,7 +807,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       var controlPoints = [];
       for (var i = 0; i < Math.PI * 2; i += Math.PI * 2 / 10) {
-        var r = 300 + (Math.random() - 0.5) * 200;
+        let r = 300 + (Math.random() - 0.5) * 200;
 
         var controlPoint = new Vector(
           r * Math.cos(i),
@@ -914,7 +892,7 @@ document.addEventListener("DOMContentLoaded", function () {
           0, 1
         ));
 
-        return elevation;
+        // return elevation;
       }
     }
 
@@ -1065,7 +1043,7 @@ document.addEventListener("DOMContentLoaded", function () {
       snowParticles.startSize = Vector.fill(0.05 + Math.random() * 0.07);
 
       snowParticles.emitPosition = () => {
-        return Vector.add(mainCamera.transform.position, new Vector((Math.random() - 0.5) * 50, 10, (Math.random() - 0.5) * 50));
+        return Vector.add(car.mainCamera.transform.position, new Vector((Math.random() - 0.5) * 50, 10, (Math.random() - 0.5) * 50));
       }
       snowParticles.emitVelocity = () => {
         return new Vector(0, -4, 0);
@@ -1074,19 +1052,19 @@ document.addEventListener("DOMContentLoaded", function () {
       snow.addComponent(snowParticles);
       scene.add(snow);
 
-      setInterval(_ => {
+      setInterval(() => {
         snowParticles.emit(5);
       }, 20);
     }
 
-    function bilinear(u, v, f) {
+    function bilinear(u, v, func) {
       var fu = Math.floor(u);
       var fv = Math.floor(v);
 
-      var a = f(fu, fv);
-      var b = f(fu + 1, fv);
-      var c = f(fu, fv + 1);
-      var d = f(fu + 1, fv + 1);
+      var a = func(fu, fv);
+      var b = func(fu + 1, fv);
+      var c = func(fu, fv + 1);
+      var d = func(fu + 1, fv + 1);
 
       var e = lerp(a, b, u % 1);
       var f = lerp(c, d, u % 1);
@@ -1158,8 +1136,8 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       this.distanceSqrToPoint = function(p) {
-        var closestDistance = Infinity;
-        var closestPoint;
+        // var closestDistance = Infinity;
+        // var closestPoint;
 
         var projP = Vector.copy(p);
         projP.y = 0;
@@ -1402,7 +1380,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       this.getSettingValue = function(setting) {
-        if (!setting in settings) {
+        if (!(setting in settings)) {
           console.warn("Setting not defined: " + setting);
           return;
         }
@@ -1411,7 +1389,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       this.setSettingValue = function(setting, value) {
-        if (!setting in settings) {
+        if (!(setting in settings)) {
           console.warn("Setting not defined: " + setting);
           return;
         }

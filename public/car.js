@@ -6,7 +6,7 @@ import { Rigidbody, BoxCollider, AABB, GetMeshAABB, SphereCollider } from "./eng
 import { clamp,  lerp } from "./engine/helper.mjs";
 import Keybindings from "./keybindingsController.mjs";
 import { Camera } from "./engine/renderer.mjs";
-import GamepadManager from "./gamepadManager.js";
+import GamepadManager, { deadZone, quadraticCurve } from "./gamepadManager.js";
 
 var radPerSecToRPM = 30 / Math.PI;
 
@@ -1086,8 +1086,9 @@ function Car(scene, physicsEngine, settings = {}) {
         var aComp = rollbar.a.compressionAmount ?? 0;
         var bComp = rollbar.b.compressionAmount ?? 0;
         var force = (aComp - bComp) * this.antiRoll;
-        if (rollbar.b.isGrounded) this.rb.AddImpulseAtPosition(Vector.multiply(rollbar.b.up, -force * dt), rollbar.b.worldPos);
-        if (rollbar.a.isGrounded) this.rb.AddImpulseAtPosition(Vector.multiply(rollbar.a.up, force * dt), rollbar.a.worldPos);
+
+        if (rollbar.a.isGrounded) this.rb.AddImpulseAtPosition(Vector.multiply(rollbar.a.up, (rollbar.b.isGrounded ? 1 : 2) * force * dt), rollbar.a.worldPos);
+        if (rollbar.b.isGrounded) this.rb.AddImpulseAtPosition(Vector.multiply(rollbar.b.up, (rollbar.a.isGrounded ? 1 : 2) * -force * dt), rollbar.b.worldPos);
       }
 
       for (var wheel of this.wheels) {
@@ -1954,18 +1955,6 @@ export {
   Car,
   Wing
 };
-
-function deadZone(x, zone = 0.1) {
-  if (Math.abs(x) < zone) {
-    return 0;
-  }
-
-  return x;
-}
-
-function quadraticCurve(x) {
-  return Math.abs(x) * x;
-}
 
 function loadSample(context, url) {
   return fetch(url)
