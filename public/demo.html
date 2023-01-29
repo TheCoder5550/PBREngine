@@ -11,6 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com">
   <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;400&display=swap" rel="stylesheet">
 
+  <script src="gameCanvas-5.0.js"></script>
   <script src="Stats.js"></script>
 
   <style>
@@ -34,7 +35,6 @@
   </style>
 </head>
 <body>
-  <script src="https://aaserver.net/libraries/gameCanvas/gameCanvasPerlin.js"></script>
   <script type="module">
 
     // import Renderer, { Scene, GameObject } from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/renderer.mjs";
@@ -51,6 +51,7 @@
     import * as roadSource from "./assets/shaders/custom/road.glsl.mjs";
     import * as terrainSource from "./cardemo/terrain.glsl.mjs";
 
+    import Perlin from "./engine/perlin.mjs";
     import Terrain from "./engine/terrain.mjs";
 
     import { PhysicsEngine } from "./engine/physics.mjs";
@@ -121,7 +122,7 @@
         ...carSettings.drift.settings
       });
       car.resetPosition = new Vector(5, 5, 0);
-      await car.setup("./assets/models/toyota_ae86.glb");
+      await car.setup("./assets/models/skyline.glb");
       window.car = car;
 
       await scene.loadEnvironment({

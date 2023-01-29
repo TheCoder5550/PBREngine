@@ -9,6 +9,7 @@ function Keybindings(renderer, gamepadManager, bindings = {
   }
 }) {
   this.gamepadManager = gamepadManager;
+  var lastInputMethod = "none";
 
   this.setBindings = function(newBindings = {}) {
     bindings = newBindings;
@@ -38,19 +39,56 @@ function Keybindings(renderer, gamepadManager, bindings = {
     // throw new Error("Invalid keybinding name: " + name);
   };
 
+  this.getInputAndInputMethod = function(name) {
+    var method = "none";
+    var value = 0;
+
+    if (bindings[name]) {
+      var keyboardValue = 0;
+      if (Array.isArray(bindings[name].keyboard)) {
+        var a = renderer.getKey(bindings[name].keyboard[0]) ? 1 : 0;
+        var b = renderer.getKey(bindings[name].keyboard[1]) ? 1 : 0;
+        keyboardValue = b - a;
+      }
+      else {
+        keyboardValue = renderer.getKey(bindings[name].keyboard) ? 1 : 0;
+      }
+
+      var controllerValue = this.gamepadManager.getButton(bindings[name].controller) ?? this.gamepadManager.getAxis(bindings[name].controller) ?? 0;
+
+      if (Math.abs(keyboardValue) > Math.abs(controllerValue)) {
+        method = "keyboard";
+        value = keyboardValue;
+      }
+      else {
+        method = "controller";
+        value = controllerValue;
+      }
+
+      lastInputMethod = method;
+    }
+
+    return {
+      value,
+      method: lastInputMethod
+    };
+
+    // throw new Error("Invalid keybinding name: " + name);
+  };
+
   this.getInputDown = function(name) {
     if (bindings[name]) {
       var keyboardValue = 0;
       if (Array.isArray(bindings[name].keyboard)) {
-        var a = renderer.getKeyDown(bindings[name].keyboard[0]) ? 1 : 0;
-        var b = renderer.getKeyDown(bindings[name].keyboard[1]) ? 1 : 0;
+        var a = renderer.getKeyDown(bindings[name].keyboard[0], name) ? 1 : 0;
+        var b = renderer.getKeyDown(bindings[name].keyboard[1], name) ? 1 : 0;
         keyboardValue = b - a;
       }
       else {
-        keyboardValue = renderer.getKeyDown(bindings[name].keyboard) ? 1 : 0;
+        keyboardValue = renderer.getKeyDown(bindings[name].keyboard/*, name*/) ? 1 : 0;
       }
 
-      var controllerValue = this.gamepadManager.getButtonDown(bindings[name].controller) ?? this.gamepadManager.getAxis(bindings[name].controller) ?? 0;
+      var controllerValue = this.gamepadManager.getButtonDown(bindings[name].controller, undefined/*, name*/) ?? this.gamepadManager.getAxis(bindings[name].controller) ?? 0;
 
       return Math.abs(keyboardValue) > Math.abs(controllerValue) ? keyboardValue : controllerValue;
     }

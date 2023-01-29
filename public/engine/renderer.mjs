@@ -65,6 +65,7 @@ function Renderer(settings = {}) {
   var frameNumber = 0;
   var time = 0;
   var lastUpdate;
+  this.startTime = new Date();
 
   this.eventHandler = new EventHandler();
 
@@ -94,7 +95,11 @@ function Renderer(settings = {}) {
   var _programContainers = {};
   this.programContainers = {
     get skybox() { return _getProgramContainer("skybox", skyboxSource) },
+
     get shadow() { return _getProgramContainer("shadow", shadowSource) },
+    get shadowInstanced() { return _getProgramContainer("shadowInstanced", shadowSource) },
+    get shadowSkinned() { return _getProgramContainer("shadowSkinned", shadowSource) },
+
     get postprocessing() { return _getProgramContainer("postprocessing", postprocessingSource) },
     get bloom() { return _getProgramContainer("bloom", bloomSource) },
     get equirectangularToCubemap() { return _getProgramContainer("equirectangularToCubemap", equirectangularToCubemapSource) },
@@ -328,8 +333,12 @@ function Renderer(settings = {}) {
     gl.getError(); // Clear errors
 
     // var shadowProgram = await this.createProgramFromFile(this.path + `assets/shaders/built-in/webgl${this.version}/shadow`);
-    var shadowProgram = this.programContainers.shadow;
-    this.shadowCascades = new ShadowCascades(shadowProgram,
+    this.shadowCascades = new ShadowCascades(
+      {
+        basic: this.programContainers.shadow,
+        instanced: this.programContainers.shadowInstanced,
+        skinned: this.programContainers.shadowSkinned,
+      },
       settings.shadowSizes ?? [4, 16],
       settings.shadowBiases ?? [-0.0003, -0.0005],
       settings.shadowResolution ?? 1024
@@ -759,29 +768,29 @@ function Renderer(settings = {}) {
     return !!keys[key];
   }
 
-  this.getKeyDown = function(key) {
+  this.getKeyDown = function(key, uniqueID = "") {
     if (this.getKey(key)) {
-      if (keysDown[key]) {
-        keysDown[key] = false;
+      if (keysDown[key + uniqueID]) {
+        keysDown[key + uniqueID] = false;
         return true;
       }
     }
     else {
-      keysDown[key] = true;
+      keysDown[key + uniqueID] = true;
     }
 
     return false;
   }
 
-  this.getKeyUp = function(key) {
+  this.getKeyUp = function(key, uniqueID = "") {
     if (!this.getKey(key)) {
-      if (keysUp[key]) {
-        keysUp[key] = false;
+      if (keysUp[key + uniqueID]) {
+        keysUp[key + uniqueID] = false;
         return true;
       }
     }
     else {
-      keysUp[key] = true;
+      keysUp[key + uniqueID] = true;
     }
 
     return false;
@@ -2950,7 +2959,7 @@ function Renderer(settings = {}) {
     }
   }
 
-  function ShadowCascades(programContainer, levelSizes = [50, 8], levelBiases = [-0.0025, -0.0005], res = 1024) {
+  function ShadowCascades(programContainers, levelSizes = [50, 8], levelBiases = [-0.0025, -0.0005], res = 1024) {
     var _this = this;
 
     levelSizes.reverse();
@@ -2958,7 +2967,8 @@ function Renderer(settings = {}) {
 
     this.levels = levelSizes.length;
 
-    this.programContainer = programContainer;
+    this.programContainers = programContainers;
+    this.programContainer = programContainers.basic;
     Object.defineProperty(this, 'program', {
       get: function() {
         return _this.programContainer.program;
@@ -2968,11 +2978,13 @@ function Renderer(settings = {}) {
       }
     });
     this.material = new Material(this.programContainer);
+    this.materialInstanced = new Material(this.programContainers.instanced);
+    this.materialSkinned = new Material(this.programContainers.skinned);
 
     var textureMatrices = new Float32Array(this.levels * 16);
 
     this.shadowmaps = [];
-    for (var i = 0; i < this.levels; i++) {
+    for (let i = 0; i < this.levels; i++) {
       var shadowmap = new Shadowmap(res, levelSizes[i], levelBiases[i], [gl["TEXTURE" + (30 - i * 2)], gl["TEXTURE" + (31 - i * 2)]]);
       shadowmap.textureMatrix = new Float32Array(textureMatrices.buffer, Float32Array.BYTES_PER_ELEMENT * 16 * (1 - i), 16);
       this.shadowmaps.push(shadowmap);
@@ -2980,7 +2992,7 @@ function Renderer(settings = {}) {
 
     var projectedTextures = new Array(this.levels);
     var biases = new Array(this.levels);
-    for (var i = 0; i < this.levels; i++) {
+    for (let i = 0; i < this.levels; i++) {
       var ind = this.levels - 1 - i;
       projectedTextures[i] = 30 - ind * 2;
       biases[i] = this.shadowmaps[ind].bias;
@@ -3016,6 +3028,8 @@ function Renderer(settings = {}) {
 
         scene.render(camera, {
           materialOverride: this.material,
+          materialOverrideInstanced: this.materialInstanced,
+          materialOverrideSkinned: this.materialSkinned,
           renderPass: ENUMS.RENDERPASS.SHADOWS
         });
       }
@@ -3654,6 +3668,8 @@ function Renderer(settings = {}) {
   
       // bruh
       var currentScene = renderer.scenes[renderer.currentScene];
+
+      var time = (new Date() - renderer.startTime) / 1000; // bruh
       if (getUniformLocation("iTime") != null && typeof time != "undefined") gl.uniform1f(getUniformLocation("iTime"), time); // bruh
 
       // bruh
@@ -3808,6 +3824,7 @@ function Renderer(settings = {}) {
     }
   }
   
+  Renderer.SkinnedMeshRenderer = SkinnedMeshRenderer;
   function SkinnedMeshRenderer(skin, materials, meshData, options = {}) {
     this.materials = Array.isArray(materials) ? materials : [materials];
     this.meshData = Array.isArray(meshData) ? meshData : [meshData];
@@ -3876,6 +3893,7 @@ function Renderer(settings = {}) {
     }
   }
   
+  Renderer.MeshInstanceRenderer = MeshInstanceRenderer;
   this.MeshInstanceRenderer = MeshInstanceRenderer;
   function MeshInstanceRenderer(materials, meshData, options = {}) {
     this.materials = Array.isArray(materials) ? materials : [materials];
@@ -3951,7 +3969,7 @@ function Renderer(settings = {}) {
         needsBufferUpdate = false;
       }
 
-      if (this.matrices.length > 0 && !shadowPass) {
+      if (this.matrices.length > 0) {
         for (var i = 0; i < this.meshData.length; i++) {
           var md = this.meshData[i];
           var mat = this.materials[i];
@@ -4329,176 +4347,178 @@ function Renderer(settings = {}) {
       }
     }
 
-    function calculateNormals(vertices, indices) {
-      // bruh fix for stride
-      function getVertex(i) {
-        return {
-          x: vertices[i * 3],
-          y: vertices[i * 3 + 1],
-          z: vertices[i * 3 + 2]
-        };
-      }
+    // function calculateNormals(vertices, indices) {
+    //   // bruh fix for stride
+    //   function getVertex(i) {
+    //     return {
+    //       x: vertices[i * 3],
+    //       y: vertices[i * 3 + 1],
+    //       z: vertices[i * 3 + 2]
+    //     };
+    //   }
 
-      if (indices) {
-        var normalTable = new Array(vertices.length / 3);
-        for (var i = 0; i < normalTable.length; i++) {
-          normalTable[i] = [];
-        }
+    //   if (indices) {
+    //     var normalTable = new Array(vertices.length / 3);
+    //     for (var i = 0; i < normalTable.length; i++) {
+    //       normalTable[i] = [];
+    //     }
 
-        var ib = indices;
-        for (var i = 0; i < ib.length; i += 3) {
-          var v0 = getVertex(ib[i]);
-          var v1 = getVertex(ib[i + 1]);
-          var v2 = getVertex(ib[i + 2]);
+    //     var ib = indices;
+    //     for (var i = 0; i < ib.length; i += 3) {
+    //       var v0 = getVertex(ib[i]);
+    //       var v1 = getVertex(ib[i + 1]);
+    //       var v2 = getVertex(ib[i + 2]);
 
-          var normal = getTriangleNormal([v0, v1, v2]);
+    //       var normal = getTriangleNormal([v0, v1, v2]);
 
-          normalTable[ib[i]].push(normal);
-          normalTable[ib[i + 1]].push(normal);
-          normalTable[ib[i + 2]].push(normal);
-        }
+    //       normalTable[ib[i]].push(normal);
+    //       normalTable[ib[i + 1]].push(normal);
+    //       normalTable[ib[i + 2]].push(normal);
+    //     }
 
-        var outNormals = [];
-        for (var i = 0; i < normalTable.length; i++) {
-          var normal = Vector.divide(normalTable[i].reduce((a, b) => {
-            return Vector.add(a, b);
-          }, Vector.zero()), normalTable[i].length);
+    //     var outNormals = [];
+    //     for (var i = 0; i < normalTable.length; i++) {
+    //       var normal = Vector.divide(normalTable[i].reduce((a, b) => {
+    //         return Vector.add(a, b);
+    //       }, Vector.zero()), normalTable[i].length);
 
-          outNormals.push(normal.x, normal.y, normal.z);
-        }
+    //       outNormals.push(normal.x, normal.y, normal.z);
+    //     }
 
-        return new Float32Array(outNormals);
-      }
-      else {
-        var normals = new Float32Array(vertices.length);
-        for (var i = 0; i < vertices.length / 3; i += 3) {
-          var v0 = getVertex(i);
-          var v1 = getVertex(i + 1);
-          var v2 = getVertex(i + 2);
+    //     return new Float32Array(outNormals);
+    //   }
+    //   else {
+    //     var normals = new Float32Array(vertices.length);
+    //     for (var i = 0; i < vertices.length / 3; i += 3) {
+    //       var v0 = getVertex(i);
+    //       var v1 = getVertex(i + 1);
+    //       var v2 = getVertex(i + 2);
 
-          var normal = getTriangleNormal([v0, v1, v2]);
+    //       var normal = getTriangleNormal([v0, v1, v2]);
 
-          normals[i * 3] = normal.x;
-          normals[i * 3 + 1] = normal.y;
-          normals[i * 3 + 2] = normal.z;
+    //       normals[i * 3] = normal.x;
+    //       normals[i * 3 + 1] = normal.y;
+    //       normals[i * 3 + 2] = normal.z;
 
-          normals[(i + 1) * 3] = normal.x;
-          normals[(i + 1) * 3 + 1] = normal.y;
-          normals[(i + 1) * 3 + 2] = normal.z;
+    //       normals[(i + 1) * 3] = normal.x;
+    //       normals[(i + 1) * 3 + 1] = normal.y;
+    //       normals[(i + 1) * 3 + 2] = normal.z;
 
-          normals[(i + 2) * 3] = normal.x;
-          normals[(i + 2) * 3 + 1] = normal.y;
-          normals[(i + 2) * 3 + 2] = normal.z;
-        }
+    //       normals[(i + 2) * 3] = normal.x;
+    //       normals[(i + 2) * 3 + 1] = normal.y;
+    //       normals[(i + 2) * 3 + 2] = normal.z;
+    //     }
 
-        return normals;
-      }
-    }
+    //     return normals;
+    //   }
+    // }
 
-    function calculateTangents(vertices, indices, uvs) {
-      // bruh use vectors instead (maybe...)
-      // bruh fix for stride
-      function getVertex(i) {
-        return [
-          vertices[i * 3],
-          vertices[i * 3 + 1],
-          vertices[i * 3 + 2]
-        ];
-      }
+    // function calculateTangents(vertices, indices, uvs) {
+    //   // bruh use vectors instead (maybe...)
+    //   // bruh fix for stride
+    //   function getVertex(i) {
+    //     return [
+    //       vertices[i * 3],
+    //       vertices[i * 3 + 1],
+    //       vertices[i * 3 + 2]
+    //     ];
+    //   }
 
-      function getUV(i) {
-        return [
-          uvs[i * 2],
-          uvs[i * 2 + 1]
-        ];
-      }
+    //   function getUV(i) {
+    //     return [
+    //       uvs[i * 2],
+    //       uvs[i * 2 + 1]
+    //     ];
+    //   }
 
-      function subtract(a, b) {
-        var out = new Array(a.length);
-        for (var i = 0; i < a.length; i++) {
-          out[i] = a[i] - b[i];
-        }
-        return out;
-      }
+    //   function subtract(a, b) {
+    //     var out = new Array(a.length);
+    //     for (var i = 0; i < a.length; i++) {
+    //       out[i] = a[i] - b[i];
+    //     }
+    //     return out;
+    //   }
 
-      function setTangentVector(tangents, i0, i1, i2) {
-        var v0 = getVertex(i0);
-        var v1 = getVertex(i1);
-        var v2 = getVertex(i2);
+    //   function setTangentVector(tangents, i0, i1, i2) {
+    //     var v0 = getVertex(i0);
+    //     var v1 = getVertex(i1);
+    //     var v2 = getVertex(i2);
 
-        var uv0 = getUV(i0);
-        var uv1 = getUV(i1);
-        var uv2 = getUV(i2);
+    //     var uv0 = getUV(i0);
+    //     var uv1 = getUV(i1);
+    //     var uv2 = getUV(i2);
         
-        var deltaPos1 = subtract(v1, v0);
-        var deltaPos2 = subtract(v2, v0);
+    //     var deltaPos1 = subtract(v1, v0);
+    //     var deltaPos2 = subtract(v2, v0);
 
-        var deltaUV1 = subtract(uv1, uv0);
-        var deltaUV2 = subtract(uv2, uv0);
+    //     var deltaUV1 = subtract(uv1, uv0);
+    //     var deltaUV2 = subtract(uv2, uv0);
 
-        var r = 1 / (deltaUV1[0] * deltaUV2[1] - deltaUV1[1] * deltaUV2[0]);
+    //     var r = 1 / (deltaUV1[0] * deltaUV2[1] - deltaUV1[1] * deltaUV2[0]);
 
-        var tangent;
-        if (isNaN(r) || !isFinite(r)) {
-          failedTangents++;
+    //     var tangent;
+    //     if (isNaN(r) || !isFinite(r)) {
+    //       failedTangents++;
 
-          var normal = getTriangleNormal([
-            Vector.fromArray(v0),
-            Vector.fromArray(v1),
-            Vector.fromArray(v2)
-          ]);
-          tangent = Vector.toArray(Vector.findOrthogonal(normal));
-        }
-        else {
-          tangent = [
-            (deltaPos1[0] * deltaUV2[1] - deltaPos2[0] * deltaUV1[1]) * r,
-            (deltaPos1[1] * deltaUV2[1] - deltaPos2[1] * deltaUV1[1]) * r,
-            (deltaPos1[2] * deltaUV2[1] - deltaPos2[2] * deltaUV1[1]) * r
-          ];
-        }
+    //       var normal = getTriangleNormal([
+    //         Vector.fromArray(v0),
+    //         Vector.fromArray(v1),
+    //         Vector.fromArray(v2)
+    //       ]);
+    //       tangent = Vector.toArray(Vector.findOrthogonal(normal));
+    //     }
+    //     else {
+    //       tangent = [
+    //         (deltaPos1[0] * deltaUV2[1] - deltaPos2[0] * deltaUV1[1]) * r,
+    //         (deltaPos1[1] * deltaUV2[1] - deltaPos2[1] * deltaUV1[1]) * r,
+    //         (deltaPos1[2] * deltaUV2[1] - deltaPos2[2] * deltaUV1[1]) * r
+    //       ];
+    //     }
 
-        // tangents = Vector.toArray(Vector.normalize(Vector.fromArray(tangents)));
+    //     // tangents = Vector.toArray(Vector.normalize(Vector.fromArray(tangents)));
 
-        var epsilon = 0.01;
-        tangent[0] += epsilon;
-        tangent[1] += epsilon;
-        tangent[2] += epsilon;
+    //     var epsilon = 0.01;
+    //     tangent[0] += epsilon;
+    //     tangent[1] += epsilon;
+    //     tangent[2] += epsilon;
 
-        tangents[i0 * 3] = tangent[0];
-        tangents[i0 * 3 + 1] = tangent[1];
-        tangents[i0 * 3 + 2] = tangent[2];
+    //     tangents[i0 * 3] = tangent[0];
+    //     tangents[i0 * 3 + 1] = tangent[1];
+    //     tangents[i0 * 3 + 2] = tangent[2];
 
-        tangents[i1 * 3] = tangent[0];
-        tangents[i1 * 3 + 1] = tangent[1];
-        tangents[i1 * 3 + 2] = tangent[2];
+    //     tangents[i1 * 3] = tangent[0];
+    //     tangents[i1 * 3 + 1] = tangent[1];
+    //     tangents[i1 * 3 + 2] = tangent[2];
 
-        tangents[i2 * 3] = tangent[0];
-        tangents[i2 * 3 + 1] = tangent[1];
-        tangents[i2 * 3 + 2] = tangent[2];
+    //     tangents[i2 * 3] = tangent[0];
+    //     tangents[i2 * 3 + 1] = tangent[1];
+    //     tangents[i2 * 3 + 2] = tangent[2];
 
-        return tangent;
-      }
+    //     console.log(tangent);
 
-      var failedTangents = 0;
-      var tangents = new Float32Array(vertices.length);
+    //     return tangent;
+    //   }
 
-      if (!indices) {
-        for (var i = 0; i < vertices.length / 3; i += 3) {
-          setTangentVector(tangents, i, i + 1, i + 2);
-        }
-      }
-      else {
-        var ib = indices;
-        for (var i = 0; i < ib.length; i += 3) {
-          setTangentVector(tangents, ib[i], ib[i + 1], ib[i + 2]);
-        }
-      }
+    //   var failedTangents = 0;
+    //   var tangents = new Float32Array(vertices.length);
 
-      if (failedTangents.length > 0) {
-        console.warn(failedTangents + " tangents generated without UVs");
-      }
-      return tangents;
-    }
+    //   if (!indices) {
+    //     for (var i = 0; i < vertices.length / 3; i += 3) {
+    //       setTangentVector(tangents, i, i + 1, i + 2);
+    //     }
+    //   }
+    //   else {
+    //     var ib = indices;
+    //     for (var i = 0; i < ib.length; i += 3) {
+    //       setTangentVector(tangents, ib[i], ib[i + 1], ib[i + 2]);
+    //     }
+    //   }
+
+    //   if (failedTangents.length > 0) {
+    //     console.warn(failedTangents + " tangents generated without UVs");
+    //   }
+    //   return tangents;
+    // }
   }
 
   /*
@@ -4945,13 +4965,23 @@ function Renderer(settings = {}) {
           light.angle = lightData.spot.outerConeAngle;
         }
       }
+
+      var customData = node.extras;
+      if (customData) {
+        console.log("Custom data:", customData);
+        gameObject.customData = {...customData};
+      }
     
       if (node.mesh != undefined) {
         var mesh = json.meshes[node.mesh];
 
-        var customData = mesh.extras;
-        if (customData) {
-          gameObject.customData = {...customData};
+        var customMeshData = mesh.extras;
+        if (customMeshData) {
+          console.log("Custom mesh data:", customMeshData);
+          gameObject.customData = {
+            ...gameObject.customData,
+            ...customMeshData
+          };
         }
 
         var loadNormals = loadSettings.loadNormals ?? true;
@@ -6066,6 +6096,7 @@ function GameObject(name = "Unnamed", options = {}) {
     }
   }
 
+  this.customData = {};
   this.layer = 0b1;
   this.visible = def(options.visible, true);
   this.castShadows = def(options.castShadows, true);
@@ -6264,6 +6295,7 @@ function GameObject(name = "Unnamed", options = {}) {
 
     throw new Error("Can't add child! Child already has parent");
   }
+  this.add = this.addChild;
 
   this.addChildren = function(children) {
     for (var i = 0; i < children.length; i++) {
@@ -6367,14 +6399,26 @@ function GameObject(name = "Unnamed", options = {}) {
 
         if (this.meshRenderer && !(shadowPass && !this.castShadows)) {
           if (settings.materialOverride && true) {
-            for (var i = 0; i < this.meshRenderer.materials.length; i++) {
-              oldMats[i] = this.meshRenderer.materials[i].programContainer;
-              this.meshRenderer.materials[i].programContainer = settings.materialOverride.programContainer;
+            // Get type of override material (basic, instanced or skinned)
+            var selectedOverrideMaterial = settings.materialOverride;
+            if (this.meshRenderer instanceof Renderer.MeshInstanceRenderer) {
+              selectedOverrideMaterial = settings.materialOverrideInstanced;
+            }
+            else if (this.meshRenderer instanceof Renderer.SkinnedMeshRenderer) {
+              selectedOverrideMaterial = settings.materialOverrideSkinned;
             }
 
+            // Keep track of old materials and override with new
+            for (let i = 0; i < this.meshRenderer.materials.length; i++) {
+              oldMats[i] = this.meshRenderer.materials[i].programContainer;
+              this.meshRenderer.materials[i].programContainer = selectedOverrideMaterial.programContainer;
+            }
+
+            // Render
             this.meshRenderer.render(camera, currentMatrix, shadowPass, opaquePass, this.prevModelMatrix);
 
-            for (var i = 0; i < this.meshRenderer.materials.length; i++) {
+            // Revert to old materials
+            for (let i = 0; i < this.meshRenderer.materials.length; i++) {
               this.meshRenderer.materials[i].programContainer = oldMats[i];
             }
           }
@@ -6494,7 +6538,7 @@ function Transform(matrix, position, rotation, scale) {
         }
       }
       else {
-        console.warn("Position is not vector");
+        console.warn("Position is not vector", val);
       }
     }
   });
@@ -6514,19 +6558,24 @@ function Transform(matrix, position, rotation, scale) {
       return _rotationProxy;
     },
     set: function(val) {
-      if (!Quaternion.equal(val, _lastRotation)) {
-        // everythingHasChanged();
+      if (Quaternion.isQuaternionIsh(val)) {
+        if (!Quaternion.equal(val, _lastRotation)) {
+          // everythingHasChanged();
 
-        _rotationProxy.x = val.x;
-        _rotationProxy.y = val.y;
-        _rotationProxy.z = val.z;
-        _rotationProxy.w = val.w;
+          _rotationProxy.x = val.x;
+          _rotationProxy.y = val.y;
+          _rotationProxy.z = val.z;
+          _rotationProxy.w = val.w;
 
-        // _rotation = val;
-        Matrix.fromQuaternion(_rotation, _rotationMatrix);
-        // _rotationMatrix = Matrix.fromQuaternion(_rotation);
+          // _rotation = val;
+          Matrix.fromQuaternion(_rotation, _rotationMatrix);
+          // _rotationMatrix = Matrix.fromQuaternion(_rotation);
 
-        _lastRotation = Quaternion.copy(val);
+          _lastRotation = Quaternion.copy(val);
+        }
+      }
+      else {
+        console.warn("Rotation is not quaternion", val);
       }
     }
   });
@@ -6549,7 +6598,7 @@ function Transform(matrix, position, rotation, scale) {
         }
       }
       else {
-        console.warn("Scale is not vector");
+        console.warn("Scale is not vector", val);
       }
     }
   });

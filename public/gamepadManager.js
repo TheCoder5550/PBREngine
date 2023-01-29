@@ -87,31 +87,31 @@ function GamepadManager() {
     return [];
   }
 
-  this.getButtonDown = function(button, gamepadIndex) {
+  this.getButtonDown = function(button, gamepadIndex, uniqueID = "") {
     var b = this.getButton(button, gamepadIndex);
     var index = this.nameToIndex(button, this.buttonNames);
     if (b) {
-      if (keysDown[index]) {
-        keysDown[index] = false;
+      if (keysDown[index + uniqueID]) {
+        keysDown[index + uniqueID] = false;
         return b;
       }
     }
     else {
-      keysDown[index] = true;
+      keysDown[index + uniqueID] = true;
     }
   }
 
-  this.getButtonUp = function(button, gamepadIndex) {
+  this.getButtonUp = function(button, gamepadIndex, uniqueID = "") {
     var b = this.getButton(button, gamepadIndex);
     var index = this.nameToIndex(button, this.buttonNames);
     if (!b) {
-      if (keysUp[index]) {
-        keysUp[index] = false;
+      if (keysUp[index + uniqueID]) {
+        keysUp[index + uniqueID] = false;
         return 1 - b;
       }
     }
     else {
-      keysUp[index] = true;
+      keysUp[index + uniqueID] = true;
     }
   }
 

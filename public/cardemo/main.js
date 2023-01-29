@@ -5,17 +5,153 @@ import Quaternion from "../engine/quaternion.mjs";
 import GLDebugger from "../engine/GLDebugger.mjs";
 import Terrain from "../engine/terrain.mjs";
 import { LerpCurve } from "../engine/curves.mjs";
-import { lerp, mapValue, clamp, loadImage, getImagePixelData, hideElement, showElement, roundNearest, roundToPlaces, randomFromArray } from "../engine/helper.mjs";
+import { lerp, mapValue, clamp, loadImage, getImagePixelData, hideElement, showElement, roundNearest, roundToPlaces, randomFromArray, getAngleBetween, getDistanceBetween } from "../engine/helper.mjs";
 import Perlin from "../engine/perlin.mjs";
-import { GetMeshAABB, PhysicsEngine, MeshCollider } from "../engine/physics.mjs";
+import { GetMeshAABB, PhysicsEngine, MeshCollider, Rigidbody } from "../engine/physics.mjs";
 import { Car } from "../car.js";
 import * as carSettings from "./carSettings.mjs";
 import Keybindings from "../keybindingsController.mjs";
 import GamepadManager, { quadraticCurve, deadZone } from "../gamepadManager.js";
 
-// import * as roadSource from "../assets/shaders/custom/road.glsl.mjs";
+import * as roadSource from "../assets/shaders/custom/road.glsl.mjs";
 import * as carPaintShader from "../assets/shaders/custom/carPaint.glsl.mjs";
 import * as terrainShader from "./terrain.glsl.mjs";
+import * as simpleFoliage from "../assets/shaders/custom/simpleFoliage.glsl.mjs";
+
+class ControllerUIInteraction {
+  #tickPath = "../assets/sound/menu tick.wav";
+  #tickAudio = new Audio(this.#tickPath);
+
+  constructor(keybindings) {
+    this.keybindings = keybindings;
+
+    this.selectedElement = null;
+  }
+
+  update() {
+    if (this.keybindings.getInputDown("UIup")) {
+      this.#handleInput(0);
+    }
+    else if (this.keybindings.getInputDown("UIright")) {
+      this.#handleInput(1);
+    }
+    else if (this.keybindings.getInputDown("UIdown")) {
+      this.#handleInput(2);
+    }
+    else if (this.keybindings.getInputDown("UIleft")) {
+      this.#handleInput(3);
+    }
+    else if (this.keybindings.getInputDown("UIselect")) {
+      this.#handleClick();
+    }
+  }
+
+  #handleClick() {
+    if (this.selectedElement && this.selectedElement.offsetParent !== null) {
+      this.selectedElement.click();
+      this.#playTickSound();
+    }
+  }
+
+  #handleInput(direction) {
+    var selectables = document.querySelectorAll(".isSelectable:not([disabled]):not(.hidden):not(.selected)");
+    selectables = [...selectables].filter(e => e.offsetParent !== null);
+
+    if (selectables.length == 0) {
+      this.deselectElement();
+      return;
+    }
+
+    if (this.selectedElement && this.selectedElement.offsetParent == null) {
+      this.deselectElement();
+    }
+
+    if (!this.selectedElement) {
+      this.selectFirstElement(selectables);
+      return;
+    }
+
+    var selectedBB = this.selectedElement.getBoundingClientRect();
+    var directionAngle = direction * Math.PI / 2 - Math.PI / 2;
+
+    var getAngleDiff = function(element) {
+      var elementBB = element.getBoundingClientRect();
+      var angleToElement = getAngleBetween(selectedBB.x, selectedBB.y, elementBB.x, elementBB.y);
+      var d = angleToElement - directionAngle;
+      var angleDiff = Math.abs(Math.atan2(Math.sin(d), Math.cos(d)));
+      return angleDiff;
+    };
+
+    var getDistanceToElement = function(element) {
+      var elementBB = element.getBoundingClientRect();
+      return getDistanceBetween(selectedBB.x, selectedBB.y, elementBB.x, elementBB.y);
+    };
+
+    var bestMatch = selectables.reduce((prev, curr) => {
+      if (getAngleDiff(curr) < Math.PI * 0.4) {
+        if (!prev || getDistanceToElement(curr) < getDistanceToElement(prev)) {
+          return curr;
+        }
+      }
+
+      return prev;
+    }, null);
+
+    if (bestMatch) {
+      this.selectElement(bestMatch);
+    }
+  }
+
+  deselectElement() {
+    if (this.selectedElement) {
+      this.selectedElement.classList.remove("selected");
+      this.selectedElement = null;
+    }
+  }
+
+  selectFirstElement(_selectables) {
+    var selectables = _selectables;
+    if (!_selectables) {
+      selectables = document.querySelectorAll(".isSelectable:not([disabled]):not(.hidden):not(.selected)");
+      selectables = [...selectables].filter(e => e.offsetParent !== null);
+    }
+
+    var topSelectable = selectables.reduce((prev, curr) => {
+      var rank = prev.getBoundingClientRect().y - curr.getBoundingClientRect().y + 0.1 * (prev.getBoundingClientRect().x - curr.getBoundingClientRect().x);
+      
+      if (rank > 0) {
+        return curr;
+      }
+
+      return prev;
+    });
+    this.selectElement(topSelectable);
+  }
+
+  selectElement(element) {
+    if (this.selectedElement) {
+      this.selectedElement.classList.remove("selected");
+    }
+
+    if (element.classList.contains("isSelectable")) {
+      this.selectedElement = element;
+      this.selectedElement.classList.add("selected");
+      this.selectedElement.scrollIntoView({
+        behavior: "smooth",
+      });
+      this.#playTickSound();
+    }
+    else {
+      console.warn("Element is not selectable");
+      console.log(element);
+    }
+  }
+
+  #playTickSound() {
+    this.#tickAudio.currentTime = 0;
+    this.#tickAudio.play();
+  }
+}
 
 class CarPaintMaterial {
   constructor(renderer, carPaintProgram, settings = {}) {
@@ -96,15 +232,14 @@ document.addEventListener("DOMContentLoaded", function () {
   var physicsEngine;
   var camera;
   var garageCamera;
-  var snowCamera;
+  // var snowCamera;
 
-  var settings;
+  var settingsManager;
   var settingsOpened = false;
   var paused = false;
-  var selectedItem = 0;
 
   var selectedCar = 0;
-  var loadedCar = 1;
+  var loadedCar = 0;
   var carRotation = 0;
 
   var gamepadManager = new GamepadManager();
@@ -175,13 +310,38 @@ document.addEventListener("DOMContentLoaded", function () {
       keyboard: "ArrowRight",
       controller: "DPRight"
     },
+
+    "UIup": {
+      keyboard: "ArrowUp",
+      controller: "DPUp"
+    },
+    "UIright": {
+      keyboard: "ArrowRight",
+      controller: "DPRight"
+    },
+    "UIdown": {
+      keyboard: "ArrowDown",
+      controller: "DPDown"
+    },
+    "UIleft": {
+      keyboard: "ArrowLeft",
+      controller: "DPLeft"
+    },
+    "UIselect": {
+      keyboard: "Enter",
+      controller: "A"
+    },
   };
   var keybindings;
+  var controllerUIInteraction;
+
+  // Multiplayer
+  var ws;
 
   (async function() {
     var totalTasks = 13;
 
-    settings = new SettingsManager();
+    settingsManager = new SettingsManager();
 
     // Renderer
     setProgress(0, totalTasks, "Initializing renderer");
@@ -190,23 +350,27 @@ document.addEventListener("DOMContentLoaded", function () {
       renderScale: 1,
       debug: true,
 
-      shadowResolution: 256
+      shadowResolution: 256 * 8,
+      shadowSizes: [4, 48],
     });
     renderer.canvas.style.position = "fixed";
 
     // Keybindings
     keybindings = new Keybindings(renderer, gamepadManager, bindsLookup);
+    controllerUIInteraction = new ControllerUIInteraction(keybindings);
 
     // Scene
     setProgress(1, totalTasks, "Loading scene");
     console.time("Scene");
     scene = new Scene("Playground");
-    scene.environmentIntensity = 1.5 * 1.2;
+    scene.environmentIntensity = 1.1;//1.5 * 1.2;
     scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(5500, 27));
     renderer.postprocessing.exposure.value = -1;
     // renderer.postprocessing.saturation.value = 0.4;
-    renderer.settings.enableShadows = false;
+    // renderer.settings.enableShadows = false;
     renderer.postprocessing.rainTexture = await renderer.loadTextureAsync("../assets/textures/rain-normal-map.jpg");
+    renderer.postprocessing.vignette.amount.value = 0.3;
+    renderer.postprocessing.vignette.falloff.value = 0.3;
     renderer.add(scene);
 
     await scene.loadEnvironment({
@@ -235,7 +399,7 @@ document.addEventListener("DOMContentLoaded", function () {
     garageCamera.transform.matrix = Matrix.lookAt(new Vector(0, 1.5, 6), new Vector(0, 0.5, 0), Vector.up());
     var resizeEvent = () => {
       garageCamera.setAspect(renderer.aspect);
-    }
+    };
     renderer.on("resize", resizeEvent);
     resizeEvent();
 
@@ -251,7 +415,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // Road program
-    // var roadProgram = new renderer.ProgramContainer(await renderer.createProgram(roadSource.webgl2.vertex, roadSource.webgl2.fragment));
+    var roadProgram = new renderer.ProgramContainer(await renderer.createProgram(roadSource.webgl2.vertex, roadSource.webgl2.fragment));
     var terrainProgram = new renderer.CustomProgram(terrainShader);
 
     // Car paint
@@ -317,10 +481,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Load map
     setProgress(6, totalTasks, "Loading map");
-    var mapPath = "./touge.glb";
-    var colliderPath = "./tougeCollider.glb";
-    // var mapPath = "../assets/models/brickPlane.glb";
-    // var colliderPath = "../assets/models/brickPlane.glb";
+    // const mapPath = "./touge.glb";
+    // const colliderPath = "./tougeCollider.glb";
+    // const mapPath = "../assets/models/brickPlane.glb";
+    // const colliderPath = "../assets/models/brickPlane.glb";
+    const mapPath = "../assets/models/test/staticColliderDetectObject.glb";
+    const colliderPath = "";
 
     var grassAlbedo = await renderer.loadTextureAsync("../assets/textures/GroundForest003/GroundForest003_COL_VAR1_3K.jpg", { ...renderer.getSRGBFormats() });
     var grassNormal = await renderer.loadTextureAsync("../assets/textures/GroundForest003/GroundForest003_NRM_3K.jpg");
@@ -328,27 +494,46 @@ document.addEventListener("DOMContentLoaded", function () {
     var stoneNormal = await renderer.loadTextureAsync("../assets/textures/rocks_ground_03_2k_jpg/rocks_ground_03_nor_2k.jpg");
 
     var map = await renderer.loadGLTF(mapPath, { maxTextureSize: 1024 });
-    var mapBatched = scene.add(renderer.BatchGameObject(map));
-    mapBatched.castShadows = false;
-    mapBatched.meshRenderer.materials[1].programContainer = terrainProgram;
-    mapBatched.meshRenderer.materials[1].setUniform("roughness", 1);
-    mapBatched.meshRenderer.materials[1].setUniform("albedoTextures[0]", [ grassAlbedo, stoneAlbedo ]);
-    mapBatched.meshRenderer.materials[1].setUniform("normalTextures[0]", [ grassNormal, stoneNormal ]);
-    // mapBatched.meshRenderer.materials[1].setUniform("albedo", [0.25, 0.25, 0.25, 1]);
-    mapBatched.meshRenderer.materials[2].setUniform("normalStrength", 2.5);
-    mapBatched.meshRenderer.materials[6].programContainer = renderer.programContainers.unlit;
+    // var mapBatched = scene.add(renderer.BatchGameObject(map));
 
-    var collider = await renderer.loadGLTF(colliderPath, { loadMaterials: false, loadNormals: false, loadTangents: false });
-    collider.transform.set(map.transform);
-    physicsEngine.addMeshCollider(collider);
+    await createChunks();
+
+    // var dirtRoad = scene.add(await renderer.loadGLTF("../assets/models/dirtRoad.glb"));
+    // dirtRoad.transform.position.y = 0.05;
+
+    // var leaves = renderer.loadTexture("../assets/textures/leaves.png");
+    // var foliage = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/foliage"));
+    // var foliageMat = new renderer.Material(foliage);
+    // foliageMat.doubleSided = true;
+    // foliageMat.setUniform("useTexture", 1);
+    // foliageMat.setUniform("albedoTexture", leaves);
+
+    // var tree = scene.add(await renderer.loadGLTF("../assets/models/tree.glb"));
+    // tree.children[0].children[0].meshRenderer.materials[0] = tree.children[0].children[1].meshRenderer.materials[0] = foliageMat;
+
+    // mapBatched.castShadows = false;
+    // mapBatched.meshRenderer.materials[1].programContainer = terrainProgram;
+    // mapBatched.meshRenderer.materials[1].setUniform("roughness", 1);
+    // mapBatched.meshRenderer.materials[1].setUniform("albedoTextures[0]", [ grassAlbedo, stoneAlbedo ]);
+    // mapBatched.meshRenderer.materials[1].setUniform("normalTextures[0]", [ grassNormal, stoneNormal ]);
+    // // mapBatched.meshRenderer.materials[1].setUniform("albedo", [0.25, 0.25, 0.25, 1]);
+    // mapBatched.meshRenderer.materials[2].setUniform("normalStrength", 2.5);
+    // mapBatched.meshRenderer.materials[6].programContainer = renderer.programContainers.unlit;
+
+    if (colliderPath) {
+      var collider = await renderer.loadGLTF(colliderPath, { loadMaterials: false, loadNormals: false, loadTangents: false });
+      collider.transform.set(map.transform);
+      physicsEngine.addMeshCollider(collider);
+    }
 
     // Load all car models
     setProgress(7, totalTasks, "Loading car models");
     var models = {};
     var modelOffset = {};
+    var allowedCars = [ "skyline", "bus" ];
 
     var i = 0;
-    for (var key in carSettings) {
+    for (var key of allowedCars) {
       var settings = carSettings[key];
 
       var model = await renderer.loadGLTF(settings.model);
@@ -403,7 +588,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Load car
     setProgress(8, totalTasks, "Setting up car");
-    var carKey = "drift";
+    var carKey = allowedCars[0];//"drift";
     var carModel = scene.add(models[carKey].copy());
     var car = await loadCar(carSettings[carKey].settings, carModel);
 
@@ -414,44 +599,51 @@ document.addEventListener("DOMContentLoaded", function () {
     setProgress(9, totalTasks, "Finalizing physics colliders");
     physicsEngine.setupMeshCollider();
 
-    var noTreeZone = scene.add(await renderer.loadGLTF("./noTreeZone.glb"), { loadMaterials: false, loadNormals: false, loadTangents: false });
-    noTreeZone.visible = false;
-    noTreeZone.transform.position.y = 500;
-    for (var child of noTreeZone.children) {
-      child.addComponent(new MeshCollider());
-    }
+    // var noTreeZone = scene.add(await renderer.loadGLTF("./noTreeZone.glb"), { loadMaterials: false, loadNormals: false, loadTangents: false });
+    // noTreeZone.visible = false;
+    // noTreeZone.transform.position.y = 500;
+    // for (var child of noTreeZone.children) {
+    //   child.addComponent(new MeshCollider());
+    // }
 
     // Grass
     setProgress(10, totalTasks, "Planting trees");
-    var grass = scene.add(await renderer.loadGLTF("./pine.glb"));
-    // var grass = scene.add(await renderer.loadGLTF("../assets/models/stylizedTree.glb"));
-    // var grass = scene.add(await renderer.loadGLTF("../cargame/grass.glb"));
-    grass.castShadows = false;
-    grass.children[0].meshRenderer = grass.children[0].meshRenderer.getInstanceMeshRenderer();
-    grass.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
-    grass.children[0].meshRenderer.materials[0].setUniform("albedo", [2, 2, 2, 1]);
+    // var grass = scene.add(await renderer.loadGLTF("../assets/models/trees/stylizedAutumn.glb"));
+    // // var grass = scene.add(await renderer.loadGLTF("./pine.glb"));
+    // // var grass = scene.add(await renderer.loadGLTF("../assets/models/stylizedTree.glb"));
+    // // var grass = scene.add(await renderer.loadGLTF("../cargame/grass.glb"));
+    // // grass.castShadows = false;
 
-    // var grassJson = [];
+    // var simpleFoliageProgram = new renderer.CustomProgram(simpleFoliage);
+    // grass.children[0].meshRenderer = grass.children[0].meshRenderer.getInstanceMeshRenderer();
+    // // grass.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
+    // // grass.children[0].meshRenderer.materials[0].setUniform("albedo", [2, 2, 2, 1]);
 
-    for (let i = 0; i < 1_000; i++) {
-      var origin = new Vector((Math.random() - 0.5) * 500, 1000, (Math.random() - 0.5) * 500);
+    // grass.children[0].meshRenderer.materials[0].programContainer = simpleFoliageProgram;
 
-      var hit = physicsEngine.Raycast(origin, Vector.down());
-      if (hit && hit.firstHit && hit.firstHit.point.y < 100) {
-        origin.y = hit.firstHit.point.y;
+    // // var grassJson = [];
 
-        // grassJson.push(Vector.map(origin, c => roundToPlaces(c, 2)));
+    // for (let i = 0; i < 1_000; i++) {
+    //   var origin = new Vector((Math.random() - 0.5) * 500, 1000, (Math.random() - 0.5) * 500);
 
-        grass.children[0].meshRenderer.addInstance(Matrix.transform([
-          ["translate", origin],
-          ["scale", Vector.fill(1.5 + Math.random() * 1.75)],
-          // ["scale", Vector.fill(1.25 + Math.random() * 1.25)],
-          ["ry", Math.random() * 2 * Math.PI]
-        ]));
-      }
-    }
+    //   var hit = physicsEngine.Raycast(origin, Vector.down());
+    //   if (hit && hit.firstHit && hit.firstHit.point.y < 100) {
+    //     origin.y = hit.firstHit.point.y;
 
-    noTreeZone.delete();
+    //     // grassJson.push(Vector.map(origin, c => roundToPlaces(c, 2)));
+
+    //     grass.children[0].meshRenderer.addInstance(Matrix.transform([
+    //       ["translate", origin],
+    //       ["scale", Vector.fill(1 + Math.random() * 1)],
+    //       // ["scale", Vector.fill(1.5 + Math.random() * 1.75)],
+    //       ["ry", Math.random() * 2 * Math.PI],
+    //       ["rx", (Math.random() - 0.5) * 0.07],
+    //       ["rz", (Math.random() - 0.5) * 0.07],
+    //     ]));
+    //   }
+    // }
+
+    // noTreeZone.delete();
     
     // console.log(grassJson);
 
@@ -463,6 +655,62 @@ document.addEventListener("DOMContentLoaded", function () {
     // scene.skyboxCubemap = oldSkybox;
     // scene.environmentIntensity = 1;
 
+    var meModel = scene.add(models["skyline"].copy());
+    var meRb = meModel.addComponent(new Rigidbody());
+    meRb.gravityScale = 0;
+
+    ws = new WebSocket(`wss://${location.hostname}:8080`);
+    ws.onopen = function() {
+      console.log("Connected to server!");
+
+      setInterval(function() {
+        if (car && car.rb) {
+          sendMessage("updatePlayer", {
+            position: car.rb.position,
+            rotation: car.rb.rotation,
+            velocity: car.rb.velocity,
+            angularVelocity: car.rb.angularVelocity,
+          });
+          sendMessage("getAllPlayers");
+        }
+      }, 100);
+    };
+    ws.onmessage = function(msg) {
+      // console.log(msg);
+
+      var parsed;
+      try {
+        parsed = JSON.parse(msg.data);
+      }
+      catch(e) {
+        console.warn(e);
+        return;
+      }
+
+      if (parsed.hasOwnProperty("type") && parsed.hasOwnProperty("data")) {
+        if (parsed.type == "ping") {
+          console.log(parsed.data);
+        }
+        else if (parsed.type == "playerAction") {
+          switch (parsed.data.action) {
+            case "join":
+              console.log("Player has joined!", parsed.data.clientID);
+              break;
+            case "leave":
+              console.log("Player has left!", parsed.data.clientID);
+              break;
+          }
+        }
+        else if (parsed.type == "getAllPlayers") {
+          var p = parsed.data[0].data;
+          meRb.position = p.position;
+          meRb.rotation = p.rotation;
+          meRb.velocity = p.velocity;
+          meRb.angularVelocity = p.angularVelocity;
+        }
+      }
+    }
+
     document.addEventListener("visibilitychange", function() {
       if (document.hidden) {
         paused = true;
@@ -473,6 +721,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     setProgress(12, totalTasks, "Done!");
 
+    settingsManager.loadSaveData();
     hideElement(loadingOverlay);
     stats = new Stats();
     document.body.appendChild(stats.dom);
@@ -623,7 +872,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     window.openSettings = function() {
       settingsOpened = true;
+      hideElement(pauseOverlay);
       showElement(settingsOverlay);
+      controllerUIInteraction.selectFirstElement();
     };
 
     function setProgress(currentTask, totalTasks, textStatus) {
@@ -632,48 +883,30 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function handleInput(frameTime) {
-      if (settingsOpened) {
-        if (keybindings.getInputDown("back")) {
-          hideElement(settingsOverlay);
-          settingsOpened = false;
-          return;
-        }
+      if (settingsOpened && keybindings.getInputDown("back")) {
+        hideElement(settingsOverlay);
+        showElement(pauseOverlay);
+        controllerUIInteraction.selectFirstElement();
+
+        settingsOpened = false;
+        return;
       }
 
-      if (paused) {
-        if (keybindings.getInputDown("menuDown")) {
-          selectedItem++;
-
-          let buttons = document.querySelector(".menu > ." + renderer.activeScene().name).querySelectorAll("button").length;
-          selectedItem = clamp(selectedItem, 0, buttons - 1);
-
-          getSelectedItemDOM().focus();
-        }
-        if (keybindings.getInputDown("menuUp")) {
-          selectedItem--;
-          
-          let buttons = document.querySelector(".menu > ." + renderer.activeScene().name).querySelectorAll("button").length;
-          selectedItem = clamp(selectedItem, 0, buttons - 1);
-
-          getSelectedItemDOM().focus();
-        }
-        if (keybindings.getInputDown("menuSelect")) {
-          getSelectedItemDOM().click();
-        }
-        if (keybindings.getInputDown("back")) {
-          paused = false;
-          handlePauseChange();
-        }
+      if (paused && keybindings.getInputDown("back")) {
+        paused = false;
+        handlePauseChange();
+        return;
       }
 
       if (keybindings.getInputDown("pause") && !settingsOpened) {
         paused = !paused;
         handlePauseChange();
+        return;
       }
 
       if (!paused && renderer.activeScene() == garageScene) {
         if (keybindings.getInputDown("back")) {
-          gotoPlayground();
+          window.gotoPlayground();
         }
         if (keybindings.getInputDown("garagePrev")) {
           garageChangeCar(-1);
@@ -687,6 +920,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         carRotation += -quadraticCurve(deadZone(gamepadManager.getAxis("RSHorizontal"), 0.08)) * frameTime * 5;
       }
+
+      controllerUIInteraction.update(frameTime);
     }
 
     function garageChangeCar(dir = 1) {
@@ -705,24 +940,23 @@ document.addEventListener("DOMContentLoaded", function () {
       if (paused) {
         car.freeze();
 
-        selectedItem = 0;
-        pauseOverlay.classList.remove("hidden");
-        getSelectedItemDOM().focus();
+        showElement(pauseOverlay);
+        controllerUIInteraction.deselectElement();
+        controllerUIInteraction.selectFirstElement();
       }
       else {
         car.unfreeze();
-        pauseOverlay.classList.add("hidden");
+        hideElement(pauseOverlay);
 
-        if (renderer.activeScene() != scene) {
-          if (car.mainGainNode) {
+        if (car.mainGainNode) {
+          if (renderer.activeScene() != scene) {
             car.mainGainNode.gain.value = 0;
+          }
+          else {
+            car.mainGainNode.gain.value = settingsManager.getSettingValue("masterVolume");
           }
         }
       }
-    }
-
-    function getSelectedItemDOM() {
-      return document.querySelectorAll(".menu > ." + renderer.activeScene().name + " > button")[selectedItem];
     }
 
     function setActiveScene(_scene) {
@@ -777,16 +1011,22 @@ document.addEventListener("DOMContentLoaded", function () {
       // resetPosition.y = terrain.getHeight(resetPosition.x, resetPosition.z) + 0.5;
       var spawnPoints = map.getChildren("SpawnPoint", true, false);
       var spawnPoint = randomFromArray(spawnPoints);
-      if (spawnPoint) {
-        var carResetPosition = Vector.subtract(spawnPoint.transform.worldPosition, car.bottomOffset);
-        car.resetPosition = Vector.copy(carResetPosition);
-        car.rb.position = car.gameObject.transform.position = Vector.copy(carResetPosition);
-      }
+      var carResetPosition = spawnPoint ? Vector.subtract(spawnPoint.transform.worldPosition, car.bottomOffset) : new Vector(0, 5, 0);
+      car.resetPosition = Vector.copy(carResetPosition);
+      car.rb.position = car.gameObject.transform.position = Vector.copy(carResetPosition);
 
       // car.rb.rotation = Quaternion.euler(0, Math.PI, 0);
 
       car.mainCamera = new Camera({near: 0.1, far: 15000, fov: 35});
       car.mainCamera.setAspect(renderer.aspect);
+
+      car.ABS = settingsManager.getSettingValue("abs");
+      car.TCS = settingsManager.getSettingValue("tcs");
+      car.activateAutoCountersteer = settingsManager.getSettingValue("steeringAssist");
+      car.autoCountersteer = settingsManager.getSettingValue("autoCountersteer");
+      car.autoCountersteerVelocityMultiplier = settingsManager.getSettingValue("autoCountersteerVelocityMultiplier");
+      car.followCamera.followMode = settingsManager.getSettingValue("cameraFollowMode");
+      car.mainGainNode.gain.value = settingsManager.getSettingValue("masterVolume");
 
       return car;
     }
@@ -896,115 +1136,314 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
 
-    function initRoad(crCurve) {
-      var road = new GameObject("Road");
-      road.transform.position.y = 0.22;
+    async function createChunks() {
+      var chunkSize = 100;
+
+      var grassMaterial = renderer.CreateLitMaterial({
+        albedoTexture: renderer.loadTexture("../assets/textures/brown_mud_leaves_01_2k_jpg/brown_mud_leaves_01_diff_2k.jpg", { ...renderer.getSRGBFormats() }),
+        normalTexture: renderer.loadTexture("../assets/textures/brown_mud_leaves_01_2k_jpg/brown_mud_leaves_01_Nor_2k.jpg"),
+      });
+
+      var simpleFoliageProgram = new renderer.CustomProgram(simpleFoliage);
+      var treesBase = await renderer.loadGLTF("../assets/models/trees/stylizedAutumn.glb");
+
       var roadMaterial = renderer.CreateLitMaterial({
         albedoColor: [0.3, 0.3, 0.3, 1],
-        albedoTexture: renderer.loadTexture("../assets/textures/asphalt_01_1k/asphalt_01_diff_1k.jpg", { ...renderer.getSRGBFormats() }),
-        normalTexture: renderer.loadTexture("../assets/textures/asphalt_01_1k/asphalt_01_nor_gl_1k.png"),
-      }, roadProgram);
+        albedoTexture: renderer.loadTexture("../assets/textures/roadNoCenterLine/albedo.png", { ...renderer.getSRGBFormats() }),
+        normalTexture: renderer.loadTexture("../assets/textures/roadNoCenterLine/normal.png"),
+        metallicRoughness: renderer.loadTexture("../assets/textures/roadNoCenterLine/metallicRoughness.png"),
+        // albedoTexture: renderer.loadTexture("../assets/textures/asphalt_01_1k/asphalt_01_diff_1k.jpg", { ...renderer.getSRGBFormats() }),
+        // normalTexture: renderer.loadTexture("../assets/textures/asphalt_01_1k/asphalt_01_nor_gl_1k.png"),
+      }/*, roadProgram*/);
       // roadMaterial.setUniform("albedo", [1, 1, 1, 1]);
       // roadMaterial.setUniform("albedoTexture", renderer.loadTexture("./assets/textures/checkerboard2.png"));
 
-      var distanceAlongPath = 0;
+      var points = [];
+      var startY = 0;
+      var yVel = 0;
 
-      var indices = [];
-      var vertices = [];
-      var uvs = [];
+      points.push(new Vector(0, startY, -chunkSize * 0.7));
+      points.push(new Vector(0, startY, -chunkSize * 0.5));
 
-      var width = 12;
-      var step = 0.0005;
-      for (var t = 0; t <= 1; t += step) {
-        var center = crCurve.getPoint(t);
-
-        var diff = Vector.subtract(
-          crCurve.getPoint((t + step) % 1),
-          center
-        );
-        var tangent = Vector.normalize(diff);
-
-        var normal = Quaternion.QxV(Quaternion.angleAxis(Math.PI / 2, tangent), Vector.up());
-        
-        var edge = Vector.multiply(normal, width / 2);
-        var margin = Vector.multiply(normal, width / 2 * 1.6);
-
-        var e1 = Vector.add(center, edge);
-        var m1 = Vector.add(center, margin);
-        m1.y -= width * 0.1;
-        var e2 = Vector.subtract(center, edge);
-        var m2 = Vector.subtract(center, margin);
-        m2.y -= width * 0.1;
-
-        vertices.push(m1.x, m1.y, m1.z);
-        vertices.push(e1.x, e1.y, e1.z);
-        vertices.push(e1.x, e1.y, e1.z);
-        vertices.push(e2.x, e2.y, e2.z);
-        vertices.push(e2.x, e2.y, e2.z);
-        vertices.push(m2.x, m2.y, m2.z);
-
-        var v = distanceAlongPath / width;
-        uvs.push(-0.5, v);
-        uvs.push(0, v);
-        uvs.push(0, v);
-        uvs.push(1, v);
-        uvs.push(1, v);
-        uvs.push(3.5, v);
-
-        distanceAlongPath += Vector.length(diff);
+      for (var i = 1; i < 9; i++) {
+        points.push(new Vector(0, startY/*Math.random() * 5*/, -chunkSize / 2 + i * chunkSize / 3));
       }
 
-      for (var i = 0; i < vertices.length / 3 * 3; i += 6) {
-        var w = vertices.length / 3;
-        indices.push(
-          (i + 0) % w,
-          (i + 6) % w,
-          (i + 1) % w,
+      var chunks = [
+        await createChunk(points.slice(0, 7)),
+        await createChunk(points.slice(3, 10), new Vector(0, 0, 100)),
+        // await createChunk(points.slice(6, 13), new Vector(0, 0, 200)),
+        // await createChunk(points.slice(9, 16), new Vector(0, 0, 300)),
+      ];
 
-          (i + 1) % w,
-          (i + 6) % w,
-          (i + 7) % w,
+      setInterval(async function() {
+        for (let i = 0; i < chunks.length; i++) {
+          var chunk = chunks[i];
 
-          (i + 2) % w,
-          (i + 8) % w,
-          (i + 3) % w,
+          chunk.visible = (Math.abs(i * chunkSize - car.rb.position.z) < chunkSize * 2);
 
-          (i + 3) % w,
-          (i + 8) % w,
-          (i + 9) % w,
-
-          (i + 4) % w,
-          (i + 10) % w,
-          (i + 5) % w,
-
-          (i + 5) % w,
-          (i + 10) % w,
-          (i + 11) % w,
-        );
-      }
-
-      var roadMeshData = new renderer.MeshData({
-        indices: {
-          bufferData: new Uint32Array(indices),
-          target: renderer.gl.ELEMENT_ARRAY_BUFFER
-        },
-        position: {
-          bufferData: new Float32Array(vertices),
-          size: 3
-        },
-        uv: {
-          bufferData: new Float32Array(uvs),
-          size: 2
+          // if (i * chunkSize < car.rb.position.z - chunkSize * 2 || i * chunkSize > car.rb.position.z + chunkSize * 2) {
+          //   chunk.visible = false;
+          // }
+          // else {
+          //   chunk.visible = true;
+          // }
         }
-      });
-      roadMeshData.recalculateNormals();
-      roadMeshData.recalculateTangents();
 
-      road.meshRenderer = new renderer.MeshRenderer(roadMaterial, roadMeshData);
-      // road.addComponent(new MeshCollider());
-      scene.add(road);
+        if (car.rb.position.z > (chunks.length - 2) * chunkSize) {
+          for (let i = 0; i < 3; i++) {
+            yVel += (Math.random() - 0.55) * 2;
+            yVel = clamp(yVel, -8, 8);
+            startY += yVel;
+            points.push(new Vector((Math.random() - 0.5) * chunkSize * 0.3, startY/*Math.random() * 3*/, -chunkSize / 2 + (points.length - 1) * chunkSize / 3));
+          }
 
-      physicsEngine.addMeshCollider(road);
+          chunks.push(await createChunk(points.slice(chunks.length * 3, chunks.length * 3 + 7), new Vector(0, 0, chunks.length * chunkSize)));
+        }
+      }, 1000);
+
+      async function createChunk(points, center = Vector.zero()) {
+        var roadCurve = new CatmullRomCurve(points.map(p => Vector.subtract(p, center)));
+        return await generateRoad(center, roadCurve, 10, 100);
+      }
+  
+      async function generateRoad(chunkCenter, crCurve, width = 12, segments = 100) {
+        var container = new GameObject("Chunk");
+        container.transform.position = chunkCenter;
+  
+        // // Ground
+        // var plane = renderer.CreateShape("plane", grassMaterial);
+  
+        // var uvScale = 50;
+        // plane.meshRenderer.meshData[0].setAttribute("uv", { bufferData: new Float32Array([
+        //   uvScale, uvScale,
+        //   0, uvScale,
+        //   0, 0,
+        //   uvScale, 0
+        // ]) });
+  
+        // plane.transform.rotation = Quaternion.euler(-Math.PI / 2, 0, 0);
+        // plane.transform.scale = Vector.fill(50);
+        // plane.addComponent(new MeshCollider());
+        
+        // plane.customData.bumpiness = 0.03;
+        // plane.customData.friction = 0.5;
+        // plane.customData.offroad = 1;
+  
+        // container.addChild(plane);
+  
+        // Trees
+        var trees = container.add(treesBase.copy());
+        trees.children[0].meshRenderer = trees.children[0].meshRenderer.getInstanceMeshRenderer();
+        var mr = trees.children[0].meshRenderer;
+        mr.materials[0].programContainer = simpleFoliageProgram;
+        mr.materials[0].doubleSided = false;
+  
+        function addTree(origin) {
+          mr.addInstance(Matrix.transform([
+            ["translate", Vector.add(chunkCenter, origin)],
+            ["scale", Vector.fill(1 + Math.random() * 1)],
+            ["ry", Math.random() * 2 * Math.PI],
+            ["rx", (Math.random() - 0.5) * 0.07],
+            ["rz", (Math.random() - 0.5) * 0.07],
+          ]));
+        }
+  
+        // Road
+        var road = new GameObject("Road");
+  
+        var distanceAlongPath = 0;
+  
+        var indices = [];
+        var vertices = [];
+        var uvs = [];
+
+        var groundIndices = [];
+        var groundVertices = [];
+        var groundUVs = [];
+  
+        var groundCounter = 0;
+        var step = 1 / segments;
+        for (let s = 0; s < segments; s++) {
+          var t = s / (segments - 1) * 0.75;
+          var center = crCurve.getPoint(t);
+          
+          var diff;
+          // if (t + step >= 1) {
+          //   diff = Vector.subtract(
+          //     center,
+          //     crCurve.getPoint(t - step),
+          //   );
+          // }
+          // else {
+            diff = Vector.subtract(
+              crCurve.getPoint(t + step),
+              center
+            );
+            // console.log(diff);
+          // }
+          var tangent = Vector.normalize(diff);
+  
+          var normal = Quaternion.QxV(Quaternion.angleAxis(Math.PI / 2, tangent), Vector.up());
+          
+          var edge = Vector.multiply(normal, width / 2); // inner edge
+          var margin = Vector.multiply(normal, width / 2 * 1.4); // outer edge
+  
+          var e1 = Vector.add(center, edge);
+          var m1 = Vector.add(center, margin);
+          m1.y -= width * 0.06;
+          var e2 = Vector.subtract(center, edge);
+          var m2 = Vector.subtract(center, margin);
+          m2.y -= width * 0.06;
+  
+          vertices.push(m1.x, m1.y, m1.z);
+          vertices.push(e1.x, e1.y, e1.z);
+          vertices.push(e1.x, e1.y, e1.z);
+          vertices.push(e2.x, e2.y, e2.z);
+          vertices.push(e2.x, e2.y, e2.z);
+          vertices.push(m2.x, m2.y, m2.z);
+  
+          var v = distanceAlongPath / width;
+          uvs.push(-0.4, v);
+          uvs.push(0, v);
+          uvs.push(0, v);
+          uvs.push(1, v);
+          uvs.push(1, v);
+          uvs.push(1.4, v);
+
+          // var farEdge = Vector.multiply(normal, width * 2);
+          var l1 = Vector.add(e1, new Vector(-width * 4, width * 0.3, 0));
+          var ll1 = Vector.add(e1, new Vector(-width * 8, width * 0.4, 0));
+          var l2 = Vector.add(e2, new Vector(width * 4, width * 0.3, 0));
+          var ll2 = Vector.add(e2, new Vector(width * 8, width * 0.4, 0));
+
+          if (groundCounter % 3 == 0) {
+            groundVertices.push(ll1.x, ll1.y, ll1.z);
+            groundVertices.push(l1.x, l1.y, l1.z);
+            groundVertices.push(e1.x, e1.y, e1.z);
+            groundVertices.push(e2.x, e2.y, e2.z);
+            groundVertices.push(l2.x, l2.y, l2.z);
+            groundVertices.push(ll2.x, ll2.y, ll2.z);
+
+            groundUVs.push(-8 * 4, v * 4);
+            groundUVs.push(-4 * 4, v * 4);
+            groundUVs.push(0 * 4, v * 4);
+            groundUVs.push(1 * 4, v * 4);
+            groundUVs.push(3 * 4, v * 4);
+            groundUVs.push(9 * 4, v * 4);
+          }
+          groundCounter++;
+
+          distanceAlongPath += Vector.length(diff);
+  
+          if (Math.random() > 0.6) {
+            addTree(Vector.add(Vector.add(center, Vector.multiply(normal, width / 2 * 1.6 + Math.random() * 3 * 15)), new Vector(0, -width * 0.06, 0)));
+            addTree(Vector.add(Vector.subtract(center, Vector.multiply(normal, width / 2 * 1.6 + Math.random() * 3 * 15)), new Vector(0, -width * 0.06, 0)));
+          }
+        }
+  
+        for (var i = 0; i < (vertices.length / 3 / 6 - 1) * 6; i += 6) {
+          // for (var i = 0; i < vertices.length / 3 * 3; i += 6) {
+          var w = 10000000000;//vertices.length / 3;
+          indices.push(
+            (i + 0) % w,
+            (i + 6) % w,
+            (i + 1) % w,
+  
+            (i + 1) % w,
+            (i + 6) % w,
+            (i + 7) % w,
+  
+            (i + 2) % w,
+            (i + 8) % w,
+            (i + 3) % w,
+  
+            (i + 3) % w,
+            (i + 8) % w,
+            (i + 9) % w,
+  
+            (i + 4) % w,
+            (i + 10) % w,
+            (i + 5) % w,
+  
+            (i + 5) % w,
+            (i + 10) % w,
+            (i + 11) % w,
+          );
+        }
+
+        for (let i = 0; i < (groundVertices.length / 3 / 6 - 1) * 6; i += 6) {
+          let v = 6;
+          for (let j = 0; j < 5; j++) {
+            if (j == 2) continue;
+
+            groundIndices.push(
+              (i + 0 + j),
+              (i + v + j),
+              (i + 1 + j),
+    
+              (i + 1 + j),
+              (i + v + j),
+              (i + v + 1 + j),
+            );
+          }
+        }
+  
+        var roadMeshData = new renderer.MeshData({
+          indices: {
+            bufferData: new Uint32Array(indices),
+            target: renderer.gl.ELEMENT_ARRAY_BUFFER
+          },
+          position: {
+            bufferData: new Float32Array(vertices),
+            size: 3
+          },
+          uv: {
+            bufferData: new Float32Array(uvs),
+            size: 2
+          }
+        });
+        roadMeshData.recalculateNormals();
+        roadMeshData.recalculateTangents();
+  
+        road.meshRenderer = new renderer.MeshRenderer(roadMaterial, roadMeshData);
+        road.addComponent(new MeshCollider());
+        road.transform.position.y = 0.04;
+        container.addChild(road);
+
+        // Terrain
+        var terrainMeshData = new renderer.MeshData({
+          indices: {
+            bufferData: new Uint32Array(groundIndices),
+            target: renderer.gl.ELEMENT_ARRAY_BUFFER
+          },
+          position: {
+            bufferData: new Float32Array(groundVertices),
+            size: 3
+          },
+          uv: {
+            bufferData: new Float32Array(groundUVs),
+            size: 2
+          }
+        });
+        terrainMeshData.recalculateNormals();
+        terrainMeshData.recalculateTangents();
+
+        var terrain = new GameObject("Terrain");
+        terrain.meshRenderer = new renderer.MeshRenderer(grassMaterial, terrainMeshData);
+        terrain.addComponent(new MeshCollider());
+        terrain.transform.position.y = -0.04;
+
+        terrain.customData.bumpiness = 0.08;
+        terrain.customData.friction = 0.5;
+        terrain.customData.offroad = 1;
+
+        container.addChild(terrain);
+  
+        // Export
+        scene.add(container);
+        return container;
+      }
     }
 
     async function initTrees() {
@@ -1073,12 +1512,39 @@ document.addEventListener("DOMContentLoaded", function () {
       return g;
     }
 
-    function CatmullRomCurve(points, alpha = 0.5) {
+    function BezierCurve(points) {
+      this.points = points;
+
+      this.getPoint = function(t) {
+        return bezierRecursive(this.points, t);
+      };
+
+      var bezierRecursive = (points, t) => {
+        if (points.length <= 1) return points[0];
+
+        var newPoints1 = [...points];
+        var newPoints2 = [...points];
+        newPoints1.pop();
+        newPoints2.shift();
+        
+        var p1 = bezierRecursive(newPoints1, t);
+        var p2 = bezierRecursive(newPoints2, t);
+
+        return {
+          x: (1 - t) * p1.x + t * p2.x,
+          y: (1 - t) * p1.y + t * p2.y,
+          z: (1 - t) * p1.z + t * p2.z
+        };
+      };
+    }
+
+    function CatmullRomCurve(points, alpha = 0.5, loop = false) {
       this.alpha = alpha;
       this.points = points;
+      this.loop = loop;
       var segments = [];
 
-      for (var i = 0; i < points.length; i++) {
+      for (var i = 0; i < points.length - (this.loop ? 0 : 3); i++) {
         segments.push(new CatmullRomSegment(
           points[(i + 0) % points.length],
           points[(i + 1) % points.length],
@@ -1115,6 +1581,12 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       this.getPoint = function(t) {
+        // t = clamp(t, 0, 1);
+
+        if (t >= 1) {
+          return segments[segments.length - 1].getPoint(t);
+        }
+
         var segment = Math.floor(t * segments.length);
         return segments[segment].getPoint((t * segments.length) % 1);
       }
@@ -1212,8 +1684,16 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function SettingsManager() {
+      const LS_LOCATIon = "com.tc5550.cardemo.settings";
+
+      class SettingGroup {
+        constructor(name) {
+          this.name = name;
+        }
+      }
+
       class SliderSetting {
-        constructor(name = "Setting", value = 0, onValueChange = () => {}, min = 0, max = 1, step = 0.1) {
+        constructor(name = "Setting", value = 0, onValueChange = () => {}, min = 0, max = 1, step = 0.1, displayAsPercent = false) {
           this.name = name;
           this.value = value;
           this.defaultValue = value;
@@ -1222,6 +1702,15 @@ document.addEventListener("DOMContentLoaded", function () {
           this.min = min;
           this.max = max;
           this.step = step;
+          this.displayAsPercent = displayAsPercent;
+        }
+
+        formatValue(value) {
+          if (this.displayAsPercent) {
+            return `${Math.round(value * 100)}%`;
+          }
+
+          return value.toString();
         }
 
         createDOM() {
@@ -1229,7 +1718,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
           this.valueSpan = parent.appendChild(document.createElement("span"));
           this.valueSpan.style.marginRight = "2em";
-          this.valueSpan.textContent = this.value;
+          this.valueSpan.textContent = this.formatValue(this.value);
 
           var minSpan = parent.appendChild(document.createElement("span"));
           minSpan.textContent = this.min;
@@ -1246,7 +1735,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
           this.slider.addEventListener("input", () => {
             this.value = this.slider.value;
-            this.valueSpan.textContent = this.value;
+            this.valueSpan.textContent = this.formatValue(this.value);
             this.onValueChange(this.value);
           });
 
@@ -1258,7 +1747,7 @@ document.addEventListener("DOMContentLoaded", function () {
           this.onValueChange(this.value);
 
           this.slider.value = this.value;
-          this.valueSpan.textContent = this.value;
+          this.valueSpan.textContent = this.formatValue(this.value);
         }
       }
 
@@ -1303,7 +1792,7 @@ document.addEventListener("DOMContentLoaded", function () {
           this.value = value;
           this.onValueChange(this.value);
 
-          this.select.selectedIndex = this.select.options.indexOf(value);
+          this.select.selectedIndex = [...this.select.options].findIndex(o => o.value == value);
         }
       }
 
@@ -1336,15 +1825,37 @@ document.addEventListener("DOMContentLoaded", function () {
 
           this.checkbox.checked = value;
         }
+
+        onClick() {
+          this.setValue(!this.value);
+        }
       }
 
       var settings = {
+        _soundGroup: new SettingGroup("Sound"),
+
+        masterVolume: new SliderSetting("Master volume", 1, value => {
+          car.mainGainNode.gain.value = value;
+          saveSettings();
+        }, 0, 2, 0.01, true),
+
+        _displayGroup: new SettingGroup("Graphics"),
+
         renderScale: new SliderSetting("Render scale", 1, value => {
           renderer.setRenderScale(value);
+          saveSettings();
         }, 0.2, 2, 0.05),
 
+        motionBlur: new SliderSetting("Motion blur", 0.15, value => {
+          renderer.postprocessing.motionBlurStrength.value = value;
+          saveSettings();
+        }, 0, 0.5, 0.01),
+
+        _gameplayGroup: new SettingGroup("Gameplay"),
+
         cameraFollowMode: new DropdownSetting("Camera follow mode", 1, value => {
-          car.camera.followMode = value;
+          car.followCamera.followMode = value;
+          saveSettings();
         }, [
           "Follow velocity",
           "Follow direction"
@@ -1353,30 +1864,71 @@ document.addEventListener("DOMContentLoaded", function () {
           2
         ]),
 
-        steeringAssist: new CheckboxSetting("Steering assist", true, value => {
-          car.activateAutoCountersteer = value;
+        _assistGroup: new SettingGroup("Assists"),
+
+        abs: new CheckboxSetting("ABS", true, value => {
+          car.ABS = value;
+          saveSettings();
         }),
 
-        autoCountersteer: new SliderSetting("Auto countersteer", 0.6, value => {
+        tcs: new CheckboxSetting("TCS", false, value => {
+          car.TCS = value;
+          saveSettings();
+        }),
+
+        steeringAssist: new CheckboxSetting("Steering assist", true, value => {
+          car.activateAutoCountersteer = value;
+          saveSettings();
+        }),
+
+        autoCountersteer: new SliderSetting("Auto countersteer", 0.25/*0.6*/, value => {
           car.autoCountersteer = value;
+          saveSettings();
         }, 0, 1, 0.05),
 
-        autoCountersteerVelocityMultiplier: new SliderSetting("Auto countersteer velocity", 0.2, value => {
+        autoCountersteerVelocityMultiplier: new SliderSetting("Auto countersteer velocity", 0.15/*0.2*/, value => {
           car.autoCountersteerVelocityMultiplier = value;
+          saveSettings();
         }, 0, 1, 0.05),
       };
 
       var settingsItems = document.querySelector(".settings > .settingsContainer > .items");
-      for (var settingKey in settings) {
-        var setting = settings[settingKey];
+      var defaultGroup = document.createElement("div");
+      defaultGroup.classList.add("group");
 
-        var item = settingsItems.appendChild(document.createElement("div"));
-        item.classList.add("item");
+      var currentGroup = defaultGroup;
 
-        var name = item.appendChild(document.createElement("span"));
-        name.textContent = setting.name;
+      for (let settingKey in settings) {
+        let setting = settings[settingKey];
 
-        item.appendChild(setting.createDOM());
+        if (setting instanceof SettingGroup) {
+          var group = settingsItems.appendChild(document.createElement("div"));
+          group.classList.add("group");
+
+          var groupTitle = group.appendChild(document.createElement("span"));
+          groupTitle.classList.add("title");
+          groupTitle.textContent = setting.name;
+
+          currentGroup = group;
+        }
+        else {
+          let item = currentGroup.appendChild(document.createElement("div"));
+          item.classList.add("item");
+          item.classList.add("isSelectable");
+
+          item.addEventListener("click", function() {
+            setting.onClick?.();
+          });
+
+          var name = item.appendChild(document.createElement("span"));
+          name.textContent = setting.name;
+
+          item.appendChild(setting.createDOM());
+
+          if (currentGroup == defaultGroup && !settingsItems.contains(defaultGroup)) {
+            settingsItems.appendChild(defaultGroup);
+          }
+        }
       }
 
       this.getSettingValue = function(setting) {
@@ -1396,7 +1948,60 @@ document.addEventListener("DOMContentLoaded", function () {
 
         settings[setting].setValue(value);
       }
+
+      this.loadSaveData = function() {
+        var saveData = getSaveData();
+        for (let key in saveData) {
+          settings[key].setValue(saveData[key]);
+        }
+      }
+
+      function getSaveData() {
+        var d = localStorage.getItem(LS_LOCATIon);
+        if (d == null) {
+          return {};
+        }
+
+        try {
+          var parsed = JSON.parse(d);
+          for (let key in parsed) {
+            if (!Object.prototype.hasOwnProperty.call(settings, key)) {
+              delete parsed[key];
+            }
+          }
+          return parsed;
+        }
+        catch(e) {
+          console.warn("Could not load settings");
+          console.error(e);
+        }
+
+        return {};
+      }
+
+      function saveSettings() {
+        var data = {};
+        for (let key in settings) {
+          data[key] = settings[key].value;
+        }
+
+        localStorage.setItem(LS_LOCATIon, JSON.stringify(data));
+      }
     }
 
   })();
+
+  function wsIsOpen(ws) {
+    return ws && ws.readyState == ws.OPEN;
+  }
+  
+  function sendMessage(type, data = null) {
+    if (wsIsOpen(ws)) {
+      ws.send(JSON.stringify({
+        type: type,
+        data: data,
+        clientSendTime: new Date()
+      }));
+    }
+  }
 });

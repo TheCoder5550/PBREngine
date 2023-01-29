@@ -33,20 +33,20 @@
     <div class="menu">
       <h1>Paused</h1>
       <div class="Playground">
-        <button onclick="gotoGarage()">
+        <button onclick="gotoGarage()" class="isSelectable">
           <img src="garageIcon.png">
           <span>Garage</span>
         </button>
-        <button onclick="openSettings()"><span class="material-symbols-outlined">settings</span>Settings</button>
-        <button onclick="resetCar()"><span class="material-symbols-outlined">restart_alt</span>Reset car</button>
-        <button onclick="resume()">Resume</button>
-        <button onclick=""><span class="material-symbols-outlined">location_on</span>Teleport</button>
+        <button onclick="openSettings()" class="isSelectable"><span class="material-symbols-outlined">settings</span>Settings</button>
+        <button onclick="resetCar()" class="isSelectable"><span class="material-symbols-outlined">restart_alt</span>Reset car</button>
+        <button onclick="resume()" class="isSelectable">Resume</button>
+        <button onclick="" class="isSelectable"><span class="material-symbols-outlined">location_on</span>Teleport</button>
       </div>
 
       <div class="Garage hidden">
-        <button onclick="gotoPlayground()">Go back</button>
-        <button onclick="openSettings()"><span class="material-symbols-outlined">settings</span>Settings</button>
-        <button onclick="resume()">Resume</button>
+        <button onclick="gotoPlayground()" class="isSelectable"><span class="material-symbols-outlined">logout</span>Leave garage</button>
+        <button onclick="openSettings()" class="isSelectable"><span class="material-symbols-outlined">settings</span>Settings</button>
+        <button onclick="resume()" class="isSelectable">Resume</button>
       </div>
     </div>
 
@@ -102,6 +102,21 @@
     <div class="settingsContainer">
       <h1>Settings</h1>
       <div class="items"></div>
+    </div>
+
+    <div class="tooltip">
+      <div>
+        <img src="../assets/textures/keyIcons/Xbox Series/XboxSeriesX_A.png">
+        <span>Change setting</span>
+      </div>
+      <div>
+        <img src="../assets/textures/keyIcons/Xbox Series/XboxSeriesX_B.png">
+        <span>Back</span>
+      </div>
+      <div>
+        <img src="../assets/textures/keyIcons/Xbox Series/XboxSeriesX_Dpad.png">
+        <span>Navigate</span>
+      </div>
     </div>
   </div>
 

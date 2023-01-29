@@ -1,5 +1,15 @@
 // Math
 
+function getAngleBetween(ax, ay, bx, by) {
+  return Math.atan2(by - ay, bx - ax);
+}
+
+function getDistanceBetween(ax, ay, bx, by) {
+  var x = ax - bx;
+  var y = ay - by;
+  return Math.sqrt(x * x + y * y);
+}
+
 function xor(a, b) {
   return (a && !b) || (!a && b);
 }
@@ -237,6 +247,8 @@ function downloadURL(url, name = "download") {
 }
 
 export {
+  getAngleBetween,
+  getDistanceBetween,
   xor,
   mod,
   clamp,

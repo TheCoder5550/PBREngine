@@ -524,12 +524,15 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 
   float f0 = 0.04;
 
+  float shadowAmount = getShadowAmount(dot(sunDirection.xyz, N));
+  float environmentMinLight = 0.25;
+
   vec3 col = vec3(0);
   col += ambientColor;
-  col += IBL(N, V, R, _albedo.rgb, _metallic, _roughness, f0) * _ao;
+  col += IBL(N, V, R, _albedo.rgb, _metallic, _roughness, f0) * _ao * (environmentMinLight + shadowAmount * (1. - environmentMinLight));
   
   if (sunIntensity.xyz != vec3(0)) {
-    col += DirectionalLight(vPosition, N, V, sunDirection.xyz, sunIntensity.xyz, _albedo.rgb, _metallic, _roughness, f0) * _ao * getShadowAmount(dot(sunDirection.xyz, N));
+    col += DirectionalLight(vPosition, N, V, sunDirection.xyz, sunIntensity.xyz, _albedo.rgb, _metallic, _roughness, f0) * _ao * shadowAmount;
   }
 
   for (int i = 0; i < int(nrLights); i++) {
@@ -845,6 +848,9 @@ void main() {
   // if (doNoTiling) {
   //   currentAlbedo.rgb *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(vUV / 40.), 0., 1.));
   // }
+
+  // fragColor = currentAlbedo + vec4(emissiveFactor, 0.);
+  // return;
 
   vec3 _emission = emissiveFactor;
   if (useEmissiveTexture) {

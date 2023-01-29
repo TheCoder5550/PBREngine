@@ -1,7 +1,8 @@
 #version 300 es
 precision highp float;
 
-out vec4 fragColor;
+layout (location = 0) out vec4 fragColor;
+layout (location = 1) out vec2 motionVector;
 
 uniform sampler2D albedoTexture;
 uniform bool useTexture;
@@ -20,6 +21,8 @@ in vec3 vColor;
 in vec2 vUV;
 
 void main() {
+  motionVector = vec2(0.5);
+
   vec4 baseColor = useTexture ? texture(albedoTexture, vUV) : vec4(1);
   if (baseColor.a < 0.5) {
     discard;

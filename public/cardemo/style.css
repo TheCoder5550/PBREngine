@@ -3,15 +3,19 @@
 
   -webkit-touch-callout: none; /* iOS Safari */
     -webkit-user-select: none; /* Safari */
-      -khtml-user-select: none; /* Konqueror HTML */
-        -moz-user-select: none; /* Old versions of Firefox */
+     -khtml-user-select: none; /* Konqueror HTML */
+       -moz-user-select: none; /* Old versions of Firefox */
         -ms-user-select: none; /* Internet Explorer/Edge */
             user-select: none; /* Non-prefixed version, currently
                                   supported by Chrome, Edge, Opera and Firefox */
+
+  font-family: 'Oswald', sans-serif;
 }
 
 :root {
-  font-family: 'Oswald', sans-serif;
+  /* font-family: 'Oswald', sans-serif; */
+
+  --theme: rgb(196, 84, 53);
 }
 
 body {
@@ -24,6 +28,16 @@ body {
 
 .hidden {
   display: none !important;
+}
+
+.isSelectable {
+  transition: outline 100ms, outline-offset 100ms !important;
+}
+
+.isSelectable.selected {
+  outline: 4px solid var(--theme) !important;
+  outline-offset: 2px !important;
+  isolation: isolate;
 }
 
 .glass {
@@ -167,12 +181,9 @@ canvas {
   display: flex;
 }
 
-.pauseOverlay .menu > div > button:focus,
-.pauseOverlay .menu > div > button:hover {
+.pauseOverlay .menu > div > button.selected,
+.pauseOverlay .menu > div > button.selected {
   transform: scale(0.97);
-
-  /* outline: 3px solid black; */
-  /* outline-offset: -4px; */
   
   background: rgb(196, 84, 53);
   color: white;
@@ -188,8 +199,8 @@ canvas {
   font-size: 1.25em;
 }
 
-.pauseOverlay .menu > div > button:focus:nth-child(2) > .material-symbols-outlined,
-.pauseOverlay .menu > div > button:focus:nth-child(3) > .material-symbols-outlined {
+.pauseOverlay .menu > div > button:nth-child(2).selected > .material-symbols-outlined,
+.pauseOverlay .menu > div > button:nth-child(3).selected > .material-symbols-outlined {
   animation: arrowSpin 500ms reverse;
 }
 
@@ -209,16 +220,20 @@ canvas {
   pointer-events: none;
 }
 
-.pauseOverlay .tooltip {
+.overlay .tooltip {
   position: absolute;
   bottom: 0;
   left: 0;
   
   display: flex;
   flex-direction: row;
+
+  color: white;
+
+  z-index: 100;
 }
 
-.pauseOverlay .tooltip > div {
+.overlay .tooltip > div {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -233,12 +248,12 @@ canvas {
   border-radius: 10px;
 }
 
-.pauseOverlay .tooltip > div > img {
+.overlay .tooltip > div > img {
   height: 40px;
   margin-right: 0.25em;
 }
 
-.pauseOverlay .tooltip > div > span {
+.overlay .tooltip > div > span {
   font-weight: bold;
 }
 
@@ -335,6 +350,8 @@ canvas {
   display: flex;
   justify-content: center;
   align-items: center;
+
+  padding: 10px;
 }
 
 .settings > .settingsContainer {
@@ -361,7 +378,21 @@ canvas {
   overflow-y: auto;
 }
 
-.settings > .settingsContainer > .items > .item {
+.settings > .settingsContainer > .items > .group {
+  display: flex;
+  flex-direction: column;
+
+  margin-bottom: 30px;
+  padding: 6px;
+}
+
+.settings > .settingsContainer > .items > .group > .title {
+  font-size: 1.5em;
+  font-weight: bold;
+  color: gray;
+}
+
+.settings > .settingsContainer > .items .item {
   /* border: 2px solid black; */
   background: #eee;
   border-radius: 5px;
@@ -374,7 +405,7 @@ canvas {
 
 }
 
-.settings > .settingsContainer > .items > .item:last-child {
+.settings > .settingsContainer > .items .item:last-child {
   margin-bottom: 0;
 }
 

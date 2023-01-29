@@ -7,6 +7,10 @@ export default class Quaternion {
     return {x, y, z, w};
   }
 
+  static isQuaternionIsh(q) {
+    return typeof q == "object" && ("x" in q && "y" in q && "z" in q && "w" in q);
+  }
+
   static zero() {
     return {
       x: 0,

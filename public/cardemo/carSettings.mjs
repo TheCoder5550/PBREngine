@@ -102,9 +102,74 @@ var ranger = {
   },
 };
 
+var skyline = {
+  name: "Nissan Skyline R32 GT-R",
+  model: "../assets/models/skyline.glb",
+  settings: {
+    mass: 1400,
+    drivetrain: "RWD",
+    friction: 1,
+    forwardFriction: 1,
+    sidewaysFriction: 1,
+    maxSteerAngle: 45,
+    torque: 400,
+
+    suspensionForce: 90_000,
+    suspensionDamping: 2000,
+    suspensionTravel: 0.1,
+    rideHeightOffset: 0.08,
+    antiRoll: 10_000,
+
+    ABS: false,
+    TCS: false,
+    differential: Car.ENUMS.DIFFERENTIAL.LSD,
+
+    camera: {
+      followDistance: 4,
+      followHeight: 0.25,
+      pitch: 0.1,
+    },
+  },
+};
+
+var bus = {
+  name: "Nagoya City Bus",
+  model: "../assets/models/bus.glb",
+  settings: {
+    mass: 7000,
+    drivetrain: "RWD",
+    maxSteerAngle: 45,
+    torque: 350,
+
+    friction: 1,
+    forwardFriction: 1,
+    sidewaysFriction: 1,
+
+    suspensionForce: 200_000,
+    suspensionDamping: 8000,
+    suspensionTravel: 0.2,
+    rideHeightOffset: 0.08,
+    antiRoll: 50_000,
+
+    // COMOffset: {x: 0, y: -1, z: 0},
+
+    ABS: true,
+    TCS: false,
+    // differential: Car.ENUMS.DIFFERENTIAL.LSD,
+
+    camera: {
+      followDistance: 7,
+      followHeight: 0.25,
+      pitch: 0.1,
+    },
+  },
+};
+
 export {
   aventador,
   drift,
   drift2,
-  ranger
+  skyline,
+  ranger,
+  bus
 };

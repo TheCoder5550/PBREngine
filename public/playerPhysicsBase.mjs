@@ -116,7 +116,7 @@ class PlayerPhysicsBase {
       {x: this.position.x - this.colliderRadius * 2, y: this.position.y - this.colliderRadius * 2,               z: this.position.z - this.colliderRadius * 2},
       {x: this.position.x + this.colliderRadius * 2, y: this.position.y + this.colliderRadius * 2 + this.height, z: this.position.z + this.colliderRadius * 2}
     );
-    var q = this.physicsEngine.octree.queryAABB(playerAABB);
+    var q = this.physicsEngine.octree.queryAABB(playerAABB)?.triangles;
 
     for (var iter = 0; iter < this.collisionIterations; iter++) {
       if (q) {

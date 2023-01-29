@@ -232,6 +232,8 @@ function Octree(aabb, maxDepth = 5) {
   this.divided = false;
 
   this.trianglesArray = null;
+  this.gameObjectLookup = null;
+  this.gameObjects = null;
 
   this.query = function(origin, direction) {
     var indices = this._query((cAABB) => {
@@ -243,11 +245,19 @@ function Octree(aabb, maxDepth = 5) {
     }
 
     var triangles = new Array(indices.length);
-    for (var i = 0; i < indices.length; i++) {
+    var gameObjectIndices = new Array(indices.length);
+
+    for (let i = 0; i < indices.length; i++) {
       triangles[i] = this.getTriangleFromIndex(this.trianglesArray, indices[i]);
+      if (this.gameObjectLookup) {
+        gameObjectIndices[i] = this.gameObjectLookup[indices[i] / 9];
+      }
     }
 
-    return triangles;
+    return {
+      triangles,
+      gameObjectIndices,
+    };
   }
 
   this.queryAABB = function(aabb) {
@@ -260,11 +270,17 @@ function Octree(aabb, maxDepth = 5) {
     }
 
     var triangles = new Array(indices.length);
-    for (var i = 0; i < indices.length; i++) {
+    var nameIndices = new Array(indices.length);
+
+    for (let i = 0; i < indices.length; i++) {
       triangles[i] = this.getTriangleFromIndex(this.trianglesArray, indices[i]);
+      // nameIndices[i] = this.gameObjectLookup[indices[i]];
     }
 
-    return triangles;
+    return {
+      triangles,
+      nameIndices,
+    };
   }
 
   this._query = function(func, output = []) {
@@ -272,13 +288,13 @@ function Octree(aabb, maxDepth = 5) {
       return;
     }
 
-    for (var i = 0; i < this.items.length; i++) {
+    for (let i = 0; i < this.items.length; i++) {
       // if (!output.includes(this.items[i])) {
         output.push(this.items[i]);
       // }
     }
 
-    for (var i = 0; i < this.children.length; i++) {
+    for (let i = 0; i < this.children.length; i++) {
       this.children[i]._query(func, output);
     }
 
@@ -322,10 +338,13 @@ function Octree(aabb, maxDepth = 5) {
   //   return output;
   // }
 
-  this.addTriangles = function(arr) {
+  this.addTriangles = function(trianglesArray, gameObjectLookup, gameObjects) {
     if (typeof window !== 'undefined') window.aabbcalls = 0;
 
-    this.trianglesArray = arr;
+    this.trianglesArray = trianglesArray;
+    this.gameObjectLookup = gameObjectLookup;
+    this.gameObjects = gameObjects;
+    
     for (var i = 0; i < this.trianglesArray.length; i += 9) {
       var v1 = {x: this.trianglesArray[i + 0], y: this.trianglesArray[i + 1], z: this.trianglesArray[i + 2]};
       var v2 = {x: this.trianglesArray[i + 3], y: this.trianglesArray[i + 4], z: this.trianglesArray[i + 5]};
@@ -364,6 +383,14 @@ function Octree(aabb, maxDepth = 5) {
     var v2 = {x: arr[i + 3], y: arr[i + 4], z: arr[i + 5]};
     var v3 = {x: arr[i + 6], y: arr[i + 7], z: arr[i + 8]};
     return [v1, v2, v3];
+  }
+
+  this.getGameObjectFromIndex = function(index) {
+    if (Array.isArray(this.gameObjects)) {
+      return this.gameObjects[index];
+    }
+
+    return null;
   }
 
   this.subdivide = function() {
@@ -586,23 +613,30 @@ function PhysicsEngine(scene, settings = {}) {
       var smallestDistance = Infinity;
       var normal;
       var point;
+      var gameObjectIndex;
   
       // bruh, keep all hits here
-      for (var k = 0; k < q.length; k++) {
-        var hitPoint = rayToTriangle(origin, direction, q[k][0], q[k][1], q[k][2]);
+      var triangles = q.triangles;
+
+      for (var k = 0; k < triangles.length; k++) {
+        var hitPoint = rayToTriangle(origin, direction, triangles[k][0], triangles[k][1], triangles[k][2]);
         if (hitPoint && hitPoint.distance < smallestDistance) {
           smallestDistance = hitPoint.distance;
-          normal = getTriangleNormal(q[k]);
+          normal = getTriangleNormal(triangles[k]);
           point = hitPoint.point;
+          gameObjectIndex = q.gameObjectIndices[k];
         }
       }
   
       if (point) {
-        outArray.push({
+        let d = {
           distance: smallestDistance,
           normal: normal,
-          point: point
-        });
+          point: point,
+          gameObject: this.octree.getGameObjectFromIndex(gameObjectIndex),
+        };
+
+        outArray.push(d);
       }
     }
 
@@ -621,17 +655,19 @@ function PhysicsEngine(scene, settings = {}) {
           if (meshCollider.octree) {
             var q = meshCollider.octree.query(origin, direction);
             if (q) {
-              for (var k = 0; k < q.length; k++) {
+              let triangles = q.triangles;
+              for (var k = 0; k < triangles.length; k++) {
                 // if (!rayToAABBTriangle(origin, direction, q[k][0], q[k][1], q[k][2])) {
                 //   continue;
                 // }
 
-                var hitPoint = rayToTriangle(origin, direction, q[k][0], q[k][1], q[k][2]);
+                var hitPoint = rayToTriangle(origin, direction, triangles[k][0], triangles[k][1], triangles[k][2]);
                 if (hitPoint) {
                   outArray.push({
                     distance: hitPoint.distance,
-                    normal: getTriangleNormal(q[k]),
-                    point: hitPoint.point
+                    normal: getTriangleNormal(triangles[k]),
+                    point: hitPoint.point,
+                    gameObject: meshCollider.octree.getGameObjectFromIndex(q.gameObjectIndices[k]),
                   });
                 }
               }
@@ -731,7 +767,7 @@ function PhysicsEngine(scene, settings = {}) {
   }
 
   this.addMeshCollider = function(gameObject) {
-    // this._addMeshToOctree(gameObject); 
+    // this._addMeshToOctree(gameObject);
     meshCollidersToAdd.push(gameObject);
   }
 
@@ -770,11 +806,17 @@ function PhysicsEngine(scene, settings = {}) {
       }
     });
 
-    var trianglesArray = new Float32Array(nrTriangles * 3 * 3);
+    var gameObjects = [];
     var triangleIndex = 0;
+
+    var gameObjectLookup = new Uint16Array(nrTriangles);
+    var trianglesArray = new Float32Array(nrTriangles * 3 * 3);
 
     gameObject.traverse(o => {
       if (o.meshRenderer) {
+        gameObjects.push(o);
+        let gameObjectIndex = gameObjects.length - 1;
+
         var worldMatrix = o.transform.worldMatrix;
 
         for (var j = 0; j < o.meshRenderer.meshData.length; j++) {
@@ -792,13 +834,15 @@ function PhysicsEngine(scene, settings = {}) {
               trianglesArray[triangleIndex * 9 + l * 3 + 2] = transVec.z;
             }
 
+            gameObjectLookup[triangleIndex] = gameObjectIndex;
+
             triangleIndex++;
           }
         }
       }
     });
 
-    this.octree.addTriangles(trianglesArray);
+    this.octree.addTriangles(trianglesArray, gameObjectLookup, gameObjects);
   }
 
   var updatePhysics = () => {
@@ -833,7 +877,7 @@ function PhysicsEngine(scene, settings = {}) {
           var q = physicsEngine.octree.queryAABB(new AABB(
             Vector.subtract(pos, s),
             Vector.add(pos, s)
-          ));
+          ))?.triangles;
 
           if (q) {
             for (var k = 0; k < q.length; k++) {
@@ -902,7 +946,7 @@ function PhysicsEngine(scene, settings = {}) {
           var q = physicsEngine.octree.queryAABB(new AABB(
             Vector.subtract(center, s),
             Vector.add(center, s)
-          ));
+          ))?.triangles;
 
           if (q) {
             for (var k = 0; k < q.length; k++) {
@@ -1503,18 +1547,20 @@ class MeshCollider extends Collider {
 
       var nrTriangles = 0;
 
-      for (var j = 0; j < this.gameObject.meshRenderer.meshData.length; j++) {
-        var md = this.gameObject.meshRenderer.meshData[j].data;
+      for (let j = 0; j < this.gameObject.meshRenderer.meshData.length; j++) {
+        let md = this.gameObject.meshRenderer.meshData[j].data;
         nrTriangles += md.indices.bufferData.length / 3;
       }
 
+      var gameObjects = [ this.gameObject ];
+      var gameObjectLookup = new Uint16Array(nrTriangles);
       var trianglesArray = new Float32Array(nrTriangles * 3 * 3);
       var triangleIndex = 0;
 
       var worldMatrix = this.gameObject.transform.worldMatrix;
 
-      for (var j = 0; j < this.gameObject.meshRenderer.meshData.length; j++) {
-        var md = this.gameObject.meshRenderer.meshData[j].data;
+      for (let j = 0; j < this.gameObject.meshRenderer.meshData.length; j++) {
+        let md = this.gameObject.meshRenderer.meshData[j].data;
 
         for (var k = 0; k < md.indices.bufferData.length; k += 3) {
           for (var l = 0; l < 3; l++) {
@@ -1528,12 +1574,14 @@ class MeshCollider extends Collider {
             trianglesArray[triangleIndex * 9 + l * 3 + 2] = transVec.z;
           }
 
+          gameObjectLookup[triangleIndex] = 0;
+
           triangleIndex++;
         }
       }
 
       this.octree = new Octree(aabb, 4);
-      this.octree.addTriangles(trianglesArray);
+      this.octree.addTriangles(trianglesArray, gameObjectLookup, gameObjects);
     }
   }
 }

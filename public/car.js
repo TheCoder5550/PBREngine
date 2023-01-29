@@ -7,6 +7,7 @@ import { clamp,  lerp } from "./engine/helper.mjs";
 import Keybindings from "./keybindingsController.mjs";
 import { Camera } from "./engine/renderer.mjs";
 import GamepadManager, { deadZone, quadraticCurve } from "./gamepadManager.js";
+import Perlin from "./engine/perlin.mjs";
 
 var radPerSecToRPM = 30 / Math.PI;
 
@@ -14,6 +15,13 @@ function Car(scene, physicsEngine, settings = {}) {
   var _this = this;
   var renderer = scene.renderer;
   this.path = settings.path ?? "./";
+
+  this.renderer = renderer;
+  this.physicsEngine = physicsEngine;
+  
+  var perlin = new Perlin();
+
+  // var graphsManager = new GraphsManager();
 
   var keybindings = this.keybindings = settings.keybindings ?? new Keybindings(renderer, new GamepadManager(), {
     "resetGame": {
@@ -64,32 +72,49 @@ function Car(scene, physicsEngine, settings = {}) {
   this.resetPosition = Vector.zero();
   this.bottomOffset = Vector.zero();
 
-  var cameraSettings = settings.camera ?? {};
-  this.cameraMode = 0;
-  this.CAMERA_FOLLOW_MODES = { FOLLOW_VELOCITY: 1, FOLLOW_DIRECTION: 2 };
-  this.camera = {
-    followMode: this.CAMERA_FOLLOW_MODES.FOLLOW_VELOCITY,
-    followDistance: cameraSettings.followDistance ?? 5,
-    followHeight: cameraSettings.followHeight ?? 0.4,
-    followSpeed: cameraSettings.followSpeed ?? 0.05,
-    pitch: cameraSettings.pitch ?? 0.15,
-    accelerationSpeed: cameraSettings.accelerationSpeed ?? 0.05,
-    accelerationEffect: cameraSettings.accelerationEffect ?? 0.3
-  };
+  // var cameraSettings = settings.camera ?? {};
+  // this.cameraMode = 0;
+  // this.CAMERA_FOLLOW_MODES = { FOLLOW_VELOCITY: 1, FOLLOW_DIRECTION: 2 };
+  // this.camera = {
+  //   followMode: this.CAMERA_FOLLOW_MODES.FOLLOW_VELOCITY,
+  //   followDistance: cameraSettings.followDistance ?? 5,
+  //   followHeight: cameraSettings.followHeight ?? 0.4,
+  //   followSpeed: cameraSettings.followSpeed ?? 0.05,
+  //   pitch: cameraSettings.pitch ?? 0.15,
+  //   accelerationSpeed: cameraSettings.accelerationSpeed ?? 0.05,
+  //   accelerationEffect: cameraSettings.accelerationEffect ?? 0.3
+  // };
   this.mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 1000, fov: 35});
-  var cameraFov = this.mainCamera.getFOV();
-  var cameraEulerAngles = Vector.zero();
-  var cameraCarForward = Vector.zero();
-  var currentFollowDistance = this.camera.followDistance;
-  var cameraShake = Vector.zero();
-  var cameraShakeTarget = Vector.zero();
-  var shakeCounter = 0;
+  // var cameraFov = this.mainCamera.getFOV();
+  // var cameraEulerAngles = Vector.zero();
+  // var cameraCarForward = Vector.zero();
+  // var currentFollowDistance = this.camera.followDistance;
+  // var cameraShake = Vector.zero();
+  // var cameraShakeTarget = Vector.zero();
+  // var shakeCounter = 0;
 
   var resizeEvent = () => {
     this.mainCamera.setAspect(renderer.aspect);
-  }
+  };
   renderer.on("resize", resizeEvent);
   resizeEvent();
+
+  var cameraSettings = settings.camera ?? {};
+  this.followCamera = new TPPFollowCamera(this);
+  this.followCamera.followDistance = cameraSettings.followDistance ?? 5;
+  this.followCamera.followHeight = cameraSettings.followHeight ?? 0.4;
+  this.followCamera.followSpeed = cameraSettings.followSpeed ?? 0.05;
+  this.followCamera.pitch = cameraSettings.pitch ?? 0.15;
+  this.followCamera.accelerationSpeed = cameraSettings.accelerationSpeed ?? 0.05;
+  this.followCamera.accelerationEffect = cameraSettings.accelerationEffect ?? 0.3;
+
+  var cameraControllers = [
+    this.followCamera,
+    new HoodFollowCamera(this),
+    new InteriorFollowCamera(this),
+    new PhotoCamera(this),
+  ];
+  var currentCameraControllerIndex = 0;
 
   this.engine = new Engine({
     torque: settings.torque
@@ -184,15 +209,22 @@ function Car(scene, physicsEngine, settings = {}) {
     this.engine.setupAudio(this.audioContext, this.mainGainNode);
   };
   
+  var suspendAudio = () => {
+    this.audioContext.suspend();
+  };
+
   var resumeAudio = () => {
     this.audioContext.resume();
   };
   
   initAudio();
-  window.addEventListener("click", resumeAudio);
+  window.addEventListener("click", resumeAudio, { once: true });
 
   var lightMaterials = {};
   var brightsAreOn = false;
+
+  this.brakeLightTurnonTime = 0.1;
+  var brakeLightAmount = 0;
 
   this.fixedUpdateFunction = (dt) => {
     this.fixedUpdate(dt);
@@ -203,18 +235,14 @@ function Car(scene, physicsEngine, settings = {}) {
     this.frozen = true;
     this.rb.frozen = true;
 
-    if (this.mainGainNode) {
-      this.mainGainNode.gain.value = 0;
-    }
+    suspendAudio();
   }
 
   this.unfreeze = function() {
     this.frozen = false;
     this.rb.frozen = false;
     
-    if (this.mainGainNode) {
-      this.mainGainNode.gain.value = 1;
-    }
+    resumeAudio();
   }
 
   this.getWheel = function(name) {
@@ -278,6 +306,7 @@ function Car(scene, physicsEngine, settings = {}) {
     this.rb = new Rigidbody();
     this.rb.position = Vector.copy(this.resetPosition);
     this.rb.mass = settings.mass ?? 1500;
+    Vector.addTo(this.rb.COMOffset, settings.COMOffset ?? Vector.zero());
     // this.rb.COMOffset.z += 0.25;
     // this.rb.gravityScale = 0;
     
@@ -357,6 +386,8 @@ function Car(scene, physicsEngine, settings = {}) {
 
       this.bottomOffset.y = position.y - radius - this.wheels[i].suspensionTravel - this.gameObject.transform.position.y;
 
+      // this.wheels[i].graph = graphsManager.createGraph();
+
       // if (wheelModel) {
       //   this.wheels[i].wheelModel = wheelObject.addChild(wheelModel.copy());
       // }
@@ -393,12 +424,12 @@ function Car(scene, physicsEngine, settings = {}) {
     this.wheels[3].side = -1;
 
     // Camber
-    var camber = settings.rearCamber ?? 0;
-    this.wheels[0].camberAngle = camber * -this.wheels[0].side;
-    this.wheels[1].camberAngle = camber * -this.wheels[1].side;
-    var camber = settings.frontCamber ?? 0;
-    this.wheels[2].camberAngle = camber * -this.wheels[2].side;
-    this.wheels[3].camberAngle = camber * -this.wheels[3].side;
+    let rearCamber = settings.rearCamber ?? 0;
+    this.wheels[0].camberAngle = rearCamber * -this.wheels[0].side;
+    this.wheels[1].camberAngle = rearCamber * -this.wheels[1].side;
+    let frontCamber = settings.frontCamber ?? 0;
+    this.wheels[2].camberAngle = frontCamber * -this.wheels[2].side;
+    this.wheels[3].camberAngle = frontCamber * -this.wheels[3].side;
 
     // Rollbars
     this.rollbars = [
@@ -479,7 +510,7 @@ function Car(scene, physicsEngine, settings = {}) {
     this.gameObject.addChild(hoodCamera);
 
     // Set camera position
-    cameraCarForward = Matrix.getForward(this.gameObject.transform.worldMatrix);
+    cameraControllers[currentCameraControllerIndex].onReset();
   }
 
   this.destroy = function() {
@@ -489,6 +520,8 @@ function Car(scene, physicsEngine, settings = {}) {
     physicsEngine.eventHandler.removeEvent("fixedUpdate", this.fixedUpdateFunction);
     
     this.gameObject.delete();
+
+    // graphsManager.delete();
   }
 
   this.reset = function() {
@@ -507,7 +540,7 @@ function Car(scene, physicsEngine, settings = {}) {
       wheel.angularVelocity = 0;
     }
 
-    cameraCarForward = Matrix.getForward(this.gameObject.transform.worldMatrix);
+    cameraControllers[currentCameraControllerIndex].onReset();
   }
 
   this.renderUI = function(ui) {
@@ -538,17 +571,21 @@ function Car(scene, physicsEngine, settings = {}) {
     ui.resetTextXAlign();
     ui.resetTextYAlign();
 
-    ui.rectangle(center.x - 150, center.y - 30, 20, 100, "rgba(0, 0, 0, 0.5)");
-    ui.rectangle(center.x - 150, center.y - 30 + 100 * (1 - driveInput), 20, 100 * driveInput, "white");
+    // Inputs
+    var inputsWidth = 15;
+    var inputsSpacing = 25;
+    var inputsX = 50;
+    ui.rectangle(inputsX, center.y - 30, inputsWidth, 100, "rgba(0, 0, 0, 0.5)");
+    ui.rectangle(inputsX, center.y - 30 + 100 * (1 - driveInput), inputsWidth, 100 * driveInput, "white");
 
-    ui.rectangle(center.x - 150 - 30, center.y - 30, 20, 100, "rgba(0, 0, 0, 0.5)");
-    ui.rectangle(center.x - 150 - 30, center.y - 30 + 100 * (1 - brakeInput), 20, 100 * brakeInput, "red");
+    ui.rectangle(inputsX + inputsSpacing, center.y - 30, inputsWidth, 100, "rgba(0, 0, 0, 0.5)");
+    ui.rectangle(inputsX + inputsSpacing, center.y - 30 + 100 * (1 - brakeInput), inputsWidth, 100 * brakeInput, "red");
 
-    ui.rectangle(center.x - 150 - 60, center.y - 30, 20, 100, "rgba(0, 0, 0, 0.5)");
-    ui.rectangle(center.x - 150 - 60, center.y - 30 + 100 * (1 - ebrakeInput), 20, 100 * ebrakeInput, "orange");
+    ui.rectangle(inputsX + inputsSpacing * 2, center.y - 30, inputsWidth, 100, "rgba(0, 0, 0, 0.5)");
+    ui.rectangle(inputsX + inputsSpacing * 2, center.y - 30 + 100 * (1 - ebrakeInput), inputsWidth, 100 * ebrakeInput, "orange");
 
-    ui.rectangle(center.x - 150 - 90, center.y - 30, 20, 100, "rgba(0, 0, 0, 0.5)");
-    ui.rectangle(center.x - 150 - 90, center.y - 30 + 100 * (1 - clutchInput), 20, 100 * clutchInput, "lime");
+    ui.rectangle(inputsX + inputsSpacing * 3, center.y - 30, inputsWidth, 100, "rgba(0, 0, 0, 0.5)");
+    ui.rectangle(inputsX + inputsSpacing * 3, center.y - 30 + 100 * (1 - clutchInput), inputsWidth, 100 * clutchInput, "lime");
 
     // var x = ui.width / 2;
     // var y = ui.height / 2;
@@ -569,32 +606,41 @@ function Car(scene, physicsEngine, settings = {}) {
     }
 
     if (keybindings.getInputDown("cameraMode")) {
-      this.cameraMode++;
-      if (this.cameraMode >= 4) {
-        this.cameraMode = 0;
-      }
+      cameraControllers[currentCameraControllerIndex].onDeactivate();
 
-      if (this.cameraMode == 0) {
-        this.unfreeze();
-        this.mainCamera.setFOV(cameraFov);
+      currentCameraControllerIndex++;
+      currentCameraControllerIndex %= cameraControllers.length;
 
-        cameraCarForward = Matrix.getForward(this.gameObject.transform.worldMatrix);
-      }
-      else if (this.cameraMode == 1) {
-        this.mainCamera.setFOV(30);
-      }
-      else if (this.cameraMode == 2) {
-        this.mainCamera.setFOV(25);
-      }
-      else if (this.cameraMode == 3) {
-        this.freeze();
-      }
+      cameraControllers[currentCameraControllerIndex].onActivate();
+
+      // this.cameraMode++;
+      // if (this.cameraMode >= 4) {
+      //   this.cameraMode = 0;
+      // }
+
+      // if (this.cameraMode == 0) {
+      //   this.unfreeze();
+      //   this.mainCamera.setFOV(cameraFov);
+
+      //   cameraCarForward = Matrix.getForward(this.gameObject.transform.worldMatrix);
+      // }
+      // else if (this.cameraMode == 1) {
+      //   this.mainCamera.setFOV(30);
+      // }
+      // else if (this.cameraMode == 2) {
+      //   this.mainCamera.setFOV(25);
+      // }
+      // else if (this.cameraMode == 3) {
+      //   this.freeze();
+      // }
     }
 
     if (keybindings.getInputDown("resetGame")) {
       this.reset();
       this.rb.position = Vector.copy(this.resetPosition);
       this.gameObject.transform.position = this.rb.position;
+
+      cameraControllers[currentCameraControllerIndex].onReset();
     }
 
     // if (this.frozen) {
@@ -607,18 +653,36 @@ function Car(scene, physicsEngine, settings = {}) {
 
       // Drive and brake
       if (this.controlScheme == Car.ControlScheme.Controller) {
-        driveInput = clamp(keybindings.getInput("drive"), 0, 1);
+        let driveInputData = keybindings.getInputAndInputMethod("drive");
+        let targetDriveInput = clamp(driveInputData.value, 0, 1);
+
+        if (driveInputData.method == "keyboard") {
+          driveInput += (targetDriveInput - driveInput) * 0.1;
+        }
+        else if (driveInputData.method == "controller") {
+          driveInput = targetDriveInput;
+        }
 
         if (Vector.lengthSqr(this.rb.velocity) < 0.1 && brakeInput > 0.1 && driveInput < 0.01) {
           brakeInput = 1;
         }
         else {
-          brakeInput = Math.pow(keybindings.getInput("brake"), 3);
+          let brakeInputData = keybindings.getInputAndInputMethod("brake");
+          let targetBrakeInput = Math.pow(brakeInputData.value, 3);
+
+          if (brakeInputData.method == "keyboard") {
+            brakeInput += (targetBrakeInput - brakeInput) * 0.1;
+          }
+          else if (brakeInputData.method == "controller") {
+            brakeInput = targetBrakeInput;
+          }
         }
       }
       else if (this.controlScheme == Car.ControlScheme.Keyboard) {
         var d = clamp(keybindings.getInput("drive"), 0, 1) - keybindings.getInput("brake");
-        driveInput = clamp(Math.abs(d), 0, 1);
+
+        var targetDriveInput = clamp(Math.abs(d), 0, 1);
+        driveInput = targetDriveInput;//(targetDriveInput - driveInput) * 0.3;
         brakeInput = 0;
 
         if ((forwardVelocity > 1 && d < -0.1) || (forwardVelocity < -1 && d > 0.1)) {
@@ -698,9 +762,12 @@ function Car(scene, physicsEngine, settings = {}) {
     }
 
     // brakeInput = 1;
+    
+    brakeLightAmount += Math.sign((brakeInput > 1e-6 ? 1 : 0) - brakeLightAmount) / this.brakeLightTurnonTime * dt;
+    brakeLightAmount = clamp(brakeLightAmount, 0, 1);
 
     this.setLightEmission("reverseRear", this.currentGear == 0 ? [50, 50, 50] : [0, 0, 0]);
-    this.setLightEmission("brake", brakeInput > 0 ? [50, 0, 0] : [0, 0, 0]);
+    this.setLightEmission("brake", [Math.pow(brakeLightAmount, 5) * 50, 0, 0]);
     // this.setLightEmission("mainRear", brakeInput > 0 ? [50, 0, 0] : [0, 0, 0]);
   }
 
@@ -726,8 +793,8 @@ function Car(scene, physicsEngine, settings = {}) {
     this.forwardVelocity = forwardVelocity;
     var sidewaysVelocity = Vector.dot(this.rb.velocity, sideways);
 
-    var slipAngle = -Math.atan2(sidewaysVelocity, Math.abs(forwardVelocity));
-    if (isNaN(slipAngle) || !isFinite(slipAngle)) slipAngle = 0;
+    var carSlipAngle = -Math.atan2(sidewaysVelocity, Math.abs(forwardVelocity));
+    if (isNaN(carSlipAngle) || !isFinite(carSlipAngle)) carSlipAngle = 0;
 
     // Controller steer input
     var userInput = -deadZone(this.canMove ? keybindings.getInput("steer") : 0, 0.1);
@@ -736,29 +803,37 @@ function Car(scene, physicsEngine, settings = {}) {
 
     // Steer limiting
     userInput *= Math.exp(-Math.abs(forwardVelocity) / this.steerVelocity);
+
+    // //
+    // if (forwardVelocity * forwardVelocity > 0.1) {
+    //   var mu = this.wheels.reduce((acc, w) => acc + w.sidewaysFriction * w.friction, 0) / this.wheels.length;
+    //   var maxTheta = Math.atan(this.wheelBase * mu * Math.abs(physicsEngine.gravity.y) / (forwardVelocity * forwardVelocity));
+    //   var maxSteerInput = Math.abs(maxTheta / (this.maxSteerAngle / 180 * Math.PI)) + 0.1;
+    //   userInput = clamp(userInput, -maxSteerInput, maxSteerInput);
+    // }
     
     // Smooth steering
     steerInput += (userInput - steerInput) * this.steerSpeed;
     // steerInput += -Math.sign(steerInput - userInput) * Math.min(Math.abs(steerInput - userInput), 0.05);
 
     var acs = this.activateAutoCountersteer && (Math.abs(sidewaysVelocity) > 0.5 || forwardVelocity > this.autoCountersteerMinVel) ?
-      -slipAngle / (this.maxSteerAngle / 180 * Math.PI) * this.autoCountersteer
+      -carSlipAngle / (this.maxSteerAngle / 180 * Math.PI) * this.autoCountersteer
       - localAngularVelocity.y * this.autoCountersteerVelocityMultiplier * Math.sign(forwardVelocity)
       : 0;
     var currentSteerInput = clamp(steerInput + acs, -1, 1);
 
     // Set steering wheel model rotation
     if (this.steeringWheelModel) {
-      var m = Matrix.transform([
+      let m = Matrix.transform([
         ["ry", currentSteerInput * this.steeringWheelModelMaxRotation]
       ], Matrix.copy(steeringWheelModelInitialTransform));
 
       this.steeringWheelModel.transform.matrix = m;
     }
 
-    var i = 0;
-    for (var wheel of this.wheels) {
-      var currentSteerAngle = wheel.turn ? currentSteerInput * this.maxSteerAngle * Math.PI / 180 : 0;
+    for (let i = 0; i < this.wheels.length; i++) {
+      let wheel = this.wheels[i];
+      let currentSteerAngle = wheel.turn ? currentSteerInput * this.maxSteerAngle * Math.PI / 180 : 0;
 
       // Ackermann steering
       if (this.ackermannSteering && ((i == 2 && currentSteerInput > 0) || (i == 3 && currentSteerInput < 0))) {
@@ -766,34 +841,40 @@ function Car(scene, physicsEngine, settings = {}) {
       }
 
       // Turn wheel
-      var m = Matrix.transform([
+      let m = Matrix.transform([
         ["translate", wheel.position],
         ["ry", currentSteerAngle]
       ]);
       wheel.model.transform.matrix = m;
 
       // Bruh
-      var wheelWorldMatrix = wheel.model.transform.worldMatrix;
-      var up = Matrix.getUp(wheelWorldMatrix);
+      let wheelWorldMatrix = wheel.model.transform.worldMatrix;
+      let up = Matrix.getUp(wheelWorldMatrix);
       wheel.up = up;
 
-      var worldPos = Matrix.transformVector(carWorldMatrix, wheel.position);
+      let worldPos = Matrix.transformVector(carWorldMatrix, wheel.position);
       wheel.worldPos = worldPos;
-      var wheelVelocity = this.rb.GetPointVelocity(worldPos);
+      let wheelVelocity = this.rb.GetPointVelocity(worldPos);
 
-      var ray = {origin: worldPos, direction: Vector.negate(up)};
-      var hit = physicsEngine.Raycast(ray.origin, ray.direction).firstHit;
+      let ray = {origin: worldPos, direction: Vector.negate(up)};
+      let hit = physicsEngine.Raycast(ray.origin, ray.direction).firstHit;
+
+      // Simulate bumpy road
+      if (hit && hit.gameObject?.customData.bumpiness) {
+        hit.distance -= (perlin.noise(hit.point.x * 3, hit.point.z * 3) + 1) * 0.5 * hit.gameObject?.customData.bumpiness;
+      }
+
       wheel.isGrounded = hit && hit.distance < wheel.suspensionTravel + wheel.radius;
 
       // Change model transform
       if (wheel.wheelModel) {
-        var modelTransform = wheel.wheelModel.transform;
+        let modelTransform = wheel.wheelModel.transform;
         modelTransform.position = new Vector(wheel.camberAngle / 100, -(wheel.isGrounded ? hit.distance - wheel.radius : wheel.suspensionTravel), 0);
         modelTransform.rotation = Quaternion.euler(wheel.angle, 0, wheel.camberAngle * Math.PI / 180);
         // modelTransform.rotation = Quaternion.euler(wheel.angle * -wheel.side, wheel.side == 1 ? Math.PI : 0, wheel.camberAngle * Math.PI / 180);
       }
       if (wheel.staticWheelModel) {
-        var modelTransform = wheel.staticWheelModel.transform;
+        let modelTransform = wheel.staticWheelModel.transform;
         modelTransform.position = new Vector(wheel.camberAngle / 100, -(wheel.isGrounded ? hit.distance - wheel.radius : wheel.suspensionTravel), 0);
         modelTransform.rotation = Quaternion.euler(0, wheel.side == 1 ? Math.PI : 0, wheel.camberAngle * Math.PI / 180);
       }
@@ -817,8 +898,6 @@ function Car(scene, physicsEngine, settings = {}) {
         wheel.groundHit = hit;
         wheel.contactPoint = hit.point;
       }
-
-      i++;
     }
 
     var highestSkidFreq = 1;
@@ -829,7 +908,7 @@ function Car(scene, physicsEngine, settings = {}) {
 
     var iters = 20;
     var dt = fixedDeltaTime / iters;
-    for (var count = 0; count < iters; count++) {
+    for (let count = 0; count < iters; count++) {
       // Clutch input
       targetClutchInput = Math.max(
         ebrakeInput,
@@ -883,7 +962,7 @@ function Car(scene, physicsEngine, settings = {}) {
 
       // Bottom out
       var wheelIndex = 0;
-      for (var wheel of this.wheels) {
+      for (let wheel of this.wheels) {
         // Bruh
         // var wheelWorldMatrix = wheel.model.transform.worldMatrix;
         // var up = Matrix.getUp(wheelWorldMatrix);
@@ -896,22 +975,22 @@ function Car(scene, physicsEngine, settings = {}) {
 
         wheel.bottomOutStrength = 0;
 
-        var ray = wheel.ray;
-        var hit = wheel.groundHit;
-        var worldPos = wheel.worldPos;
-        var up = wheel.up;
-        var wheelVelocity = this.rb.GetPointVelocity(worldPos);
+        let ray = wheel.ray;
+        let hit = wheel.groundHit;
+        // let worldPos = wheel.worldPos;
+        // let up = wheel.up;
+        // let wheelVelocity = this.rb.GetPointVelocity(worldPos);
 
         if (wheel.isGrounded && hit && hit.distance < wheel.suspensionTravel + wheel.radius) {
-          var furthestPoint = Vector.add(ray.origin, Vector.multiply(ray.direction, wheel.radius + wheel.stopLength));
-          var C = -Vector.dot(Vector.subtract(hit.point, furthestPoint), hit.normal);
+          let furthestPoint = Vector.add(ray.origin, Vector.multiply(ray.direction, wheel.radius + wheel.stopLength));
+          let C = -Vector.dot(Vector.subtract(hit.point, furthestPoint), hit.normal);
 
           if (C < 0) {
             wheel.isGrounded = true;
 
-            var r = Vector.cross(Vector.subtract(furthestPoint, this.rb.position), hit.normal);
+            let r = Vector.cross(Vector.subtract(furthestPoint, this.rb.position), hit.normal);
 
-            var jacobian = [
+            let jacobian = [
               hit.normal.x,
               hit.normal.y,
               hit.normal.z,
@@ -920,9 +999,9 @@ function Car(scene, physicsEngine, settings = {}) {
               r.z
             ];
 
-            var it = this.rb.inverseWorldInertia;
+            let it = this.rb.inverseWorldInertia;
 
-            var JM = [
+            let JM = [
               jacobian[0] / this.rb.mass,
               jacobian[1] / this.rb.mass,
               jacobian[2] / this.rb.mass,
@@ -935,11 +1014,11 @@ function Car(scene, physicsEngine, settings = {}) {
               // jacobian[5] / this.rb.inertia.z
             ];
 
-            var beta = 0.15;
-            var bias = beta / fixedDeltaTime * (C);
-            var JMJ = multiply1DMatrices(JM, jacobian);
+            let beta = 0.15;
+            let bias = beta / fixedDeltaTime * (C);
+            let JMJ = multiply1DMatrices(JM, jacobian);
 
-            var velocityMatrix = [
+            let velocityMatrix = [
               this.rb.velocity.x,
               this.rb.velocity.y,
               this.rb.velocity.z,
@@ -948,8 +1027,8 @@ function Car(scene, physicsEngine, settings = {}) {
               this.rb.angularVelocity.z
             ];
 
-            var JV = multiply1DMatrices(jacobian, velocityMatrix);
-            var lambda = -(JV + bias) / JMJ;
+            let JV = multiply1DMatrices(jacobian, velocityMatrix);
+            let lambda = -(JV + bias) / JMJ;
 
             if (lambdaAccumulated[wheelIndex] + lambda < 0) {
               lambda = -lambdaAccumulated[wheelIndex];
@@ -1059,21 +1138,21 @@ function Car(scene, physicsEngine, settings = {}) {
       }
 
       // Suspension
-      for (var wheel of this.wheels) {
-        var ray = wheel.ray;
-        var hit = wheel.groundHit;
-        var worldPos = wheel.worldPos;
-        var up = wheel.up;
-        var wheelVelocity = this.rb.GetPointVelocity(worldPos);
+      for (let wheel of this.wheels) {
+        let ray = wheel.ray;
+        let hit = wheel.groundHit;
+        let worldPos = wheel.worldPos;
+        let up = wheel.up;
+        let wheelVelocity = this.rb.GetPointVelocity(worldPos);
 
         if (wheel.isGrounded) {
-          var rayDist = hit.distance;
+          let rayDist = hit.distance;
 
-          var springError = wheel.suspensionTravel - (rayDist - wheel.radius);
-          // var springError = 1 - (rayDist - wheel.radius) / wheel.suspensionTravel;
-          var currentSpringForce = Vector.multiply(ray.direction, springError * -wheel.suspensionForce);
-          var currentDampingForce = Vector.multiply(Vector.project(Vector.subtract(wheelVelocity, Vector.projectOnPlane(this.rb.velocity, hit.normal)), up), -wheel.suspensionDamping);
-          var totalForce = Vector.add(currentSpringForce, currentDampingForce);
+          let springError = wheel.suspensionTravel - (rayDist - wheel.radius);
+          // let springError = 1 - (rayDist - wheel.radius) / wheel.suspensionTravel;
+          let currentSpringForce = Vector.multiply(ray.direction, springError * -wheel.suspensionForce);
+          let currentDampingForce = Vector.multiply(Vector.project(Vector.subtract(wheelVelocity, Vector.projectOnPlane(this.rb.velocity, hit.normal)), up), -wheel.suspensionDamping);
+          let totalForce = Vector.add(currentSpringForce, currentDampingForce);
           this.rb.AddImpulseAtPosition(Vector.multiply(totalForce, dt), worldPos);
 
           wheel.normalForce += Vector.length(totalForce);
@@ -1082,28 +1161,28 @@ function Car(scene, physicsEngine, settings = {}) {
       }
 
       // Rollbars
-      for (var rollbar of this.rollbars) {
-        var aComp = rollbar.a.compressionAmount ?? 0;
-        var bComp = rollbar.b.compressionAmount ?? 0;
-        var force = (aComp - bComp) * this.antiRoll;
+      for (let rollbar of this.rollbars) {
+        let aComp = rollbar.a.compressionAmount ?? 0;
+        let bComp = rollbar.b.compressionAmount ?? 0;
+        let force = (aComp - bComp) * this.antiRoll;
 
         if (rollbar.a.isGrounded) this.rb.AddImpulseAtPosition(Vector.multiply(rollbar.a.up, (rollbar.b.isGrounded ? 1 : 2) * force * dt), rollbar.a.worldPos);
         if (rollbar.b.isGrounded) this.rb.AddImpulseAtPosition(Vector.multiply(rollbar.b.up, (rollbar.a.isGrounded ? 1 : 2) * -force * dt), rollbar.b.worldPos);
       }
 
-      for (var wheel of this.wheels) {
-        var slipAngle = 0;
-        var forwardVelocity = 0;
+      for (let wheel of this.wheels) {
+        let slipAngle = 0;
+        let forwardVelocity = 0;
 
         // Bruh
-        var wheelWorldMatrix = wheel.model.transform.worldMatrix;
-        // var wheelWorldMatrix = carWorldMatrix; // This does not work when the wheels are 90 deg turned
-        var up = Matrix.getUp(wheelWorldMatrix);
-        var forward = Matrix.getForward(wheelWorldMatrix);
-        var sideways = Matrix.getRight(wheelWorldMatrix);
+        let wheelWorldMatrix = wheel.model.transform.worldMatrix;
+        // let wheelWorldMatrix = carWorldMatrix; // This does not work when the wheels are 90 deg turned
+        let up = Matrix.getUp(wheelWorldMatrix);
+        let forward = Matrix.getForward(wheelWorldMatrix);
+        let sideways = Matrix.getRight(wheelWorldMatrix);
 
-        var worldPos = Matrix.transformVector(carWorldMatrix, wheel.position);
-        var wheelVelocity = this.rb.GetPointVelocity(worldPos);
+        let worldPos = Matrix.transformVector(carWorldMatrix, wheel.position);
+        let wheelVelocity = this.rb.GetPointVelocity(worldPos);
 
         // forward = Vector.negate(forward);
 
@@ -1114,13 +1193,13 @@ function Car(scene, physicsEngine, settings = {}) {
 
         if (wheel.isGrounded) {
           forwardVelocity = Vector.dot(wheelVelocity, forward);
-          var sidewaysVelocity = Vector.dot(wheelVelocity, sideways);
+          let sidewaysVelocity = Vector.dot(wheelVelocity, sideways);
 
           if (brakeInput != 0) {
-            if (this.ABS) {
-              var a = wheel.lastA ?? 0;
-              var targetSlip = wheel.slipRatioPeak * Math.sqrt(Math.max(0.01, 1 - a * a)) * Math.sign(forwardVelocity);
-              var w = lerp(-forwardVelocity / wheel.radius, (targetSlip * Math.abs(forwardVelocity) - forwardVelocity) / wheel.radius, brakeInput);
+            if (this.ABS) { // bruh, ABS ignores max brake torque
+              let a = wheel.lastA ?? 0;
+              let targetSlip = wheel.slipRatioPeak * Math.sqrt(Math.max(0.01, 1 - a * a)) * Math.sign(forwardVelocity);
+              let w = lerp(-forwardVelocity / wheel.radius, (targetSlip * Math.abs(forwardVelocity) - forwardVelocity) / wheel.radius, brakeInput);
 
               wheel.angularVelocity = Math.abs(forwardVelocity) < 1 ? 0 : w;
             }
@@ -1134,7 +1213,8 @@ function Car(scene, physicsEngine, settings = {}) {
           // Friction
           // wheelVelocity = this.rb.GetPointVelocity(wheel.contactPoint);
 
-          var roadFriction = 1;
+          let roadFriction = wheel.groundHit.gameObject?.customData?.friction ?? 1;
+          wheel.roadFriction = roadFriction;
 
           // wheel.angularVelocity += currentDriveTorque / wheel.inertia * dt;
 
@@ -1142,10 +1222,14 @@ function Car(scene, physicsEngine, settings = {}) {
           //   return advancedFy(x * 180 / Math.PI, wheel.normalForce, wheel.camberAngle, wheel.advancedSlipAngleCoeffs);
           // });
 
-          var currentSteerAngle = wheel.turn ? currentSteerInput * this.maxSteerAngle * Math.PI / 180 : 0;
+          // let currentSteerAngle = wheel.turn ? currentSteerInput * this.maxSteerAngle * Math.PI / 180 : 0;
           slipAngle = -Math.atan(sidewaysVelocity / Math.abs(forwardVelocity));// - currentSteerAngle * Math.sign(forwardVelocity); // Not needed when using wheel transform instead of car transform
+          // if (Math.abs(forwardVelocity) < 0.02) {
+          //   slipAngle = clamp(sidewaysVelocity * 0.01, -0.1, 0.1);
+          // }
+          slipAngle *= Math.min((sidewaysVelocity ** 2 + forwardVelocity ** 2) * 10, 1);
           if (isNaN(slipAngle) || !isFinite(slipAngle)) slipAngle = 0;
-          var a = slipAngle / wheel.slipAnglePeak;
+          let a = slipAngle / wheel.slipAnglePeak;
           wheel.lastA = a;
 
           // // TCS
@@ -1168,11 +1252,15 @@ function Car(scene, physicsEngine, settings = {}) {
 
           var Fx = (_slipRatio) => {
             return magicFormula(_slipRatio, wheel.slipRatioCoeffs) * roadFriction * wheel.friction * wheel.forwardFriction;
-          }
+          };
           var Fy = ( _slipAngle) => {
             return advancedFy(_slipAngle * 180 / Math.PI, wheel.normalForce, wheel.camberAngle, wheel.advancedSlipAngleCoeffs) * roadFriction * wheel.friction * wheel.sidewaysFriction;
             // return magicFormula(_slipAngle * 180 / Math.PI - wheel.camberAngle * wheel.camberAngleCoeff, wheel.slipAngleCoeffs) * roadFriction * wheel.friction * wheel.sidewaysFriction;
-          }
+          };
+
+          // if (count == iters - 1) {
+          //   wheel.graph.plot(performance.now(), a);
+          // }
 
           var finalForceX = s / rho * Fx(rho * wheel.slipRatioPeak) * wheel.normalForce;
           var finalForceY = a / rho * Fy(rho * wheel.slipAnglePeak);// * wheel.normalForce;
@@ -1326,8 +1414,9 @@ function Car(scene, physicsEngine, settings = {}) {
         }
 
         var skidVolume = 0;
-        if ((Math.abs(slipAngle) > 0.2 && Math.abs(forwardVelocity) > 0.5) || Math.abs(slipRatio) > 0.2) {
+        if (wheel.isGrounded && !wheel.groundHit.gameObject?.customData.offroad && ((Math.abs(slipAngle) > 0.2 && Math.abs(forwardVelocity) > 0.5) || Math.abs(slipRatio) > 0.2)) {
           skidVolume = clamp(Math.abs(slipRatio) - 0.2, 0, 1) + clamp((Math.abs(slipAngle) - 0.2) * (1 - Math.exp(-Math.abs(forwardVelocity) * 0.06)), 0, 1);
+          skidVolume *= wheel.friction * wheel.forwardFriction * wheel.roadFriction;
 
           if (skidVolume > highestSkidVolume) {
             highestSkidVolume = skidVolume;
@@ -1335,7 +1424,8 @@ function Car(scene, physicsEngine, settings = {}) {
         }
 
         if (wheel.skidmarks) {
-          wheel.skidmarks.emit = clamp(skidVolume * 20 * (wheel.isGrounded ? 1 : 0.01), 0, 0.7);
+          wheel.skidmarks.emit = clamp(clamp(skidVolume * 20 * (wheel.isGrounded ? 1 : 0.01 * 0), 0, 0.7) * (wheel.isGrounded ? wheel.friction * wheel.forwardFriction * wheel.roadFriction : 0), 0, 1); // bruh, what even is this
+        // wheel.skidmarks.emit);
         }
 
         wheel.slipRatio = slipRatio;
@@ -1343,28 +1433,29 @@ function Car(scene, physicsEngine, settings = {}) {
     }
 
     // Emit smoke
-    for (var wheel of this.wheels) {
+    for (let wheel of this.wheels) {
       wheel.angle += wheel.angularVelocity * fixedDeltaTime;
 
-      if (wheel.isGrounded) {
-        var wheelWorldMatrix = wheel.model.transform.worldMatrix;
-        var forward = Vector.negate(Matrix.getForward(wheelWorldMatrix));
-        var forwardVelocity = Vector.dot(this.rb.velocity, forward);
+      if (wheel.isGrounded && !wheel.groundHit.gameObject?.customData.offroad) {
+        let wheelWorldMatrix = wheel.model.transform.worldMatrix;
+        let forward = Vector.negate(Matrix.getForward(wheelWorldMatrix));
+        let forwardVelocity = Vector.dot(this.rb.velocity, forward);
 
-        var speedDiff = wheel.angularVelocity * wheel.radius - forwardVelocity;
+        let speedDiff = wheel.angularVelocity * wheel.radius - forwardVelocity;
+        speedDiff *= wheel.roadFriction * wheel.forwardFriction * wheel.friction;
         if (Math.abs(speedDiff) > 5) {
-          var up = Matrix.getUp(wheelWorldMatrix);
-          var worldPos = Matrix.transformVector(carWorldMatrix, wheel.position);
+          let up = Matrix.getUp(wheelWorldMatrix);
+          let worldPos = Matrix.transformVector(carWorldMatrix, wheel.position);
           Vector.addTo(worldPos, Vector.multiply(up, -wheel.radius));
           this.smoke.emitPosition = () => worldPos;
 
-          var sideways = Matrix.getRight(wheelWorldMatrix);
-          var driveForwardVector = Quaternion.QxV(Quaternion.angleAxis(-Math.PI / 2, sideways), wheel.groundHit.normal);
-          // var [ tangent, bitangent ] = Vector.formOrthogonalBasis(driveForwardVector);
-          var basis = Matrix.basis(sideways, Vector.cross(sideways, driveForwardVector), driveForwardVector);
+          let sideways = Matrix.getRight(wheelWorldMatrix);
+          let driveForwardVector = Quaternion.QxV(Quaternion.angleAxis(-Math.PI / 2, sideways), wheel.groundHit.normal);
+          // let [ tangent, bitangent ] = Vector.formOrthogonalBasis(driveForwardVector);
+          let basis = Matrix.basis(sideways, Vector.cross(sideways, driveForwardVector), driveForwardVector);
 
           this.smoke.emitVelocity = () => {
-            var v = new Vector((Math.random() - 0.5), Math.random() * 0.5, 3.5);
+            let v = new Vector((Math.random() - 0.5), Math.random() * 0.5, 3.5);
             v = Matrix.transformVector(basis, v);
             // v.y += 0.5;
             return v;
@@ -1379,7 +1470,7 @@ function Car(scene, physicsEngine, settings = {}) {
     }
 
     // Downforce
-    for (var wing of this.wings) {
+    for (let wing of this.wings) {
       wing.applyForce(this.rb, forwardVelocity);
     }
 
@@ -1395,15 +1486,27 @@ function Car(scene, physicsEngine, settings = {}) {
     }
 
     // Offroad audio
-    // if (this.offroadSource && this.offroadGain) {
-    //   this.offroadGain.gain.value = clamp(Vector.length(this.rb.velocity) / 3, 0, 0.4);
-    //   this.offroadSource.playbackRate.value = clamp(0.8 + Vector.length(this.rb.velocity) / 15, 1, 1.3);
-    // }
+    if (this.offroadSource && this.offroadGain) {
+      if (this.wheels.some(w => w.isGrounded && w.groundHit.gameObject?.customData.offroad)) {
+        let g = clamp(Vector.length(this.rb.velocity) / 3, 0, 0.7);
+        if (isFinite(g)) {
+          this.offroadGain.gain.value = g;
+        }
+
+        let r = clamp(0.8 + Vector.length(this.rb.velocity) / 15, 1, 1.4);
+        if (isFinite(r)) {
+          this.offroadSource.playbackRate.value = r;
+        }
+      }
+      else {
+        this.offroadGain.gain.value = 0;
+      }
+    }
 
     // Bottom out audio
-    var bottomOutStrength = Math.max(...this.wheels.map(w => w.bottomOutStrength));
+    let bottomOutStrength = Math.max(...this.wheels.map(w => w.bottomOutStrength));
     if (bottomOutStrength > 0 && this.bottomOutSample && !hasPlayedBottomOutSound) {
-      var { source, gainNode } = playSample(this.audioContext, this.bottomOutSample);
+      let { source, gainNode } = playSample(this.audioContext, this.bottomOutSample);
       source.loop = false;
       source.playbackRate.value = 0.9 + Math.random() * 0.2;
 
@@ -1462,26 +1565,52 @@ function Car(scene, physicsEngine, settings = {}) {
     this.canThrottle = true;
     var throttleTimeout = null;
 
-    var hasLoadedSound = false;
+    // var hasLoadedSound = false;
     var rpmChange = 1;
+    // var audioFolder = _this.path + "cargame/engineSound/x8";
+    // var audioFolder = _this.path + "cargame/engineSound/i6";
+    // var samples = [
+    //   { rpm: 1000 * 2, on: audioFolder + "/low_on.wav" },
+    //   { rpm: 1600 * 2, on: audioFolder + "/med_on.wav" },
+    //   { rpm: 3100 * 2, on: audioFolder + "/high_on.wav" }
+    // ];
+    var folder = _this.path + "cargame/engineSound/i6/";
+    var baseMult = 1.4;
     var samples = [
-      { rpm: 1500, on: _this.path + "cargame/engineSound/i6/low_on.wav" },
-      { rpm: 4000, on: _this.path + "cargame/engineSound/i6/med_on.wav" },
-      { rpm: 7000, on: _this.path + "cargame/engineSound/i6/high_on.wav" }
+      { baseRPM: 750, from: -5000, to: 1000, on: folder + "idle.wav", off: folder + "idle.wav" },
+      { baseRPM: 1125, from: 1000, to: 2500, on: folder + "low_on.wav", off: folder + "low_off.wav" },
+      { baseRPM: 1900, from: 2500, to: 5000, on: folder + "med_on.wav", off: folder + "med_off.wav" },
+      { baseRPM: 3500, from: 1000, to: 15000, on: folder + "high_on.wav", off: folder + "high_off.wav" }
     ];
+    // var samples = [
+    //   { baseRPM: 1500, on: folder + "low_on.wav" },
+    //   { baseRPM: 4000, on: folder + "med_on.wav" },
+    //   { baseRPM: 7000, on: folder + "high_on.wav" }
+    // ];
 
-    this.setupAudio = function(context, mainGainNode) {
-      for (var i of samples) {
-        (function(i) {
+    this.setupAudio = async function(context, mainGainNode) {
+      for (let i of samples) {
+        if (i.on) {
           loadSample(context, i.on).then(sample => {
-            var { source, gainNode } = playSample(context, sample);
+            let { source, gainNode } = playSample(context, sample);
             i.onSource = source;
             i.onGain = gainNode;
             gainNode.connect(mainGainNode);
         
             gainNode.gain.value = 0;
           });
-        })(i);
+        }
+
+        if (i.off) {
+          loadSample(context, i.off).then(sample => {
+            let { source, gainNode } = playSample(context, sample);
+            i.offSource = source;
+            i.offGain = gainNode;
+            gainNode.connect(mainGainNode);
+        
+            gainNode.gain.value = 0;
+          });
+        }
       }
     }
 
@@ -1505,7 +1634,7 @@ function Car(scene, physicsEngine, settings = {}) {
           virtualDriveInput = clamp(clamp((this.minRPM - this.getRPM()) / 100, 0, 0.4) + virtualDriveInput, 0, 1);
         }
 
-        // bruh works surprisingly well...
+        // bruh works surprisingly well... (on friction approx. eq. 1)
         if (activateTCS) {
           virtualDriveInput *= 0.2;
         }
@@ -1519,28 +1648,89 @@ function Car(scene, physicsEngine, settings = {}) {
           this.angularVelocity = this.maxRPM / radPerSecToRPM + 10;
         }
 
-        rpmChange -= (rpmChange - virtualDriveInput) * 0.01;
+        rpmChange -= (rpmChange - virtualDriveInput) * 0.11;
       }
       else {
-        rpmChange -= (rpmChange - 0) * 0.01;
+        rpmChange -= (rpmChange - 0) * 0.11;
       }
 
       this.angularVelocity += Math.min(Math.abs(this.angularVelocity), this.friction / this.inertia * dt) * -Math.sign(this.angularVelocity);
     
-      // Engine sound
-      var rpm = clamp(this.getRPM(), 800, this.maxRPM);
-      for (var sample of samples) {
-        if (sample.onSource && sample.onGain) {
-          var g = Math.exp(-(10 ** (-6.7)) * Math.pow(rpm - sample.rpm, 2)) * (Math.max(0, rpmChange) * 2 / 3 + 1 / 3) * 0.3;
-          if (isFinite(g)) {
-            sample.onGain.gain.value = g;
+      this.handleAudio();
+    }
+
+    this.handleAudio = function() {
+      var rpm = clamp(this.getRPM(), 0, this.maxRPM);
+
+      for (let sample of samples) {
+        var x = rpm;
+        var a = sample.from;
+        var b = sample.to;
+        var w = (b - a) / 2;
+        var o = (a + b) / 2;
+        var f = 750 * 1.5 * 2;
+
+        // var volume = Math.exp(-(10 ** (-6.7)) * Math.pow(rpm - sample.baseRPM, 2)) * (Math.max(0, rpmChange) * 2 / 3 + 1 / 3);
+        var volume = Math.max(0, Math.min(1, w / f - Math.abs((x - o) / f) + 0.5));
+        var rate = rpm / (sample.baseRPM * baseMult);
+
+        if (isFinite(volume) && isFinite(rate)) {
+          if (sample.onGain) {
+            sample.onGain.gain.value = volume * 0.3 * rpmChange;
+            sample.onSource.playbackRate.value = rpm / (sample.baseRPM * baseMult);
           }
-          var pbr = rpm / sample.rpm;
-          if (isFinite(pbr)) {
-            sample.onSource.playbackRate.value = pbr;
+
+          if (sample.offGain) {
+            sample.offGain.gain.value = volume * 0.4 * (1 - rpmChange); 
+            sample.offSource.playbackRate.value = rpm / (sample.baseRPM * baseMult);
           }
         }
       }
+
+      // Engine sound
+      // var rpm = clamp(this.getRPM(), 0, this.maxRPM);
+      // var i = 0;
+
+      // var a = 3000;
+      // var b = 6000;
+      // var os = [0, (a + b) / 2, this.maxRPM]; // yes, very intuative....
+      // var ws = [a, (b - a) / 2, os[2] - b];
+
+      // for (var sample of samples) {
+      //   if (sample.onSource && sample.onGain) {
+      //     var x = rpm;
+      //     var o = os[i];
+      //     var w = ws[i];
+      //     var falloff = 500;//1000
+      //     var g = Math.max(0, Math.min(1, w / falloff - Math.abs((x - o) / falloff) + 0.5));
+      //     g *= 0.3;
+
+      //     // var g = Math.exp(-(10 ** (-6.7)) * Math.pow(rpm - sample.rpm, 2)) * (Math.max(0, rpmChange) * 2 / 3 + 1 / 3) * 0.3;
+      //     if (isFinite(g)) {
+      //       sample.onGain.gain.value = g;
+      //     }
+
+      //     var pbr = rpm / sample.rpm;
+      //     if (isFinite(pbr)) {
+      //       sample.onSource.playbackRate.value = pbr;
+      //     }
+      //   }
+        
+      //   i++;
+      // }
+
+      // for (var sample of samples) {
+      //   if (sample.onSource && sample.onGain) {
+      //     var g = Math.exp(-(10 ** (-6.7)) * Math.pow(rpm - sample.rpm, 2)) * (Math.max(0, rpmChange) * 2 / 3 + 1 / 3) * 0.3;
+      //     if (isFinite(g)) {
+      //       sample.onGain.gain.value = g;
+      //     }
+      //     var pbr = rpm / sample.rpm;
+      //     if (isFinite(pbr)) {
+      //       sample.onSource.playbackRate.value = pbr;
+      //     }
+      //   }
+      // }
     }
 
     this.getRPM = function() {
@@ -1789,145 +1979,150 @@ function Car(scene, physicsEngine, settings = {}) {
   }
 
   this.cameraControls = function(dt) {
-    if (this.cameraMode == 0) {
-      var forward = Vector.negate(Matrix.getForward(carWorldMatrix));
-      var forwardAcceleration = Vector.dot(this.rb.acceleration, forward);
-      currentFollowDistance -= (currentFollowDistance - this.camera.followDistance * (1 + forwardAcceleration / dt * this.camera.accelerationEffect)) * this.camera.accelerationSpeed;
+    var cameraController = cameraControllers[currentCameraControllerIndex];
+    cameraController.update(this.mainCamera, dt);
+
+    // this.mainCamera.transform.position = this.rb.position;
+
+    // if (this.cameraMode == 0) {
+    //   var forward = Vector.negate(Matrix.getForward(carWorldMatrix));
+    //   var forwardAcceleration = Vector.dot(this.rb.acceleration, forward);
+    //   currentFollowDistance -= (currentFollowDistance - this.camera.followDistance * (1 + forwardAcceleration / dt * this.camera.accelerationEffect)) * this.camera.accelerationSpeed;
       
-      var followDistance = currentFollowDistance;
-      var followHeight = this.camera.followHeight;
-      var followSpeed = this.camera.followSpeed;
-      var pitch = this.camera.pitch;
+    //   var followDistance = currentFollowDistance;
+    //   var followHeight = this.camera.followHeight;
+    //   var followSpeed = this.camera.followSpeed;
+    //   var pitch = this.camera.pitch;
 
-      var cameraTurnAngle = deadZone(this.keybindings.gamepadManager.getAxis("RSHorizontal")) * Math.PI;
+    //   var cameraTurnAngle = deadZone(this.keybindings.gamepadManager.getAxis("RSHorizontal")) * Math.PI;
       
-      var carForward = Matrix.getForward(this.gameObject.transform.worldMatrix);
-      var planeVelocity = Vector.projectOnPlane(this.rb.velocity, Vector.up());
-      if (this.camera.followMode == this.CAMERA_FOLLOW_MODES.FOLLOW_VELOCITY && Vector.length(planeVelocity) > 1) {
-        var currentForward = Vector.negate(Vector.normalize(planeVelocity));
-        currentForward = Vector.slerp(currentForward, carForward, 0.2 * 0);
-        // cameraCarForward = Vector.negate(currentForward);
-      }
-      else {
-        var currentForward = carForward;
-      }
-      currentForward = Quaternion.QxV(Quaternion.angleAxis(cameraTurnAngle, this.gameObject.transform.up/*Vector.up()*/), currentForward);
+    //   var carForward = Matrix.getForward(this.gameObject.transform.worldMatrix);
+    //   var planeVelocity = Vector.projectOnPlane(this.rb.velocity, Vector.up());
+    //   if (this.camera.followMode == this.CAMERA_FOLLOW_MODES.FOLLOW_VELOCITY && Vector.length(planeVelocity) > 1) {
+    //     var currentForward = Vector.negate(Vector.normalize(planeVelocity));
+    //     currentForward = Vector.slerp(currentForward, carForward, 0.2 * 0);
+    //     // cameraCarForward = Vector.negate(currentForward);
+    //   }
+    //   else {
+    //     var currentForward = carForward;
+    //   }
+    //   currentForward = Quaternion.QxV(Quaternion.angleAxis(cameraTurnAngle, this.gameObject.transform.up/*Vector.up()*/), currentForward);
 
-      cameraCarForward = Vector.slerp(cameraCarForward, currentForward, followSpeed);
+    //   cameraCarForward = Vector.slerp(cameraCarForward, currentForward, followSpeed);
 
-      var finalCameraDir = null;
+    //   var finalCameraDir = null;
 
-      var origin = Vector.add(this.gameObject.transform.position, new Vector(0, 0.15, 0));
-      var dirNorm = Vector.normalize(Vector.add(cameraCarForward, new Vector(0, followHeight, 0)));
+    //   var origin = Vector.add(this.gameObject.transform.position, new Vector(0, 0.15, 0));
+    //   var dirNorm = Vector.normalize(Vector.add(cameraCarForward, new Vector(0, followHeight, 0)));
 
-      var hit = physicsEngine.Raycast(origin, dirNorm);
-      if (hit && hit.firstHit && hit.firstHit.distance < followDistance) {
-        var d = hit.firstHit.distance;
-        // currentFollowDist = clamp(d - 0.2, 0.5, followDistance);
-        var h = Math.sqrt(followDistance * followDistance - d * d + (followHeight * d) ** 2) / d;
+    //   var hit = physicsEngine.Raycast(origin, dirNorm);
+    //   if (hit && hit.firstHit && hit.firstHit.distance < followDistance) {
+    //     var d = hit.firstHit.distance;
+    //     // currentFollowDist = clamp(d - 0.2, 0.5, followDistance);
+    //     var h = Math.sqrt(followDistance * followDistance - d * d + (followHeight * d) ** 2) / d;
 
-        var newDir = Vector.normalize(Vector.add(cameraCarForward, new Vector(0, h, 0)));
-        hit = physicsEngine.Raycast(origin, newDir);
-        if (hit && hit.firstHit && hit.firstHit.distance < followDistance) {
-          finalCameraDir = Vector.multiply(newDir, hit.firstHit.distance - 0.5);
-        }
-        else {
-          finalCameraDir = Vector.multiply(newDir, followDistance);
-        }
-      }
-      else {
-        finalCameraDir = Vector.multiply(dirNorm, followDistance);
-      }
+    //     var newDir = Vector.normalize(Vector.add(cameraCarForward, new Vector(0, h, 0)));
+    //     hit = physicsEngine.Raycast(origin, newDir);
+    //     if (hit && hit.firstHit && hit.firstHit.distance < followDistance) {
+    //       finalCameraDir = Vector.multiply(newDir, hit.firstHit.distance - 0.5);
+    //     }
+    //     else {
+    //       finalCameraDir = Vector.multiply(newDir, followDistance);
+    //     }
+    //   }
+    //   else {
+    //     finalCameraDir = Vector.multiply(dirNorm, followDistance);
+    //   }
 
-      this.mainCamera.transform.matrix = Matrix.lookAt(Vector.add(origin, finalCameraDir), origin);
+    //   this.mainCamera.transform.matrix = Matrix.lookAt(Vector.add(origin, finalCameraDir), origin);
       
-      Matrix.rotateX(this.mainCamera.transform.matrix, pitch, this.mainCamera.transform.matrix);
+    //   Matrix.rotateX(this.mainCamera.transform.matrix, pitch, this.mainCamera.transform.matrix);
 
-      // Camera shake
-      var forwardSpeed = Math.abs(Vector.dot(this.rb.velocity, forward));
+    //   // Camera shake
+    //   var forwardSpeed = Math.abs(Vector.dot(this.rb.velocity, forward));
 
-      var maxShake = 0.02;
-      var shakePerKMPH = 0.02;
+    //   var maxShake = 0.02;
+    //   var shakePerKMPH = 0.02;
 
-      if (shakeCounter % 3 == 0) {
-        var shakeAmount = maxShake * clamp((forwardSpeed - 100 / 3.6) * shakePerKMPH, 0, 1);
-        cameraShakeTarget = new Vector(
-          (Math.random() - 0.5) * 2 * shakeAmount,
-          (Math.random() - 0.5) * 2 * shakeAmount,
-          0
-        );
-      }
-      cameraShake = Vector.lerp(cameraShake, cameraShakeTarget, 0.15);
-      Matrix.rotateX(this.mainCamera.transform.matrix, cameraShake.x, this.mainCamera.transform.matrix);
-      Matrix.rotateY(this.mainCamera.transform.matrix, cameraShake.y, this.mainCamera.transform.matrix);
+    //   if (shakeCounter % 3 == 0) {
+    //     var shakeAmount = maxShake * clamp((forwardSpeed - 100 / 3.6) * shakePerKMPH, 0, 1);
+    //     cameraShakeTarget = new Vector(
+    //       (Math.random() - 0.5) * 2 * shakeAmount,
+    //       (Math.random() - 0.5) * 2 * shakeAmount,
+    //       0
+    //     );
+    //   }
+    //   cameraShake = Vector.lerp(cameraShake, cameraShakeTarget, 0.15);
+    //   Matrix.rotateX(this.mainCamera.transform.matrix, cameraShake.x, this.mainCamera.transform.matrix);
+    //   Matrix.rotateY(this.mainCamera.transform.matrix, cameraShake.y, this.mainCamera.transform.matrix);
 
-      shakeCounter++;
+    //   shakeCounter++;
 
-      // var euler = Quaternion.toEulerAngles(this.mainCamera.transform.rotation);
-      // euler[0] += 0.2;
-      // this.mainCamera.transform.rotation = Quaternion.euler(euler[0], euler[1], euler[2]);
-    }
-    else if (this.cameraMode == 1) {
-      var hoodCamera = this.gameObject.getChild("HoodCamera", true);
-      if (hoodCamera) {
-        this.mainCamera.transform.matrix = hoodCamera.transform.worldMatrix;
-        this.mainCamera.transform.position = Vector.add(this.mainCamera.transform.position, Vector.multiply(this.rb.velocity, dt));
-      }
-    }
-    else if (this.cameraMode == 2) {
-      var interiorCamera = this.gameObject.getChild("InteriorCamera", true);
-      if (interiorCamera) {
-        var velocityBias = 0.35;
+    //   // var euler = Quaternion.toEulerAngles(this.mainCamera.transform.rotation);
+    //   // euler[0] += 0.2;
+    //   // this.mainCamera.transform.rotation = Quaternion.euler(euler[0], euler[1], euler[2]);
+    // }
+    // else if (this.cameraMode == 1) {
+    //   var hoodCamera = this.gameObject.getChild("HoodCamera", true);
+    //   if (hoodCamera) {
+    //     this.mainCamera.transform.matrix = hoodCamera.transform.worldMatrix;
+    //     this.mainCamera.transform.position = Vector.add(this.mainCamera.transform.position, Vector.multiply(this.rb.velocity, dt));
+    //   }
+    // }
+    // else if (this.cameraMode == 2) {
+    //   var interiorCamera = this.gameObject.getChild("InteriorCamera", true);
+    //   if (interiorCamera) {
+    //     var velocityBias = 0.35;
 
-        var forwardSpeed = -Vector.dot(this.gameObject.transform.forward, this.rb.velocity);
+    //     var forwardSpeed = -Vector.dot(this.gameObject.transform.forward, this.rb.velocity);
 
-        var lookDir = forwardSpeed < -0.2 ? 
-          Vector.negate(this.gameObject.transform.forward) :
-          forwardSpeed < 0.2 ?
-            this.gameObject.transform.forward : 
-            Vector.slerp(this.gameObject.transform.forward, Vector.projectOnPlane(Vector.normalize(Vector.negate(this.rb.velocity)), this.gameObject.transform.up), velocityBias);
+    //     var lookDir = forwardSpeed < -0.2 ? 
+    //       Vector.negate(this.gameObject.transform.forward) :
+    //       forwardSpeed < 0.2 ?
+    //         this.gameObject.transform.forward : 
+    //         Vector.slerp(this.gameObject.transform.forward, Vector.projectOnPlane(Vector.normalize(Vector.negate(this.rb.velocity)), this.gameObject.transform.up), velocityBias);
 
-        cameraCarForward = Vector.slerp(cameraCarForward, lookDir, this.camera.followSpeed);
+    //     cameraCarForward = Vector.slerp(cameraCarForward, lookDir, this.camera.followSpeed);
 
-        this.mainCamera.transform.matrix = Matrix.lookInDirection(
-          Vector.add(interiorCamera.transform.worldPosition, Vector.multiply(this.rb.velocity, dt)),
-          cameraCarForward,
-          Vector.up()
-        );
+    //     this.mainCamera.transform.matrix = Matrix.lookInDirection(
+    //       Vector.add(interiorCamera.transform.worldPosition, Vector.multiply(this.rb.velocity, dt)),
+    //       cameraCarForward,
+    //       Vector.up()
+    //     );
 
-        // this.mainCamera.transform.matrix = interiorCamera.transform.worldMatrix;
-        // this.mainCamera.transform.position = Vector.add(this.mainCamera.transform.position, Vector.multiply(this.rb.velocity, dt));
-      }
-    }
-    else if (this.cameraMode == 3) {
-      var oldFov = this.mainCamera.getFOV();
+    //     // this.mainCamera.transform.matrix = interiorCamera.transform.worldMatrix;
+    //     // this.mainCamera.transform.position = Vector.add(this.mainCamera.transform.position, Vector.multiply(this.rb.velocity, dt));
+    //   }
+    // }
+    // else if (this.cameraMode == 3) {
+    //   var oldFov = this.mainCamera.getFOV();
   
-      var x = quadraticCurve(deadZone(this.keybindings.gamepadManager.getAxis("RSHorizontal"), 0.08));
-      var y = quadraticCurve(deadZone(this.keybindings.gamepadManager.getAxis("RSVertical"), 0.08));
-      cameraEulerAngles.x -= y * 0.07 * clamp(oldFov / 45, 0, 1);
-      cameraEulerAngles.y -= x * 0.07 * clamp(oldFov / 45, 0, 1);
+    //   var x = quadraticCurve(deadZone(this.keybindings.gamepadManager.getAxis("RSHorizontal"), 0.08));
+    //   var y = quadraticCurve(deadZone(this.keybindings.gamepadManager.getAxis("RSVertical"), 0.08));
+    //   cameraEulerAngles.x -= y * 0.07 * clamp(oldFov / 45, 0, 1);
+    //   cameraEulerAngles.y -= x * 0.07 * clamp(oldFov / 45, 0, 1);
   
-      var vertical = quadraticCurve(deadZone(this.keybindings.gamepadManager.getAxis("LSVertical")));
-      var horizontal = quadraticCurve(deadZone(this.keybindings.gamepadManager.getAxis("LSHorizontal")));
+    //   var vertical = quadraticCurve(deadZone(this.keybindings.gamepadManager.getAxis("LSVertical")));
+    //   var horizontal = quadraticCurve(deadZone(this.keybindings.gamepadManager.getAxis("LSHorizontal")));
   
-      var speed = 15;
-      var c = Math.cos(cameraEulerAngles.x);
-      this.mainCamera.transform.position.x -= vertical * Math.cos(cameraEulerAngles.y + Math.PI / 2) * speed * dt * c;
-      this.mainCamera.transform.position.z -= vertical * -Math.sin(cameraEulerAngles.y + Math.PI / 2) * speed * dt * c;
-      this.mainCamera.transform.position.y -= vertical * Math.sin(cameraEulerAngles.x) * speed * dt;
+    //   var speed = 15;
+    //   var c = Math.cos(cameraEulerAngles.x);
+    //   this.mainCamera.transform.position.x -= vertical * Math.cos(cameraEulerAngles.y + Math.PI / 2) * speed * dt * c;
+    //   this.mainCamera.transform.position.z -= vertical * -Math.sin(cameraEulerAngles.y + Math.PI / 2) * speed * dt * c;
+    //   this.mainCamera.transform.position.y -= vertical * Math.sin(cameraEulerAngles.x) * speed * dt;
   
-      this.mainCamera.transform.position.x += horizontal * Math.cos(cameraEulerAngles.y) * speed * dt;
-      this.mainCamera.transform.position.z += horizontal * -Math.sin(cameraEulerAngles.y) * speed * dt;
+    //   this.mainCamera.transform.position.x += horizontal * Math.cos(cameraEulerAngles.y) * speed * dt;
+    //   this.mainCamera.transform.position.z += horizontal * -Math.sin(cameraEulerAngles.y) * speed * dt;
   
-      flyCamera(renderer, this.mainCamera, cameraEulerAngles, dt);
+    //   flyCamera(renderer, this.mainCamera, cameraEulerAngles, dt);
   
-      var fovInc = 1 + 0.03 * (this.keybindings.gamepadManager.getButton("LS") - this.keybindings.gamepadManager.getButton("RS"));
-      var newFov = oldFov * fovInc;
-      newFov = clamp(newFov, 0.1, 89);
-      this.mainCamera.setFOV(newFov);
+    //   var fovInc = 1 + 0.03 * (this.keybindings.gamepadManager.getButton("LS") - this.keybindings.gamepadManager.getButton("RS"));
+    //   var newFov = oldFov * fovInc;
+    //   newFov = clamp(newFov, 0.1, 89);
+    //   this.mainCamera.setFOV(newFov);
   
-      this.mainCamera.transform.rotation = Quaternion.euler(cameraEulerAngles.x, cameraEulerAngles.y, cameraEulerAngles.z);
-    }
+    //   this.mainCamera.transform.rotation = Quaternion.euler(cameraEulerAngles.x, cameraEulerAngles.y, cameraEulerAngles.z);
+    // }
   }
 }
 Car.ENUMS = {
@@ -1976,4 +2171,373 @@ function playSample(context, sample) {
     source,
     gainNode
   };
+}
+
+function GraphsManager() {
+  var graphs = [];
+
+  var container = document.createElement("div");
+  document.body.appendChild(container);
+  container.style = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1000000;
+
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+
+    pointer-events: none;
+
+    transform-origin: 0 0;
+    transform: scale(0.4);
+  `;
+
+  this.createGraph = function(props = {}) {
+    var graph = new Graph(props);
+    container.appendChild(graph.dom);
+
+    graphs.push(graph);
+    return graph;
+  }
+
+  this.delete = function() {
+    container.remove();
+  }
+}
+
+function Graph(props = {}) {
+  this.name = props.name ?? "Untitled graph";
+  this.width = props.width ?? 400;
+  this.height = props.height ?? 200;
+
+  var dataPoints = [];
+
+  this.createDom = function() {
+    var canvas = this.canvas = this.dom = document.createElement("canvas");
+    canvas.width = this.width;
+    canvas.height = this.height;
+    canvas.style = `
+      position: static;
+    `;
+
+    this.gc = new GameCanvas({
+      element: canvas,
+      noFullscreen: true,
+      publicMethods: false
+    });
+
+    canvas.style.backgroundColor = "rgba(0, 0, 0, 0.25)";
+  }
+
+  this.createDom();
+  
+  this.plot = function(x, y) {
+    dataPoints.push({
+      x,
+      y
+    });
+
+    this.redraw();
+  }
+
+  this.redraw = function() {
+    this.gc.clearScreen();
+
+    // var X = dataPoints.map(d => d.x);
+    // var Y = dataPoints.map(d => d.y);
+
+    // this.minX = Math.min(...timestamps);
+    this.maxX = dataPoints[dataPoints.length - 1].x;//Math.max(...X);
+    this.minX = this.maxX - 10_000;
+    // this.minY = Math.min(...values);
+    // this.maxY = Math.max(...values);
+    this.minY = -2;
+    this.maxY = 2;
+
+    // dataPoints.sort((a, b) => a.timestamp - b.timestamp);
+
+    this.gc.line(0, this.gc.height / 2, this.gc.width, this.gc.height / 2, "black", 1);
+    this.gc.line(0, this.gc.height * 0.25, this.gc.width, this.gc.height * 0.25, "gray", 1);
+    this.gc.line(0, this.gc.height * 0.75, this.gc.width, this.gc.height * 0.75, "gray", 1);
+
+    for (var i = dataPoints.length - 1; i >= 1; i--) {
+      var p1 = this.dataToScreen(dataPoints[i]);
+      var p2 = this.dataToScreen(dataPoints[i - 1]);
+      this.gc.line(p1.x, p1.y, p2.x, p2.y, "red", 2);
+
+      if (p1.x < 0) {
+        break;
+      }
+    }
+  }
+
+  this.dataToScreen = function(dataPoint) {
+    return {
+      x: this.gc.mapValue(dataPoint.x, this.minX, this.maxX, 0, this.gc.width),
+      y: this.gc.mapValue(dataPoint.y, this.minY, this.maxY, this.gc.height, 0)
+    };
+  }
+}
+
+class CameraController {
+  update() {}
+  onActivate() {}
+  onDeactivate() {}
+  onReset() {}
+}
+
+class TPPFollowCamera extends CameraController {
+  #y = 0;
+  #yVel = 0;
+
+  #smoothTurnAngle = 0;
+
+  #currentFollowDistance = 5;
+  #cameraCarForward = Vector.zero();
+  #shakeCounter = 0;
+  #cameraShakeTarget = Vector.zero();
+  #cameraShake = Vector.zero();
+
+  CAMERA_FOLLOW_MODES = { FOLLOW_VELOCITY: 1, FOLLOW_DIRECTION: 2 };
+  followMode = this.CAMERA_FOLLOW_MODES.FOLLOW_VELOCITY;
+  followDistance = 5;
+  followHeight = 0.4;
+  followSpeed = 0.05;
+  pitch = 0.15;
+  accelerationSpeed = 0.05;
+  accelerationEffect = 0.3;
+
+  constructor(car) {
+    super();
+    this.car = car;
+  }
+
+  resetForward() {
+    this.#cameraCarForward = Matrix.getForward(this.car.gameObject.transform.worldMatrix);
+    this.#yVel = 0;
+  }
+
+  onReset() {
+    this.resetForward();
+    this.#y = 6;
+  }
+
+  onActivate() {
+    this.resetForward();
+    this.#y = this.car.rb.position.y;
+  }
+
+  update(camera, dt) {
+    var carWorldMatrix = this.car.gameObject.transform.worldMatrix;
+    var up = Matrix.getUp(carWorldMatrix);
+    var forward = Vector.negate(Matrix.getForward(carWorldMatrix));
+
+    var upAcceleration = Vector.dot(this.car.rb.acceleration, up);
+    var forwardAcceleration = Vector.dot(this.car.rb.acceleration, forward);
+    this.#currentFollowDistance -= (this.#currentFollowDistance - this.followDistance * (1 + forwardAcceleration / dt * this.accelerationEffect)) * this.accelerationSpeed;
+    
+    var followDistance = this.#currentFollowDistance;
+    var followHeight = this.followHeight;
+    var followSpeed = this.followSpeed;
+    var pitch = this.pitch;
+
+    var cameraTurnAngle = deadZone(this.car.keybindings.gamepadManager.getAxis("RSHorizontal"), 0.09) * Math.PI;
+    this.#smoothTurnAngle += (cameraTurnAngle - this.#smoothTurnAngle) * 0.27;
+
+    // var carForward = Matrix.getForward(this.car.gameObject.transform.worldMatrix);
+    var planeVelocity = Vector.projectOnPlane(this.car.rb.velocity, Vector.up());
+
+    var targetForward;
+    if (this.followMode == this.CAMERA_FOLLOW_MODES.FOLLOW_VELOCITY && Vector.length(planeVelocity) > 1) {
+      targetForward = Vector.negate(Vector.normalize(planeVelocity));
+      // targetForward = Vector.slerp(targetForward, Vector.negate(forward), 0.2 * 0);
+      // cameraCarForward = Vector.negate(targetForward);
+    }
+    else {
+      targetForward = Vector.negate(forward);
+    }
+    // targetForward = Quaternion.QxV(Quaternion.angleAxis(cameraTurnAngle, this.car.gameObject.transform.up/*Vector.up()*/), targetForward);
+
+    this.#cameraCarForward = Vector.slerp(this.#cameraCarForward, targetForward, followSpeed);
+    var currentForward = Vector.copy(this.#cameraCarForward);
+    currentForward = Quaternion.QxV(Quaternion.angleAxis(this.#smoothTurnAngle, this.car.gameObject.transform.up), currentForward);
+
+    var finalCameraDir = null;
+
+    var origin = Vector.add(this.car.rb.position, new Vector(0, 0.15, 0));
+    var dirNorm = Vector.normalize(Vector.add(currentForward, new Vector(0, followHeight, 0)));
+
+    var hit = this.car.physicsEngine.Raycast(origin, dirNorm);
+    if (hit && hit.firstHit && hit.firstHit.distance < followDistance) {
+      var d = hit.firstHit.distance;
+      // currentFollowDist = clamp(d - 0.2, 0.5, followDistance);
+      var h = Math.sqrt(followDistance * followDistance - d * d + (followHeight * d) ** 2) / d;
+
+      var newDir = Vector.normalize(Vector.add(currentForward, new Vector(0, h, 0)));
+      hit = this.car.physicsEngine.Raycast(origin, newDir);
+      if (hit && hit.firstHit && hit.firstHit.distance < followDistance) {
+        finalCameraDir = Vector.multiply(newDir, hit.firstHit.distance - 0.5);
+      }
+      else {
+        finalCameraDir = Vector.multiply(newDir, followDistance);
+      }
+    }
+    else {
+      finalCameraDir = Vector.multiply(dirNorm, followDistance);
+    }
+
+    var springAcc = ((origin.y + finalCameraDir.y) - this.#y) * 70;
+    this.#yVel += springAcc * dt;
+    this.#yVel += -this.#yVel * 7 * dt;
+    this.#y += this.#yVel * dt;
+
+    camera.transform.position = Vector.add(origin, finalCameraDir);
+    camera.transform.position.y = this.#y;
+    camera.transform.matrix = Matrix.lookAt(camera.transform.position, origin);
+    
+    Matrix.rotateX(camera.transform.matrix, pitch, camera.transform.matrix);
+
+    // Camera shake
+    var forwardSpeed = Math.abs(Vector.dot(this.car.rb.velocity, forward));
+
+    var maxShake = 0.02;
+    var shakePerKMPH = 0.02;
+
+    if (this.#shakeCounter % 3 == 0) {
+      var shakeAmount = maxShake * clamp((forwardSpeed - 100 / 3.6) * shakePerKMPH, 0, 1);
+      this.#cameraShakeTarget = new Vector(
+        (Math.random() - 0.5) * 2 * shakeAmount,
+        (Math.random() - 0.5) * 2 * shakeAmount,
+        0
+      );
+    }
+    this.#cameraShake = Vector.lerp(this.#cameraShake, this.#cameraShakeTarget, 0.15);
+    Matrix.rotateX(camera.transform.matrix, this.#cameraShake.x, camera.transform.matrix);
+    Matrix.rotateY(camera.transform.matrix, this.#cameraShake.y, camera.transform.matrix);
+
+    this.#shakeCounter++;
+
+    // var euler = Quaternion.toEulerAngles(this.mainCamera.transform.rotation);
+    // euler[0] += 0.2;
+    // this.mainCamera.transform.rotation = Quaternion.euler(euler[0], euler[1], euler[2]);
+  }
+}
+
+class HoodFollowCamera extends CameraController {
+  constructor(car) {
+    super();
+    this.car = car;
+  }
+
+  update(camera, dt) {
+    var hoodCamera = this.car.gameObject.getChild("HoodCamera", true);
+    if (hoodCamera) {
+      camera.transform.matrix = hoodCamera.transform.worldMatrix;
+      camera.transform.position = Vector.add(camera.transform.position, Vector.multiply(this.car.rb.velocity, dt));
+    }
+  }
+}
+
+class InteriorFollowCamera extends CameraController {
+  #cameraCarForward = Vector.zero();
+
+  followSpeed = 0.05;
+
+  constructor(car) {
+    super();
+    this.car = car;
+  }
+
+  resetForward() {
+    this.#cameraCarForward = Matrix.getForward(this.car.gameObject.transform.worldMatrix);
+  }
+
+  onReset() {
+    this.resetForward();
+  }
+
+  onActivate() {
+    this.resetForward();
+  }
+
+  update(camera, dt) {
+    var interiorCamera = this.car.gameObject.getChild("InteriorCamera", true);
+    if (interiorCamera) {
+      var velocityBias = 0.35;
+
+      var forwardSpeed = -Vector.dot(this.car.gameObject.transform.forward, this.car.rb.velocity);
+
+      var lookDir = forwardSpeed < -0.2 ? 
+        Vector.negate(this.car.gameObject.transform.forward) :
+        forwardSpeed < 0.2 ?
+          this.car.gameObject.transform.forward : 
+          Vector.slerp(this.car.gameObject.transform.forward, Vector.projectOnPlane(Vector.normalize(Vector.negate(this.car.rb.velocity)), this.car.gameObject.transform.up), velocityBias);
+
+      this.#cameraCarForward = Vector.slerp(this.#cameraCarForward, lookDir, this.followSpeed);
+
+      camera.transform.matrix = Matrix.lookInDirection(
+        Vector.add(interiorCamera.transform.worldPosition, Vector.multiply(this.car.rb.velocity, dt)),
+        this.#cameraCarForward,
+        Vector.up()
+      );
+
+      // this.mainCamera.transform.matrix = interiorCamera.transform.worldMatrix;
+      // this.mainCamera.transform.position = Vector.add(this.mainCamera.transform.position, Vector.multiply(this.rb.velocity, dt));
+    }
+  }
+}
+
+class PhotoCamera extends CameraController {
+  #cameraEulerAngles = Vector.zero();
+  #initialFov = 45;
+
+  constructor(car) {
+    super();
+    this.car = car;
+    this.#initialFov = this.car.mainCamera.getFOV();
+  }
+
+  onReset() {
+  }
+
+  onActivate() {
+    this.car.rb.frozen = true;
+  }
+
+  onDeactivate() {
+    this.car.mainCamera.setFOV(this.#initialFov);
+    this.car.rb.frozen = false;
+  }
+
+  update(camera, dt) {
+    var oldFov = camera.getFOV();
+
+    var x = quadraticCurve(deadZone(this.car.keybindings.gamepadManager.getAxis("RSHorizontal"), 0.08));
+    var y = quadraticCurve(deadZone(this.car.keybindings.gamepadManager.getAxis("RSVertical"), 0.08));
+    this.#cameraEulerAngles.x -= y * 0.07 * clamp(oldFov / 45, 0, 1);
+    this.#cameraEulerAngles.y -= x * 0.07 * clamp(oldFov / 45, 0, 1);
+
+    var vertical = quadraticCurve(deadZone(this.car.keybindings.gamepadManager.getAxis("LSVertical")));
+    var horizontal = quadraticCurve(deadZone(this.car.keybindings.gamepadManager.getAxis("LSHorizontal")));
+
+    var speed = 15;
+    var c = Math.cos(this.#cameraEulerAngles.x);
+    camera.transform.position.x -= vertical * Math.cos(this.#cameraEulerAngles.y + Math.PI / 2) * speed * dt * c;
+    camera.transform.position.z -= vertical * -Math.sin(this.#cameraEulerAngles.y + Math.PI / 2) * speed * dt * c;
+    camera.transform.position.y -= vertical * Math.sin(this.#cameraEulerAngles.x) * speed * dt;
+
+    camera.transform.position.x += horizontal * Math.cos(this.#cameraEulerAngles.y) * speed * dt;
+    camera.transform.position.z += horizontal * -Math.sin(this.#cameraEulerAngles.y) * speed * dt;
+
+    flyCamera(this.car.renderer, camera, this.#cameraEulerAngles, dt);
+
+    var fovInc = 1 + 0.03 * (this.car.keybindings.gamepadManager.getButton("LS") - this.car.keybindings.gamepadManager.getButton("RS"));
+    var newFov = oldFov * fovInc;
+    newFov = clamp(newFov, 0.1, 89);
+    camera.setFOV(newFov);
+
+    camera.transform.rotation = Quaternion.eulerVector(this.#cameraEulerAngles);
+  }
 }

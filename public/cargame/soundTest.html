@@ -19,16 +19,19 @@ var rpmChange = 0;
 var rpm = 1000;
 var hasClicked = false;
 
-var idleURL = "./engineSound/idle.wav";
-var idleSound = null;
+var folder = "./engineSound/x8/";
+var baseMult = 1.4;
 var samples = [
-  { rpm: 1500, on: "./engineSound/low_on.wav", off: "./engineSound/low_off.wav" },
-  { rpm: 4000, on: "./engineSound/med_on.wav", off: "./engineSound/med_off.wav" },
-  { rpm: 7000, on: "./engineSound/high_on.wav", off: "./engineSound/high_off.wav" }
+  { baseRPM: 800, from: 0, to: 1000, on: folder + "idle.wav", off: folder + "idle.wav" },
+  { baseRPM: 1125, from: 1000, to: 2500, on: folder + "low_on.wav", off: folder + "low_off.wav" },
+  { baseRPM: 1900, from: 2500, to: 5000, on: folder + "med_on.wav", off: folder + "med_off.wav" },
+  { baseRPM: 3500, from: 1000, to: 15000, on: folder + "high_on.wav", off: folder + "high_off.wav" }
 ];
 
 window.onclick = async function() {
-  for (var i of samples) {
+  if (hasClicked) return;
+
+  for (let i of samples) {
     var onSample = await loadSample(i.on);
     var offSample = await loadSample(i.off);
 
@@ -45,9 +48,6 @@ window.onclick = async function() {
     gainNode.gain.value = 0;
   }
 
-  // idleSound = playSample(await loadSample(idleURL));
-  // idleSound.gainNode.gain.value = 0;
-
   hasClicked = true;
 }
 
@@ -56,21 +56,37 @@ var keys = [];
 loop();
 function loop() {
   if (keys[38]) {
-    rpm += 100;
-    rpmChange -= (rpmChange - 1) * 0.1;
+    rpm += 100 * 3;
+    rpmChange -= (rpmChange - 1) * 0.2;
   }
   else {
-    rpmChange -= (rpmChange - 0) * 0.1;
+    rpmChange -= (rpmChange - 0) * 0.2;
   }
   rpm -= 50;
-  rpm = Math.max(1000, Math.min(8000, rpm));
+  rpm = Math.max(800, Math.min(8000, rpm));
 
   if (hasClicked) {
-    for (var sample of samples) {
-      sample.onGain.gain.value = Math.exp(-(10 ** (-6.7)) * Math.pow(rpm - sample.rpm, 2)) * (Math.max(0, rpmChange) / 2 + 0.5);
-      sample.onSource.playbackRate.value = rpm / sample.rpm;
+    // console.log("--");
+    for (let sample of samples) {
+      var x = rpm;
+      var a = sample.from;
+      var b = sample.to;
+      var w = (b - a) / 2;
+      var o = (a + b) / 2;
+      var f = 750 * 1.5 * 2;
+      var volume = Math.max(0, Math.min(1, w / f - Math.abs((x - o) / f) + 0.5));
+      // console.log(volume);
+
+      sample.onGain.gain.value = volume * 0.2 * rpmChange;
+      sample.offGain.gain.value = volume * 0.3 * (1 - rpmChange);
+      // sample.onGain.gain.value = Math.exp(-(10 ** (-6.7)) * Math.pow(rpm - sample.rpm, 2)) * (Math.max(0, rpmChange) / 2 + 0.5);
+      
+      sample.onSource.playbackRate.value = rpm / (sample.baseRPM * baseMult);
+      sample.offSource.playbackRate.value = rpm / (sample.baseRPM * baseMult);
     }
   }
+
+  document.body.textContent = rpm + " rpm, Load factor: " + rpmChange;
   
   requestAnimationFrame(loop);
 }
