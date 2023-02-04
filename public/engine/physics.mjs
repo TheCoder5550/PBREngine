@@ -610,16 +610,16 @@ function PhysicsEngine(scene, settings = {}) {
   
     var q = this.octree.query(origin, direction);
     if (q) {
-      var smallestDistance = Infinity;
-      var normal;
-      var point;
-      var gameObjectIndex;
+      let smallestDistance = Infinity;
+      let normal;
+      let point;
+      let gameObjectIndex;
   
       // bruh, keep all hits here
-      var triangles = q.triangles;
+      let triangles = q.triangles;
 
-      for (var k = 0; k < triangles.length; k++) {
-        var hitPoint = rayToTriangle(origin, direction, triangles[k][0], triangles[k][1], triangles[k][2]);
+      for (let k = 0; k < triangles.length; k++) {
+        let hitPoint = rayToTriangle(origin, direction, triangles[k][0], triangles[k][1], triangles[k][2]);
         if (hitPoint && hitPoint.distance < smallestDistance) {
           smallestDistance = hitPoint.distance;
           normal = getTriangleNormal(triangles[k]);
@@ -640,7 +640,7 @@ function PhysicsEngine(scene, settings = {}) {
       }
     }
 
-    this.scene.root.traverse(function(gameObject) {
+    this.scene.root.traverseCondition(function(gameObject) {
       // var meshColliders = gameObject.findComponents("MeshCollider");
       var components = gameObject.getComponents();
       for (var component of components) {
@@ -675,7 +675,7 @@ function PhysicsEngine(scene, settings = {}) {
           }
         }
       }
-    });
+    }, child => child.visible);
 
     // this.scene.root.traverse(function(gameObject) {
     //   if (gameObject.meshRenderer && rayToAABB(origin, direction, gameObject.meshRenderer.aabb)) {

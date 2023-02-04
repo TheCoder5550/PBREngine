@@ -1,0 +1,78 @@
+*, *:before, *:after {
+  font-family: Arial, Helvetica, sans-serif;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.boxTitle {
+  font-size: 2em;
+  font-weight: bold;
+  color: black;
+
+  margin-bottom: 0.5em;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+}
+
+.column > * {
+  height: 50vh;
+}
+
+.box {
+  display: flex;
+  flex-direction: column;
+
+  padding: 10px;
+}
+
+#hierarchy,
+#inspector {
+  flex: 1;
+  overflow: auto;
+}
+
+.gameObjectLabel {
+  cursor: pointer;
+}
+
+#inspector .name {
+  font-weight: bold;
+  font-size: 1.25em;
+}
+
+.transform {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vector {
+  background-color: #eee;
+  padding: 5px;
+  
+  display: flex;
+  flex-direction: row;
+}
+
+.vector > span {
+  width: 75px;
+  font-weight: bold;
+}
+
+.components {
+  display: flex;
+  flex-direction: row;
+  gap: 15px;
+  
+  /* font-weight: bold; */
+}
+
+.component > input {
+  width: 60px;
+}

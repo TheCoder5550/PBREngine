@@ -139,9 +139,9 @@ var bus = {
     mass: 7000,
     drivetrain: "RWD",
     maxSteerAngle: 45,
-    torque: 350,
+    torque: 350 * 10,
 
-    friction: 1,
+    friction: 0.5,
     forwardFriction: 1,
     sidewaysFriction: 1,
 
@@ -155,10 +155,40 @@ var bus = {
 
     ABS: true,
     TCS: false,
-    // differential: Car.ENUMS.DIFFERENTIAL.LSD,
+    differential: Car.ENUMS.DIFFERENTIAL.LSD,
 
     camera: {
       followDistance: 7,
+      followHeight: 0.25,
+      pitch: 0.1,
+    },
+  },
+};
+
+var audiRS6 = {
+  name: "Audi RS6",
+  model: "../assets/models/audi_rs6.glb",
+  settings: {
+    mass: 2000,
+    drivetrain: "AWD",
+    friction: 1,
+    forwardFriction: 1,
+    sidewaysFriction: 1,
+    maxSteerAngle: 45,
+    torque: 550,
+
+    suspensionForce: 130_000,
+    suspensionDamping: 5000,
+    suspensionTravel: 0.1,
+    rideHeightOffset: 0.08,
+    antiRoll: 10_000,
+
+    ABS: true,
+    TCS: false,
+    // differential: Car.ENUMS.DIFFERENTIAL.LSD,
+
+    camera: {
+      followDistance: 4,
       followHeight: 0.25,
       pitch: 0.1,
     },
@@ -171,5 +201,6 @@ export {
   drift2,
   skyline,
   ranger,
-  bus
+  bus,
+  audiRS6
 };

@@ -69,6 +69,7 @@ function Car(scene, physicsEngine, settings = {}) {
 
   this.canMove = true;
   this.frozen = false;
+  this.simulateFriction = true;
   this.resetPosition = Vector.zero();
   this.bottomOffset = Vector.zero();
 
@@ -268,6 +269,10 @@ function Car(scene, physicsEngine, settings = {}) {
       parent.getChild(/(wheel_*fl)|(fl_*wheel)|(^fl$)/gmi, true) || parent.getChild("FrontLeftWheel", true)
     ];
   }
+
+  this.getCurrentCameraController = function() {
+    return cameraControllers[currentCameraControllerIndex];
+  }
   
   this.setup = async function(src) {
     if (typeof src == "string") {
@@ -344,6 +349,10 @@ function Car(scene, physicsEngine, settings = {}) {
       
       var radius = Math.max(...Vector.toArray(wheelAABB.getSize())) / 2;
 
+      // Skidmarks
+      var skidmarks = wheelObject.addComponent(new renderer.TrailRenderer());
+      skidmarks.width = Math.min(...Vector.toArray(wheelAABB.getSize())) * 0.5;
+
       var wheelParent = this.gameObject.addChild(new GameObject(wheelObject.name + "-Parent"));
       wheelParent.transform.position = position;
 
@@ -378,10 +387,6 @@ function Car(scene, physicsEngine, settings = {}) {
         radius: radius,
       });
       this.wheels[i].wheelModel = wheelModel;
-
-      // Skidmarks
-      var skidmarks = wheelObject.addComponent(new renderer.TrailRenderer());
-      // skidmarks.width = Math.min(...Vector.toArray(wheelAABB.getSize())) * 0.95;
       this.wheels[i].skidmarks = skidmarks;
 
       this.bottomOffset.y = position.y - radius - this.wheels[i].suspensionTravel - this.gameObject.transform.position.y;
@@ -535,9 +540,13 @@ function Car(scene, physicsEngine, settings = {}) {
 
     this.currentGear = 1;
     this.engine.angularVelocity = 0;
+    this.clutch.angularVelocity;
 
     for (var wheel of this.wheels) {
+      wheel.angle = 0;
       wheel.angularVelocity = 0;
+      wheel.normalForce = 0;
+      wheel.isGrounded = false;
     }
 
     cameraControllers[currentCameraControllerIndex].onReset();
@@ -601,8 +610,8 @@ function Car(scene, physicsEngine, settings = {}) {
     if (keybindings.getInputDown("brights")) {
       brightsAreOn = !brightsAreOn;
 
-      if (this.lamps.brightsLeft) this.lamps.brightsLeft.color = brightsAreOn ? [5000, 5000, 5000] : [0, 0, 0];
-      if (this.lamps.brightsRight) this.lamps.brightsRight.color = brightsAreOn ? [5000, 5000, 5000] : [0, 0, 0];
+      if (this.lamps.brightsLeft) this.lamps.brightsLeft.color = brightsAreOn ? [3000, 3000, 3000] : [200, 200, 200];
+      if (this.lamps.brightsRight) this.lamps.brightsRight.color = brightsAreOn ? [3000, 3000, 3000] : [200, 200, 200];
     }
 
     if (keybindings.getInputDown("cameraMode")) {
@@ -824,8 +833,10 @@ function Car(scene, physicsEngine, settings = {}) {
 
     // Set steering wheel model rotation
     if (this.steeringWheelModel) {
+      // this.steeringWheelModel.transform.rotation = Quaternion.angleAxis(currentSteerInput * this.steeringWheelModelMaxRotation, Matrix.getForward(steeringWheelModelInitialTransform));
+
       let m = Matrix.transform([
-        ["ry", currentSteerInput * this.steeringWheelModelMaxRotation]
+        ["rz", -currentSteerInput * this.steeringWheelModelMaxRotation]
       ], Matrix.copy(steeringWheelModelInitialTransform));
 
       this.steeringWheelModel.transform.matrix = m;
@@ -1170,265 +1181,267 @@ function Car(scene, physicsEngine, settings = {}) {
         if (rollbar.b.isGrounded) this.rb.AddImpulseAtPosition(Vector.multiply(rollbar.b.up, (rollbar.a.isGrounded ? 1 : 2) * -force * dt), rollbar.b.worldPos);
       }
 
-      for (let wheel of this.wheels) {
-        let slipAngle = 0;
-        let forwardVelocity = 0;
+      if (this.simulateFriction) {
+        for (let wheel of this.wheels) {
+          let slipAngle = 0;
+          let forwardVelocity = 0;
 
-        // Bruh
-        let wheelWorldMatrix = wheel.model.transform.worldMatrix;
-        // let wheelWorldMatrix = carWorldMatrix; // This does not work when the wheels are 90 deg turned
-        let up = Matrix.getUp(wheelWorldMatrix);
-        let forward = Matrix.getForward(wheelWorldMatrix);
-        let sideways = Matrix.getRight(wheelWorldMatrix);
+          // Bruh
+          let wheelWorldMatrix = wheel.model.transform.worldMatrix;
+          // let wheelWorldMatrix = carWorldMatrix; // This does not work when the wheels are 90 deg turned
+          let up = Matrix.getUp(wheelWorldMatrix);
+          let forward = Matrix.getForward(wheelWorldMatrix);
+          let sideways = Matrix.getRight(wheelWorldMatrix);
 
-        let worldPos = Matrix.transformVector(carWorldMatrix, wheel.position);
-        let wheelVelocity = this.rb.GetPointVelocity(worldPos);
+          let worldPos = Matrix.transformVector(carWorldMatrix, wheel.position);
+          let wheelVelocity = this.rb.GetPointVelocity(worldPos);
 
-        // forward = Vector.negate(forward);
+          // forward = Vector.negate(forward);
 
-        if (ebrakeInput > 0.1 && wheel.ebrake) {
-          // wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - ebrakeInput);
-          wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(ebrakeInput * ebrakeTorque, Math.abs(wheel.angularVelocity) / dt) * dt;
-        }
+          if (ebrakeInput > 0.1 && wheel.ebrake) {
+            // wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - ebrakeInput);
+            wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(ebrakeInput * ebrakeTorque, Math.abs(wheel.angularVelocity) / dt) * dt;
+          }
 
-        if (wheel.isGrounded) {
-          forwardVelocity = Vector.dot(wheelVelocity, forward);
-          let sidewaysVelocity = Vector.dot(wheelVelocity, sideways);
+          if (wheel.isGrounded) {
+            forwardVelocity = Vector.dot(wheelVelocity, forward);
+            let sidewaysVelocity = Vector.dot(wheelVelocity, sideways);
 
-          if (brakeInput != 0) {
-            if (this.ABS) { // bruh, ABS ignores max brake torque
-              let a = wheel.lastA ?? 0;
-              let targetSlip = wheel.slipRatioPeak * Math.sqrt(Math.max(0.01, 1 - a * a)) * Math.sign(forwardVelocity);
-              let w = lerp(-forwardVelocity / wheel.radius, (targetSlip * Math.abs(forwardVelocity) - forwardVelocity) / wheel.radius, brakeInput);
+            if (brakeInput != 0) {
+              if (this.ABS) { // bruh, ABS ignores max brake torque
+                let a = wheel.lastA ?? 0;
+                let targetSlip = wheel.slipRatioPeak * Math.sqrt(Math.max(0.01, 1 - a * a)) * Math.sign(forwardVelocity);
+                let w = lerp(-forwardVelocity / wheel.radius, (targetSlip * Math.abs(forwardVelocity) - forwardVelocity) / wheel.radius, brakeInput);
 
-              wheel.angularVelocity = Math.abs(forwardVelocity) < 1 ? 0 : w;
+                wheel.angularVelocity = Math.abs(forwardVelocity) < 1 ? 0 : w;
+              }
+              else {
+                wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(brakeInput * this.brakeTorque / wheel.inertia, Math.abs(wheel.angularVelocity) / dt) * dt;
+                // wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - brakeInput);
+              }
             }
-            else {
-              wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(brakeInput * this.brakeTorque / wheel.inertia, Math.abs(wheel.angularVelocity) / dt) * dt;
-              // wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - brakeInput);
+
+
+            // Friction
+            // wheelVelocity = this.rb.GetPointVelocity(wheel.contactPoint);
+
+            let roadFriction = wheel.groundHit.gameObject?.customData?.friction ?? 1;
+            wheel.roadFriction = roadFriction;
+
+            // wheel.angularVelocity += currentDriveTorque / wheel.inertia * dt;
+
+            // wheel.slipAnglePeak = findPeak(x => { // bruh performance heavy
+            //   return advancedFy(x * 180 / Math.PI, wheel.normalForce, wheel.camberAngle, wheel.advancedSlipAngleCoeffs);
+            // });
+
+            // let currentSteerAngle = wheel.turn ? currentSteerInput * this.maxSteerAngle * Math.PI / 180 : 0;
+            slipAngle = -Math.atan(sidewaysVelocity / Math.abs(forwardVelocity));// - currentSteerAngle * Math.sign(forwardVelocity); // Not needed when using wheel transform instead of car transform
+            // if (Math.abs(forwardVelocity) < 0.02) {
+            //   slipAngle = clamp(sidewaysVelocity * 0.01, -0.1, 0.1);
+            // }
+            slipAngle *= Math.min((sidewaysVelocity ** 2 + forwardVelocity ** 2) * 10, 1);
+            if (isNaN(slipAngle) || !isFinite(slipAngle)) slipAngle = 0;
+            let a = slipAngle / wheel.slipAnglePeak;
+            wheel.lastA = a;
+
+            // // TCS
+            // if (this.TCS && Math.abs(currentDriveTorque) > 0.01 && Math.abs(forwardVelocity) > 0.5) {
+            //   var TCStargetSlip = -wheel.slipRatioPeak * Math.sqrt(Math.max(0.01, 1 - a * a)) * Math.sign(forwardVelocity);
+            //   var targetAngularVelocity = (TCStargetSlip * Math.abs(forwardVelocity) - forwardVelocity) / wheel.radius;
+            //   wheel.angularVelocity = clamp(wheel.angularVelocity, -Math.abs(targetAngularVelocity), Math.abs(targetAngularVelocity));
+            // }
+
+            var slipRatio = -(wheel.angularVelocity * wheel.radius + forwardVelocity) / Math.abs(forwardVelocity) * Math.min(Math.abs(forwardVelocity) / 2, 1);
+            if (isNaN(slipRatio)) slipRatio = 0;
+            if (!isFinite(slipRatio)) slipRatio = Math.sign(slipRatio);
+            var s = slipRatio / wheel.slipRatioPeak;
+
+            if (this.TCS && Math.abs(wheel.angularVelocity * wheel.radius + forwardVelocity) > 1) {
+              activateTCS = true;
+            }
+
+            var rho = Math.sqrt(s * s + a * a);
+
+            var Fx = (_slipRatio) => {
+              return magicFormula(_slipRatio, wheel.slipRatioCoeffs) * roadFriction * wheel.friction * wheel.forwardFriction;
+            };
+            var Fy = ( _slipAngle) => {
+              return advancedFy(_slipAngle * 180 / Math.PI, wheel.normalForce, wheel.camberAngle, wheel.advancedSlipAngleCoeffs) * roadFriction * wheel.friction * wheel.sidewaysFriction;
+              // return magicFormula(_slipAngle * 180 / Math.PI - wheel.camberAngle * wheel.camberAngleCoeff, wheel.slipAngleCoeffs) * roadFriction * wheel.friction * wheel.sidewaysFriction;
+            };
+
+            // if (count == iters - 1) {
+            //   wheel.graph.plot(performance.now(), a);
+            // }
+
+            var finalForceX = s / rho * Fx(rho * wheel.slipRatioPeak) * wheel.normalForce;
+            var finalForceY = a / rho * Fy(rho * wheel.slipAnglePeak);// * wheel.normalForce;
+
+            if (!isNaN(finalForceX)) {
+              var contactVelocity = (wheel.angularVelocity * wheel.radius + forwardVelocity);
+              var maxForceToResolveFriction = Math.abs(contactVelocity / (wheel.radius * wheel.radius) * wheel.inertia / dt);
+              var maxFriction = Math.abs(finalForceX);
+              var frictionForce = Math.min(maxFriction, maxForceToResolveFriction) * -Math.sign(finalForceX);
+              wheel.angularVelocity -= (frictionForce * wheel.radius) / wheel.inertia * dt;
+
+              // wheel.angularVelocity -= (-finalForceX * wheel.radius) / wheel.inertia * dt;
+            }
+            
+            var driveSidewaysVector = Vector.projectOnPlane(sideways, wheel.groundHit.normal);
+            var driveForwardVector = Quaternion.QxV(Quaternion.angleAxis(-Math.PI / 2, driveSidewaysVector), wheel.groundHit.normal);
+            if (!isNaN(finalForceX)) this.rb.AddImpulseAtPosition(Vector.multiply(driveForwardVector, finalForceX * dt), wheel.contactPoint);
+            if (!isNaN(finalForceY)) this.rb.AddImpulseAtPosition(Vector.multiply(driveSidewaysVector, finalForceY * dt), wheel.contactPoint);
+
+            // if (renderer.debugMode && count == 0) {
+            //   Debug.Vector(worldPos, driveForwardVector, 1, [1, 0, 0]);
+            //   Debug.Vector(worldPos, driveSidewaysVector, 1, [0, 1, 0]);
+            // }
+
+
+
+            // var frictions = [
+            //   Math.abs(finalForceX / wheel.normalForce),
+            //   Math.abs(finalForceY / wheel.normalForce)
+            // ];
+            // var velocities = [];
+            // var masses = [];
+            // var tangentJacobian = [];
+            // var bitangentJacobian = [];
+            // var [ tangent, bitangent ] = [ driveForwardVector, sideways ];
+            // var r = Vector.subtract(wheel.contactPoint, this.rb.position);
+            // var m = 1; // disable rotation if 0
+
+            // var pc = Vector.cross(r, tangent);
+            // // pc = Vector.negate(pc);
+            // tangentJacobian.push(
+            //   tangent.x,
+            //   tangent.y,
+            //   tangent.z,
+            //   pc.x * m,
+            //   pc.y * m,
+            //   pc.z * m
+            // );
+
+            // var pc = Vector.cross(r, bitangent);
+            // // pc = Vector.negate(pc);
+            // bitangentJacobian.push(
+            //   bitangent.x,
+            //   bitangent.y,
+            //   bitangent.z,
+            //   pc.x * m,
+            //   pc.y * m,
+            //   pc.z * m
+            // );
+
+            // velocities.push(
+            //   this.rb.velocity.x,
+            //   this.rb.velocity.y,
+            //   this.rb.velocity.z,
+            //   this.rb.angularVelocity.x,
+            //   this.rb.angularVelocity.y,
+            //   this.rb.angularVelocity.z
+            // );
+
+            // var it = this.rb.inverseWorldInertia;
+            // masses.push(
+            //   this.rb.mass,
+            //   this.rb.mass,
+            //   this.rb.mass,
+            //   1 / it[0],
+            //   1 / it[5],
+            //   1 / it[10]
+            // );
+
+            // var jacobians = [ tangentJacobian, bitangentJacobian ];
+            // var bias = 0;
+            // var lambda = wheel.normalForce * dt;
+
+            // for (var i = 0; i < jacobians.length; i++) {
+            //   var jacobian = jacobians[i];
+            //   var friction = frictions[i];
+
+            //   var effectiveMass = physicsEngine.getEffectiveMass(jacobian, masses);
+            //   var frictionLambda = physicsEngine.getLambda(effectiveMass, jacobian, velocities, bias);
+            //   frictionLambda = clamp(frictionLambda, -friction * lambda, friction * lambda);
+            
+            //   var impulses = [];
+            //   for (var _i = 0; _i < jacobian.length; _i++) {
+            //     impulses[_i] = jacobian[_i] * frictionLambda;
+            //   }
+
+            //   if (!impulses.some(item => isNaN(item))) {
+            //     var ind = 0;
+
+            //     this.rb.velocity.x += impulses[ind + 0] / masses[ind + 0];
+            //     this.rb.velocity.y += impulses[ind + 1] / masses[ind + 1];
+            //     this.rb.velocity.z += impulses[ind + 2] / masses[ind + 2];
+
+            //     if (!this.rb.lockRotation) {
+            //       this.rb.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
+            //       this.rb.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
+            //       this.rb.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
+            //     }
+            //   }
+            //   else {
+            //     console.warn("NaN in impulses", {
+            //       constraint, impulses, lambda, frictionLambda, jacobian, velocities, masses, C, dt: this.dt
+            //     });
+            //   }
+            // }
+
+
+
+
+
+
+            // if (ebrakeInput > 0.1 && wheel.ebrake) {
+            //   // wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - ebrakeInput);
+
+            //   var brakeTorque = 4000;
+            //   wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(ebrakeInput * brakeTorque, Math.abs(wheel.angularVelocity) / dt) * dt;
+            // }
+
+            // if (brakeInput != 0) {
+            //   if (this.ABS) {
+            //     var targetSlip = wheel.slipRatioPeak * Math.sqrt(Math.max(0.01, 1 - a * a)) * Math.sign(forwardVelocity);
+            //     var w = lerp(-forwardVelocity / wheel.radius, (targetSlip * Math.abs(forwardVelocity) - forwardVelocity) / wheel.radius, brakeInput);
+
+            //     wheel.angularVelocity = Math.abs(forwardVelocity) < 1 ? 0 : w;
+            //   }
+            //   else {
+            //     wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(brakeInput * this.brakeTorque, Math.abs(wheel.angularVelocity) / dt) * dt;
+            //     // wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - brakeInput);
+            //   }
+            // }
+          }
+          else {
+            if (brakeInput != 0 && !this.ABS) {
+              wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(brakeInput * this.brakeTorque, Math.abs(wheel.angularVelocity) / dt) * dt;
             }
           }
 
-
-          // Friction
-          // wheelVelocity = this.rb.GetPointVelocity(wheel.contactPoint);
-
-          let roadFriction = wheel.groundHit.gameObject?.customData?.friction ?? 1;
-          wheel.roadFriction = roadFriction;
-
-          // wheel.angularVelocity += currentDriveTorque / wheel.inertia * dt;
-
-          // wheel.slipAnglePeak = findPeak(x => { // bruh performance heavy
-          //   return advancedFy(x * 180 / Math.PI, wheel.normalForce, wheel.camberAngle, wheel.advancedSlipAngleCoeffs);
-          // });
-
-          // let currentSteerAngle = wheel.turn ? currentSteerInput * this.maxSteerAngle * Math.PI / 180 : 0;
-          slipAngle = -Math.atan(sidewaysVelocity / Math.abs(forwardVelocity));// - currentSteerAngle * Math.sign(forwardVelocity); // Not needed when using wheel transform instead of car transform
-          // if (Math.abs(forwardVelocity) < 0.02) {
-          //   slipAngle = clamp(sidewaysVelocity * 0.01, -0.1, 0.1);
-          // }
-          slipAngle *= Math.min((sidewaysVelocity ** 2 + forwardVelocity ** 2) * 10, 1);
-          if (isNaN(slipAngle) || !isFinite(slipAngle)) slipAngle = 0;
-          let a = slipAngle / wheel.slipAnglePeak;
-          wheel.lastA = a;
-
-          // // TCS
-          // if (this.TCS && Math.abs(currentDriveTorque) > 0.01 && Math.abs(forwardVelocity) > 0.5) {
-          //   var TCStargetSlip = -wheel.slipRatioPeak * Math.sqrt(Math.max(0.01, 1 - a * a)) * Math.sign(forwardVelocity);
-          //   var targetAngularVelocity = (TCStargetSlip * Math.abs(forwardVelocity) - forwardVelocity) / wheel.radius;
-          //   wheel.angularVelocity = clamp(wheel.angularVelocity, -Math.abs(targetAngularVelocity), Math.abs(targetAngularVelocity));
-          // }
-
-          var slipRatio = -(wheel.angularVelocity * wheel.radius + forwardVelocity) / Math.abs(forwardVelocity) * Math.min(Math.abs(forwardVelocity) / 2, 1);
-          if (isNaN(slipRatio)) slipRatio = 0;
-          if (!isFinite(slipRatio)) slipRatio = Math.sign(slipRatio);
-          var s = slipRatio / wheel.slipRatioPeak;
-
-          if (this.TCS && Math.abs(wheel.angularVelocity * wheel.radius + forwardVelocity) > 1) {
-            activateTCS = true;
+          var skidFreq = 0.8 + clamp((Math.abs(slipRatio) - 0.2) * 0.7, 0, 0.8);
+          if (skidFreq > highestSkidFreq) {
+            highestSkidFreq = skidFreq;
           }
 
-          var rho = Math.sqrt(s * s + a * a);
+          var skidVolume = 0;
+          if (wheel.isGrounded && !wheel.groundHit.gameObject?.customData.offroad && ((Math.abs(slipAngle) > 0.2 && Math.abs(forwardVelocity) > 0.5) || Math.abs(slipRatio) > 0.2)) {
+            skidVolume = clamp(Math.abs(slipRatio) - 0.2, 0, 1) + clamp((Math.abs(slipAngle) - 0.2) * (1 - Math.exp(-Math.abs(forwardVelocity) * 0.06)), 0, 1);
+            skidVolume *= wheel.friction * wheel.forwardFriction * wheel.roadFriction;
 
-          var Fx = (_slipRatio) => {
-            return magicFormula(_slipRatio, wheel.slipRatioCoeffs) * roadFriction * wheel.friction * wheel.forwardFriction;
-          };
-          var Fy = ( _slipAngle) => {
-            return advancedFy(_slipAngle * 180 / Math.PI, wheel.normalForce, wheel.camberAngle, wheel.advancedSlipAngleCoeffs) * roadFriction * wheel.friction * wheel.sidewaysFriction;
-            // return magicFormula(_slipAngle * 180 / Math.PI - wheel.camberAngle * wheel.camberAngleCoeff, wheel.slipAngleCoeffs) * roadFriction * wheel.friction * wheel.sidewaysFriction;
-          };
-
-          // if (count == iters - 1) {
-          //   wheel.graph.plot(performance.now(), a);
-          // }
-
-          var finalForceX = s / rho * Fx(rho * wheel.slipRatioPeak) * wheel.normalForce;
-          var finalForceY = a / rho * Fy(rho * wheel.slipAnglePeak);// * wheel.normalForce;
-
-          if (!isNaN(finalForceX)) {
-            var contactVelocity = (wheel.angularVelocity * wheel.radius + forwardVelocity);
-            var maxForceToResolveFriction = Math.abs(contactVelocity / (wheel.radius * wheel.radius) * wheel.inertia / dt);
-            var maxFriction = Math.abs(finalForceX);
-            var frictionForce = Math.min(maxFriction, maxForceToResolveFriction) * -Math.sign(finalForceX);
-            wheel.angularVelocity -= (frictionForce * wheel.radius) / wheel.inertia * dt;
-
-            // wheel.angularVelocity -= (-finalForceX * wheel.radius) / wheel.inertia * dt;
+            if (skidVolume > highestSkidVolume) {
+              highestSkidVolume = skidVolume;
+            }
           }
-          
-          var driveSidewaysVector = Vector.projectOnPlane(sideways, wheel.groundHit.normal);
-          var driveForwardVector = Quaternion.QxV(Quaternion.angleAxis(-Math.PI / 2, driveSidewaysVector), wheel.groundHit.normal);
-          if (!isNaN(finalForceX)) this.rb.AddImpulseAtPosition(Vector.multiply(driveForwardVector, finalForceX * dt), wheel.contactPoint);
-          if (!isNaN(finalForceY)) this.rb.AddImpulseAtPosition(Vector.multiply(driveSidewaysVector, finalForceY * dt), wheel.contactPoint);
 
-          // if (renderer.debugMode && count == 0) {
-          //   Debug.Vector(worldPos, driveForwardVector, 1, [1, 0, 0]);
-          //   Debug.Vector(worldPos, driveSidewaysVector, 1, [0, 1, 0]);
-          // }
-
-
-
-          // var frictions = [
-          //   Math.abs(finalForceX / wheel.normalForce),
-          //   Math.abs(finalForceY / wheel.normalForce)
-          // ];
-          // var velocities = [];
-          // var masses = [];
-          // var tangentJacobian = [];
-          // var bitangentJacobian = [];
-          // var [ tangent, bitangent ] = [ driveForwardVector, sideways ];
-          // var r = Vector.subtract(wheel.contactPoint, this.rb.position);
-          // var m = 1; // disable rotation if 0
-
-          // var pc = Vector.cross(r, tangent);
-          // // pc = Vector.negate(pc);
-          // tangentJacobian.push(
-          //   tangent.x,
-          //   tangent.y,
-          //   tangent.z,
-          //   pc.x * m,
-          //   pc.y * m,
-          //   pc.z * m
-          // );
-
-          // var pc = Vector.cross(r, bitangent);
-          // // pc = Vector.negate(pc);
-          // bitangentJacobian.push(
-          //   bitangent.x,
-          //   bitangent.y,
-          //   bitangent.z,
-          //   pc.x * m,
-          //   pc.y * m,
-          //   pc.z * m
-          // );
-
-          // velocities.push(
-          //   this.rb.velocity.x,
-          //   this.rb.velocity.y,
-          //   this.rb.velocity.z,
-          //   this.rb.angularVelocity.x,
-          //   this.rb.angularVelocity.y,
-          //   this.rb.angularVelocity.z
-          // );
-
-          // var it = this.rb.inverseWorldInertia;
-          // masses.push(
-          //   this.rb.mass,
-          //   this.rb.mass,
-          //   this.rb.mass,
-          //   1 / it[0],
-          //   1 / it[5],
-          //   1 / it[10]
-          // );
-
-          // var jacobians = [ tangentJacobian, bitangentJacobian ];
-          // var bias = 0;
-          // var lambda = wheel.normalForce * dt;
-
-          // for (var i = 0; i < jacobians.length; i++) {
-          //   var jacobian = jacobians[i];
-          //   var friction = frictions[i];
-
-          //   var effectiveMass = physicsEngine.getEffectiveMass(jacobian, masses);
-          //   var frictionLambda = physicsEngine.getLambda(effectiveMass, jacobian, velocities, bias);
-          //   frictionLambda = clamp(frictionLambda, -friction * lambda, friction * lambda);
-          
-          //   var impulses = [];
-          //   for (var _i = 0; _i < jacobian.length; _i++) {
-          //     impulses[_i] = jacobian[_i] * frictionLambda;
-          //   }
-
-          //   if (!impulses.some(item => isNaN(item))) {
-          //     var ind = 0;
-
-          //     this.rb.velocity.x += impulses[ind + 0] / masses[ind + 0];
-          //     this.rb.velocity.y += impulses[ind + 1] / masses[ind + 1];
-          //     this.rb.velocity.z += impulses[ind + 2] / masses[ind + 2];
-
-          //     if (!this.rb.lockRotation) {
-          //       this.rb.angularVelocity.x += impulses[ind + 3] / masses[ind + 3];
-          //       this.rb.angularVelocity.y += impulses[ind + 4] / masses[ind + 4];
-          //       this.rb.angularVelocity.z += impulses[ind + 5] / masses[ind + 5];
-          //     }
-          //   }
-          //   else {
-          //     console.warn("NaN in impulses", {
-          //       constraint, impulses, lambda, frictionLambda, jacobian, velocities, masses, C, dt: this.dt
-          //     });
-          //   }
-          // }
-
-
-
-
-
-
-          // if (ebrakeInput > 0.1 && wheel.ebrake) {
-          //   // wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - ebrakeInput);
-
-          //   var brakeTorque = 4000;
-          //   wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(ebrakeInput * brakeTorque, Math.abs(wheel.angularVelocity) / dt) * dt;
-          // }
-
-          // if (brakeInput != 0) {
-          //   if (this.ABS) {
-          //     var targetSlip = wheel.slipRatioPeak * Math.sqrt(Math.max(0.01, 1 - a * a)) * Math.sign(forwardVelocity);
-          //     var w = lerp(-forwardVelocity / wheel.radius, (targetSlip * Math.abs(forwardVelocity) - forwardVelocity) / wheel.radius, brakeInput);
-
-          //     wheel.angularVelocity = Math.abs(forwardVelocity) < 1 ? 0 : w;
-          //   }
-          //   else {
-          //     wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(brakeInput * this.brakeTorque, Math.abs(wheel.angularVelocity) / dt) * dt;
-          //     // wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - brakeInput);
-          //   }
-          // }
-        }
-        else {
-          if (brakeInput != 0 && !this.ABS) {
-            wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(brakeInput * this.brakeTorque, Math.abs(wheel.angularVelocity) / dt) * dt;
+          if (wheel.skidmarks) {
+            wheel.skidmarks.emit = clamp(clamp(skidVolume * 20 * (wheel.isGrounded ? 1 : 0.01 * 0), 0, 0.7) * (wheel.isGrounded ? wheel.friction * wheel.forwardFriction * wheel.roadFriction : 0), 0, 1); // bruh, what even is this
+          // wheel.skidmarks.emit);
           }
+
+          wheel.slipRatio = slipRatio;
         }
-
-        var skidFreq = 0.8 + clamp((Math.abs(slipRatio) - 0.2) * 0.7, 0, 0.8);
-        if (skidFreq > highestSkidFreq) {
-          highestSkidFreq = skidFreq;
-        }
-
-        var skidVolume = 0;
-        if (wheel.isGrounded && !wheel.groundHit.gameObject?.customData.offroad && ((Math.abs(slipAngle) > 0.2 && Math.abs(forwardVelocity) > 0.5) || Math.abs(slipRatio) > 0.2)) {
-          skidVolume = clamp(Math.abs(slipRatio) - 0.2, 0, 1) + clamp((Math.abs(slipAngle) - 0.2) * (1 - Math.exp(-Math.abs(forwardVelocity) * 0.06)), 0, 1);
-          skidVolume *= wheel.friction * wheel.forwardFriction * wheel.roadFriction;
-
-          if (skidVolume > highestSkidVolume) {
-            highestSkidVolume = skidVolume;
-          }
-        }
-
-        if (wheel.skidmarks) {
-          wheel.skidmarks.emit = clamp(clamp(skidVolume * 20 * (wheel.isGrounded ? 1 : 0.01 * 0), 0, 0.7) * (wheel.isGrounded ? wheel.friction * wheel.forwardFriction * wheel.roadFriction : 0), 0, 1); // bruh, what even is this
-        // wheel.skidmarks.emit);
-        }
-
-        wheel.slipRatio = slipRatio;
       }
     }
 
@@ -1577,10 +1590,10 @@ function Car(scene, physicsEngine, settings = {}) {
     var folder = _this.path + "cargame/engineSound/i6/";
     var baseMult = 1.4;
     var samples = [
-      { baseRPM: 750, from: -5000, to: 1000, on: folder + "idle.wav", off: folder + "idle.wav" },
-      { baseRPM: 1125, from: 1000, to: 2500, on: folder + "low_on.wav", off: folder + "low_off.wav" },
-      { baseRPM: 1900, from: 2500, to: 5000, on: folder + "med_on.wav", off: folder + "med_off.wav" },
-      { baseRPM: 3500, from: 1000, to: 15000, on: folder + "high_on.wav", off: folder + "high_off.wav" }
+      { baseRPM: 750, from: -5000, to: 1000, on: folder + "idle.wav", off: folder + "idle.wav", interior_on: folder + "int_idle.wav", interior_off: folder + "int_idle.wav" },
+      { baseRPM: 1125, from: 1000, to: 2500, on: folder + "low_on.wav", off: folder + "low_off.wav", interior_on: folder + "int_low_on.wav", interior_off: folder + "int_low_off.wav" },
+      { baseRPM: 1900, from: 2500, to: 5000, on: folder + "med_on.wav", off: folder + "med_off.wav", interior_on: folder + "int_med_on.wav", interior_off: folder + "int_med_off.wav" },
+      { baseRPM: 3500, from: 1000, to: 15000, on: folder + "high_on.wav", off: folder + "high_off.wav", interior_on: folder + "int_high_on.wav", interior_off: folder + "int_high_off.wav" }
     ];
     // var samples = [
     //   { baseRPM: 1500, on: folder + "low_on.wav" },
@@ -1606,6 +1619,28 @@ function Car(scene, physicsEngine, settings = {}) {
             let { source, gainNode } = playSample(context, sample);
             i.offSource = source;
             i.offGain = gainNode;
+            gainNode.connect(mainGainNode);
+        
+            gainNode.gain.value = 0;
+          });
+        }
+
+        if (i.interior_on) {
+          loadSample(context, i.interior_on).then(sample => {
+            let { source, gainNode } = playSample(context, sample);
+            i.interiorOnSource = source;
+            i.interiorOnGain = gainNode;
+            gainNode.connect(mainGainNode);
+        
+            gainNode.gain.value = 0;
+          });
+        }
+
+        if (i.interior_off) {
+          loadSample(context, i.interior_off).then(sample => {
+            let { source, gainNode } = playSample(context, sample);
+            i.interiorOffSource = source;
+            i.interiorOffGain = gainNode;
             gainNode.connect(mainGainNode);
         
             gainNode.gain.value = 0;
@@ -1675,14 +1710,41 @@ function Car(scene, physicsEngine, settings = {}) {
         var rate = rpm / (sample.baseRPM * baseMult);
 
         if (isFinite(volume) && isFinite(rate)) {
-          if (sample.onGain) {
-            sample.onGain.gain.value = volume * 0.3 * rpmChange;
-            sample.onSource.playbackRate.value = rpm / (sample.baseRPM * baseMult);
-          }
+          if (_this.getCurrentCameraController() instanceof InteriorFollowCamera) {
+            if (sample.interiorOnGain) {
+              sample.interiorOnGain.gain.value = volume * 0.3 * rpmChange;
+              sample.interiorOnSource.playbackRate.value = rpm / (sample.baseRPM * baseMult);
+            }
 
-          if (sample.offGain) {
-            sample.offGain.gain.value = volume * 0.4 * (1 - rpmChange); 
-            sample.offSource.playbackRate.value = rpm / (sample.baseRPM * baseMult);
+            if (sample.interiorOffGain) {
+              sample.interiorOffGain.gain.value = volume * 0.4 * (1 - rpmChange); 
+              sample.interiorOffSource.playbackRate.value = rpm / (sample.baseRPM * baseMult);
+            }
+
+            if (sample.onGain) {
+              sample.onGain.gain.value = 0;
+            }
+            if (sample.offGain) {
+              sample.offGain.gain.value = 0;
+            }
+          }
+          else {
+            if (sample.onGain) {
+              sample.onGain.gain.value = volume * 0.3 * rpmChange;
+              sample.onSource.playbackRate.value = rpm / (sample.baseRPM * baseMult);
+            }
+
+            if (sample.offGain) {
+              sample.offGain.gain.value = volume * 0.4 * (1 - rpmChange); 
+              sample.offSource.playbackRate.value = rpm / (sample.baseRPM * baseMult);
+            }
+
+            if (sample.interiorOnGain) {
+              sample.interiorOnGain.gain.value = 0;
+            }
+            if (sample.interiorOffGain) {
+              sample.interiorOffGain.gain.value = 0;
+            }
           }
         }
       }
@@ -2442,8 +2504,10 @@ class HoodFollowCamera extends CameraController {
 
 class InteriorFollowCamera extends CameraController {
   #cameraCarForward = Vector.zero();
+  #oldFOV = 45;
 
-  followSpeed = 0.05;
+  velocityBias = 0.3;
+  followSpeed = 0.15;
 
   constructor(car) {
     super();
@@ -2459,28 +2523,32 @@ class InteriorFollowCamera extends CameraController {
   }
 
   onActivate() {
+    this.#oldFOV = this.car.mainCamera.getFOV();
+    this.car.mainCamera.setFOV(25);
     this.resetForward();
+  }
+
+  onDeactivate() {
+    this.car.mainCamera.setFOV(this.#oldFOV);
   }
 
   update(camera, dt) {
     var interiorCamera = this.car.gameObject.getChild("InteriorCamera", true);
     if (interiorCamera) {
-      var velocityBias = 0.35;
-
       var forwardSpeed = -Vector.dot(this.car.gameObject.transform.forward, this.car.rb.velocity);
 
-      var lookDir = forwardSpeed < -0.2 ? 
+      var lookDir = this.car.currentGear === 0 ? 
         Vector.negate(this.car.gameObject.transform.forward) :
         forwardSpeed < 0.2 ?
           this.car.gameObject.transform.forward : 
-          Vector.slerp(this.car.gameObject.transform.forward, Vector.projectOnPlane(Vector.normalize(Vector.negate(this.car.rb.velocity)), this.car.gameObject.transform.up), velocityBias);
+          Vector.slerp(this.car.gameObject.transform.forward, Vector.normalize(Vector.projectOnPlane(Vector.negate(this.car.rb.velocity), this.car.gameObject.transform.up)), this.velocityBias);
 
       this.#cameraCarForward = Vector.slerp(this.#cameraCarForward, lookDir, this.followSpeed);
 
       camera.transform.matrix = Matrix.lookInDirection(
         Vector.add(interiorCamera.transform.worldPosition, Vector.multiply(this.car.rb.velocity, dt)),
         this.#cameraCarForward,
-        Vector.up()
+        this.car.gameObject.transform.up// Vector.up()
       );
 
       // this.mainCamera.transform.matrix = interiorCamera.transform.worldMatrix;

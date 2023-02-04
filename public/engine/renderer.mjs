@@ -19,6 +19,7 @@ import {
 } from "./helper.mjs";
 import { getTriangleNormal } from "./algebra.mjs";
 import { LerpCurve } from "./curves.mjs";
+import { AABB } from "./physics.mjs";
 
 import * as litSource from "../assets/shaders/built-in/lit.glsl.mjs";
 import * as unlitSource from "../assets/shaders/built-in/unlit.glsl.mjs";
@@ -30,7 +31,6 @@ import * as bloomSource from "../assets/shaders/built-in/bloom.glsl.mjs";
 import * as equirectangularToCubemapSource from "../assets/shaders/built-in/equirectangularToCubemap.glsl.mjs";
 import * as diffuseCubemapSource from "../assets/shaders/built-in/cubemapConvolution.glsl.mjs";
 import * as specularCubemapSource from "../assets/shaders/built-in/prefilterCubemap.glsl.mjs";
-import { AABB } from "./physics.mjs";
 
 var ENUMS = {
   RENDERPASS: { SHADOWS: 0b001, OPAQUE: 0b010, ALPHA: 0b100 },
@@ -704,7 +704,11 @@ function Renderer(settings = {}) {
     this.eventHandler.addEvent(event, func);
   }
 
-  this.activeScene = function() {
+  this.activeScene = function() { // bruh, bad name. Function below is better
+    return this.scenes[this.currentScene];
+  }
+
+  this.getActiveScene = function() {
     return this.scenes[this.currentScene];
   }
 
@@ -2723,6 +2727,8 @@ function Renderer(settings = {}) {
         gl.bindTexture(gl.TEXTURE_2D, this.rainTexture);
         gl.uniform1i(this.programContainer.getUniformLocation("rainTexture"), 17);
       }
+
+      gl.uniform1f(this.programContainer.getUniformLocation("iTime"), (new Date() - renderer.startTime) / 1000);
   
       // Set uniforms
       if (gl.canvas.width !== _lastWidth || gl.canvas.height !== _lastHeight) {
@@ -3690,6 +3696,7 @@ function Renderer(settings = {}) {
       if (getUniformLocation("sunIntensity") != null)         gl.uniform3fv(getUniformLocation("sunIntensity"), Vector.toArray(currentScene.sunIntensity)); // ^
       if (getUniformLocation("environmentIntensity") != null) gl.uniform1f(getUniformLocation("environmentIntensity"), currentScene.environmentIntensity);
       if (getUniformLocation("ambientColor") != null)         gl.uniform3fv(getUniformLocation("ambientColor"), currentScene.ambientColor);
+      if (getUniformLocation("fogDensity") != null)           gl.uniform1f(getUniformLocation("fogDensity"), currentScene.fogDensity);
 
       var sps = this.programContainer.uniformBuffers["sharedPerScene"];
       if (sps && currentScene.sharedUBO) {
@@ -3823,20 +3830,36 @@ function Renderer(settings = {}) {
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 4, this.joints.length, gl.RGBA, getFloatTextureType(), this.jointData);
     }
   }
-  
-  Renderer.SkinnedMeshRenderer = SkinnedMeshRenderer;
-  function SkinnedMeshRenderer(skin, materials, meshData, options = {}) {
-    this.materials = Array.isArray(materials) ? materials : [materials];
-    this.meshData = Array.isArray(meshData) ? meshData : [meshData];
-    this.drawMode = options.drawMode ?? gl.TRIANGLES;
 
-    this.skin = skin;
+  class BaseMeshRenderer {
+    setShadowQuality(quality, opaquePass = false) {
+      for (var mat of this.materials) {
+        if (mat.isOpaque() != opaquePass) {
+          continue;
+        }
 
-    this.update = function() {
+        useProgram(mat.programContainer.program);
+        gl.uniform1i(mat.programContainer.getUniformLocation("shadowQuality"), quality);
+      }
+    }
+  }
+
+  class SkinnedMeshRenderer extends BaseMeshRenderer {
+    constructor(skin, materials, meshData, options = {}) {
+      super();
+
+      this.materials = Array.isArray(materials) ? materials : [materials];
+      this.meshData = Array.isArray(meshData) ? meshData : [meshData];
+      this.drawMode = options.drawMode ?? gl.TRIANGLES;
+
+      this.skin = skin;
+    }
+
+    update() {
       this.skin.update();
     }
   
-    this.render = function(camera, matrix, shadowPass = false, opaquePass = true, prevMatrix) {
+    render(camera, matrix, shadowPass = false, opaquePass = true, prevMatrix) {
       for (var i = 0; i < this.meshData.length; i++) {
         var md = this.meshData[i];
         var mat = this.materials[i];
@@ -3875,7 +3898,7 @@ function Renderer(settings = {}) {
       }
     }
 
-    this.copy = function() {
+    copy() {
       var mats = [];
       for (var mat of this.materials) {
         mats.push(mat.copy());
@@ -3892,27 +3915,33 @@ function Renderer(settings = {}) {
       return newSkinnedMeshRenderer;
     }
   }
+  Renderer.SkinnedMeshRenderer = SkinnedMeshRenderer;
   
-  Renderer.MeshInstanceRenderer = MeshInstanceRenderer;
-  this.MeshInstanceRenderer = MeshInstanceRenderer;
-  function MeshInstanceRenderer(materials, meshData, options = {}) {
-    this.materials = Array.isArray(materials) ? materials : [materials];
-    this.meshData = Array.isArray(meshData) ? meshData : [meshData];
-    this.drawMode = options.drawMode ?? gl.TRIANGLES;
-  
-    // var matrixLocations = [];
-    // for (var mat of this.materials) {
-    //   matrixLocations.push(gl.getAttribLocation(mat.program, 'modelMatrix'));
-    // }
+  class MeshInstanceRenderer extends BaseMeshRenderer {
+    #matrixBuffer;
+    #needsBufferUpdate;
 
-    const matrixBuffer = gl.createBuffer();
-    this.matrices = [];
-    var needsBufferUpdate = false;
+    constructor(materials, meshData, options = {}) {
+      super();
+
+      this.materials = Array.isArray(materials) ? materials : [materials];
+      this.meshData = Array.isArray(meshData) ? meshData : [meshData];
+      this.drawMode = options.drawMode ?? gl.TRIANGLES;
+    
+      // var matrixLocations = [];
+      // for (var mat of this.materials) {
+      //   matrixLocations.push(gl.getAttribLocation(mat.program, 'modelMatrix'));
+      // }
+
+      this.#matrixBuffer = gl.createBuffer();
+      this.#needsBufferUpdate = false;
+      this.matrices = [];
+    }
   
-    this.addInstance = function(instance/*, update = true*/) {
+    addInstance(instance/*, update = true*/) {
       var newMat = Matrix.copy(instance);
       this.matrices.push(newMat);
-      needsBufferUpdate = true;
+      this.#needsBufferUpdate = true;
   
       // if (update) {
       //   this.updateMatrixData();
@@ -3921,52 +3950,52 @@ function Renderer(settings = {}) {
       return newMat;
     }
   
-    this.updateInstance = function(instance, newMatrix, updateBuffer = true) {
-      if (needsBufferUpdate) {
+    updateInstance(instance, newMatrix, updateBuffer = true) {
+      if (this.#needsBufferUpdate) {
         this.updateMatrixData();
-        needsBufferUpdate = false;
+        this.#needsBufferUpdate = false;
       }
 
       Matrix.copy(newMatrix, instance);
       this.matrixData.set(instance, this.matrices.indexOf(instance) * 16);
   
       if (updateBuffer) {
-        gl.bindBuffer(gl.ARRAY_BUFFER, matrixBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.#matrixBuffer);
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.matrixData);
       }
     }
   
-    this.removeInstance = function(instance) {
+    removeInstance(instance) {
       var index = this.matrices.indexOf(instance);
       if (index != -1) {
         this.matrices.splice(index, 1);
 
-        needsBufferUpdate = true;
+        this.#needsBufferUpdate = true;
         // this.updateMatrixData();
       }
     }
 
-    this.removeAllInstances = function() {
+    removeAllInstances() {
       this.matrices = [];
 
-      needsBufferUpdate = true;
+      this.#needsBufferUpdate = true;
       // this.updateMatrixData();
     }
   
-    this.updateMatrixData = function() {
+    updateMatrixData() {
       this.matrixData = new Float32Array(this.matrices.length * 16);
       for (var i = 0; i < this.matrices.length; i++) {
         this.matrixData.set(this.matrices[i], i * 16);
       }
   
-      gl.bindBuffer(gl.ARRAY_BUFFER, matrixBuffer);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.#matrixBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, this.matrixData, gl.DYNAMIC_DRAW);
     }
   
-    this.render = function(camera, baseMatrix, shadowPass = false, opaquePass = true) {
-      if (needsBufferUpdate) {
+    render(camera, baseMatrix, shadowPass = false, opaquePass = true) {
+      if (this.#needsBufferUpdate) {
         this.updateMatrixData();
-        needsBufferUpdate = false;
+        this.#needsBufferUpdate = false;
       }
 
       if (this.matrices.length > 0) {
@@ -3981,7 +4010,7 @@ function Renderer(settings = {}) {
           useProgram(mat.program);
           md.bindBuffers(mat.programContainer);
   
-          gl.bindBuffer(gl.ARRAY_BUFFER, matrixBuffer);
+          gl.bindBuffer(gl.ARRAY_BUFFER, this.#matrixBuffer);
           var matrixLoc = mat.programContainer.getAttribLocation("modelMatrix");
           for (var j = 0; j < 4; j++) {
             const loc = matrixLoc + j;
@@ -4001,7 +4030,7 @@ function Renderer(settings = {}) {
       }
     }
 
-    this.copy = function() {
+    copy() {
       var mats = [];
       for (var mat of this.materials) {
         mats.push(mat.copy());
@@ -4016,27 +4045,42 @@ function Renderer(settings = {}) {
       newMeshRenderer.drawMode = this.drawMode;
   
       return newMeshRenderer;
-      // return this; // bruh
+    }
+
+    setShadowQuality(quality, opaquePass = false) {
+      for (var mat of this.materials) {
+        if (mat.isOpaque() != opaquePass) {
+          continue;
+        }
+
+        useProgram(mat.programContainer.program);
+        gl.uniform1i(mat.programContainer.getUniformLocation("shadowQuality"), quality);
+      }
     }
   }
-  
-  this.MeshRenderer = MeshRenderer;
-  function MeshRenderer(materials, meshData, options = {}) {
-    this.materials = Array.isArray(materials) ? materials : [materials];
-    this.meshData = Array.isArray(meshData) ? meshData : [meshData];
-    this.drawMode = options.drawMode ?? gl.TRIANGLES;
+  Renderer.MeshInstanceRenderer = MeshInstanceRenderer;
+  this.MeshInstanceRenderer = MeshInstanceRenderer;
 
-    if (this.materials.some(m => !(m instanceof Material))) {
-      console.error(this.materials);
-      throw new Error("Not a valid Material!");
+  class MeshRenderer extends BaseMeshRenderer {
+    constructor(materials, meshData, options = {}) {
+      super();
+
+      this.materials = Array.isArray(materials) ? materials : [materials];
+      this.meshData = Array.isArray(meshData) ? meshData : [meshData];
+      this.drawMode = options.drawMode ?? gl.TRIANGLES;
+
+      if (this.materials.some(m => !(m instanceof Material))) {
+        console.error(this.materials);
+        throw new Error("Not a valid Material!");
+      }
+
+      if (this.meshData.some(m => !(m instanceof MeshData))) {
+        console.error(this.meshData);
+        throw new Error("Not a valid MeshData!");
+      }
     }
 
-    if (this.meshData.some(m => !(m instanceof MeshData))) {
-      console.error(this.meshData);
-      throw new Error("Not a valid MeshData!");
-    }
-
-    this.getAABB = function(padding) {
+    getAABB(padding) {
       var aabb = new AABB();
       for (var meshData of this.meshData) {
         aabb.extend(meshData.getAABB(padding));
@@ -4044,7 +4088,7 @@ function Renderer(settings = {}) {
       return aabb;
     }
   
-    this.render = function(camera, matrix, shadowPass = false, opaquePass = true, prevMatrix) {
+    render(camera, matrix, shadowPass = false, opaquePass = true, prevMatrix) {
       for (var i = 0; i < this.meshData.length; i++) {
         var md = this.meshData[i];
         var mat = this.materials[i];
@@ -4071,7 +4115,7 @@ function Renderer(settings = {}) {
       }
     }
 
-    this.getInstanceMeshRenderer = function() {
+    getInstanceMeshRenderer() {
       var mats = [];
       for (var mat of this.materials) {
         var newMat = mat.copy();
@@ -4085,7 +4129,7 @@ function Renderer(settings = {}) {
       return i;
     }
 
-    this.copy = function() {
+    copy() {
       var mats = [];
       for (var mat of this.materials) {
         mats.push(mat.copy());
@@ -4101,18 +4145,8 @@ function Renderer(settings = {}) {
   
       return newMeshRenderer;
     }
-
-    this.setShadowQuality = function(quality, opaquePass = false) {
-      for (var mat of this.materials) {
-        if (mat.isOpaque() != opaquePass) {
-          continue;
-        }
-
-        useProgram(mat.programContainer.program);
-        gl.uniform1i(mat.programContainer.getUniformLocation("shadowQuality"), quality);
-      }
-    }
   }
+  this.MeshRenderer = MeshRenderer;
 
   /*
 
@@ -4768,7 +4802,7 @@ function Renderer(settings = {}) {
     var texturesCreated = [];
     var materialsCreated = [];
 
-    console.time("Done");
+    console.time("Loading " + path);
     console.log(json);
 
     var end = path.indexOf(".glb") + 4;
@@ -4921,7 +4955,7 @@ function Renderer(settings = {}) {
       o.transform.matrix = o.transform.matrix;
     });
 
-    console.timeEnd("Done");
+    console.timeEnd("Loading " + path);
 
     return mainParent;
 
@@ -6096,6 +6130,15 @@ function GameObject(name = "Unnamed", options = {}) {
     }
   }
 
+  this.traverseCondition = function(func, condition = () => true) {
+    func(this);
+    for (var child of this.children) {
+      if (condition(child)) {
+        child.traverse(func);
+      }
+    }
+  }
+
   this.customData = {};
   this.layer = 0b1;
   this.visible = def(options.visible, true);
@@ -6794,6 +6837,7 @@ function Scene(name) {
   this.smoothSkybox = false;
   this.environmentIntensity = 1;
   this.ambientColor = [0, 0, 0];
+  this.fogDensity = 0.0035;
 
   var lights = [];
 

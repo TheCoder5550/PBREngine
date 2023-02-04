@@ -76,9 +76,9 @@ wss.on("connection", ws => {
           var data = [];
           for (var key in connectedClients) {
             var client = connectedClients[key];
-            // if (client != ws) {
+            if (client != ws) {
               data.push({
-                id: client.id,
+                clientID: client.id,
                 name: client.name,
                 data: {
                   position: client.gameData.position,
@@ -87,7 +87,7 @@ wss.on("connection", ws => {
                   angularVelocity: client.gameData.angularVelocity,
                 }
               });
-            // }
+            }
 
             // if (client == ws) {
             //   send("getSelf", {

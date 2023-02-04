@@ -557,11 +557,11 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 var fogBase = `
 #define USEFOG
 const vec4 fogColor = vec4(0.23, 0.24, 0.26, 1);
-const float density = 0.0035;
+uniform float fogDensity;// = 0.0035;
 
 vec4 applyFog(vec4 color) {
   float distance = length(vec3(inverseViewMatrix * vec4(0, 0, 0, 1)) - vPosition);
-  float fogAmount = exp(-pow(distance * density, 2.));
+  float fogAmount = exp(-pow(distance * fogDensity, 2.));
   
   return mix(fogColor, color, fogAmount);
 }

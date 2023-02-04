@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inspector</title>
+
+  <link rel="stylesheet" href="inspector.css">
+</head>
+<body>
+  <div class="column">
+    <div class="box">
+      <span class="boxTitle">Hierarchy</span>
+      <div id="hierarchy"></div>
+    </div>
+  
+    <div class="box">
+      <span class="boxTitle">Inspector</span>
+      <div id="inspector">
+        <span class="name">Gameobject name</span>
+
+        <div class="transform">
+          <div class="vector position">
+            <span>Position</span>
+            <div class="components">
+              <div class="component">
+                <span>x</span>
+                <input type="number" class="x" />
+              </div>
+              <div class="component">
+                <span>y</span>
+                <input type="number" class="y" />
+              </div>
+              <div class="component">
+                <span>z</span>
+                <input type="number" class="z" />
+              </div>
+            </div>
+          </div>
+
+          <div class="vector rotation">
+            <span>Rotation</span>
+            <div class="components">
+              <div class="component">
+                <span>x</span>
+                <input type="number" class="x" />
+              </div>
+              <div class="component">
+                <span>y</span>
+                <input type="number" class="y" />
+              </div>
+              <div class="component">
+                <span>z</span>
+                <input type="number" class="z" />
+              </div>
+              <div class="component">
+                <span>w</span>
+                <input type="number" class="w" />
+              </div>
+            </div>
+          </div>
+
+          <div class="vector scale">
+            <span>Scale</span>
+            <div class="components">
+              <div class="component">
+                <span>x</span>
+                <input type="number" class="x" />
+              </div>
+              <div class="component">
+                <span>y</span>
+                <input type="number" class="y" />
+              </div>
+              <div class="component">
+                <span>z</span>
+                <input type="number" class="z" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <span>Components</span>
+        <div class="gameObjectComponents"></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

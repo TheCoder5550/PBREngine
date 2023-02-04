@@ -12,6 +12,24 @@
   font-family: 'Oswald', sans-serif;
 }
 
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1); 
+}
+ 
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555; 
+}
+
 :root {
   /* font-family: 'Oswald', sans-serif; */
 
@@ -50,6 +68,10 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
+.ingameUICanvas {
+  pointer-events: none;
+}
+
 canvas {
   position: fixed;
   top: 0;
@@ -77,6 +99,7 @@ canvas {
 .loading > h1 {
   margin: 0;
   font-size: 3em;
+  text-align: center;
 }
 
 .loading > .subheading {
@@ -359,6 +382,7 @@ canvas {
   height: 600px;
 
   padding: 1em;
+  gap: 10px;
 
   background: white;
   border-radius: 5px;
@@ -390,6 +414,8 @@ canvas {
   font-size: 1.5em;
   font-weight: bold;
   color: gray;
+
+  margin-bottom: 15px;
 }
 
 .settings > .settingsContainer > .items .item {
@@ -398,7 +424,7 @@ canvas {
   border-radius: 5px;
 
   padding: 1em;
-  margin-bottom: 0.25em;
+  margin-bottom: 7.5px;
 
   display: flex;
   justify-content: space-between;
@@ -411,4 +437,49 @@ canvas {
 
 .settings > .settingsContainer > .buttons {
   margin-top: 1em;
+}
+
+.messages {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+
+  height: 350px;
+  overflow-y: hidden;
+
+  z-index: 10;
+  pointer-events: all;
+
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+
+  -webkit-mask-image: linear-gradient(180deg, #000 85%, transparent);
+}
+
+.messages:hover {
+  overflow-y: scroll;
+  overflow-y: overlay;
+}
+
+.messages > .message {
+  color: white;
+  background: rgba(0, 0, 0, 0.25);
+
+  padding: 0.3em 0.6em;
+
+  width: 300px;
+
+  animation: hide 5s linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes hide {
+  0% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.messages:hover > .message {
+  opacity: 1 !important;
 }
