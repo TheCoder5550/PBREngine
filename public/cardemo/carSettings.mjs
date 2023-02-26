@@ -43,9 +43,9 @@ var drift = {
   settings: {
     mass: 1000,
     drivetrain: "RWD",
-    friction: 1,
-    forwardFriction: 1 * 0.9,
-    sidewaysFriction: 1.1,
+    friction: 0.9,
+    forwardFriction: 1,
+    sidewaysFriction: 1,
     maxSteerAngle: 70, //53
     torque: 400,
 

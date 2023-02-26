@@ -612,6 +612,8 @@ function Car(scene, physicsEngine, settings = {}) {
 
       if (this.lamps.brightsLeft) this.lamps.brightsLeft.color = brightsAreOn ? [3000, 3000, 3000] : [200, 200, 200];
       if (this.lamps.brightsRight) this.lamps.brightsRight.color = brightsAreOn ? [3000, 3000, 3000] : [200, 200, 200];
+
+      this.setLightEmission("mainFront", brightsAreOn ? [200, 200, 200] : [1, 1, 1]);
     }
 
     if (keybindings.getInputDown("cameraMode")) {
@@ -872,7 +874,19 @@ function Car(scene, physicsEngine, settings = {}) {
 
       // Simulate bumpy road
       if (hit && hit.gameObject?.customData.bumpiness) {
-        hit.distance -= (perlin.noise(hit.point.x * 3, hit.point.z * 3) + 1) * 0.5 * hit.gameObject?.customData.bumpiness;
+        let noiseScale = hit.gameObject?.customData.bumpinessNoiseScale ?? 3;
+        if (isNaN(noiseScale)) {
+          console.error(noiseScale);
+          throw new Error("Bumpiness noise scale is NaN");
+        }
+
+        let bumpiness = hit.gameObject?.customData.bumpiness;
+        if (isNaN(bumpiness)) {
+          console.error(bumpiness);
+          throw new Error("Bumpiness value is NaN");
+        }
+
+        hit.distance -= (perlin.noise(hit.point.x * noiseScale, hit.point.z * noiseScale) + 1) * 0.5 * bumpiness;
       }
 
       wheel.isGrounded = hit && hit.distance < wheel.suspensionTravel + wheel.radius;
@@ -924,7 +938,7 @@ function Car(scene, physicsEngine, settings = {}) {
       targetClutchInput = Math.max(
         ebrakeInput,
         keybindings.getInput("clutch"),
-        clutchInput - (this.engine.getRPM() - this.engine.minRPM) * 0.002
+        clutchInput - (this.engine.getRPM() - (this.engine.minRPM + 800)) * 0.002
       );
       targetClutchInput = clamp(targetClutchInput, 0, 1);
       // clutchInput = targetClutchInput;
@@ -1436,7 +1450,7 @@ function Car(scene, physicsEngine, settings = {}) {
           }
 
           if (wheel.skidmarks) {
-            wheel.skidmarks.emit = clamp(clamp(skidVolume * 20 * (wheel.isGrounded ? 1 : 0.01 * 0), 0, 0.7) * (wheel.isGrounded ? wheel.friction * wheel.forwardFriction * wheel.roadFriction : 0), 0, 1); // bruh, what even is this
+            wheel.skidmarks.emit = clamp(clamp(skidVolume * 20 * (wheel.isGrounded ? 1 : 0.01 * 0), 0, 0.7) * (wheel.isGrounded ? clamp(wheel.normalForce / 5000, 0, 1) * wheel.friction * wheel.forwardFriction * wheel.roadFriction : 0), 0, 1); // bruh, what even is this
           // wheel.skidmarks.emit);
           }
 

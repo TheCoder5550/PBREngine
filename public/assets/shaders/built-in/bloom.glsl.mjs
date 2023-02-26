@@ -23,8 +23,8 @@ var output = {
 
         uniform float _SampleScale;
         uniform float threshold;
-        float knee = 0.5;
-        float _Clamp = 10.;
+        uniform float knee;
+        uniform float _Clamp;
 
         float Max3(float a, float b, float c)
         {
@@ -242,8 +242,8 @@ var output = {
 
         uniform float _SampleScale;
         uniform float threshold;
-        float knee = 0.5;
-        float _Clamp = 10.;
+        uniform float knee;
+        uniform float _Clamp;
 
         float Max3(float a, float b, float c)
         {

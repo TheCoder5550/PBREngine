@@ -41,7 +41,7 @@
     // import OrbitCamera from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/orbitCamera.mjs";
     // import Vector from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/vector.mjs";
 
-    import Renderer, { GameObject, Scene, Light } from "./engine/renderer.mjs";
+    import Renderer, { GameObject, Scene, Light, LOD } from "./engine/renderer.mjs";
     import OrbitCamera from "./engine/orbitCamera.mjs";
     import Vector from "./engine/vector.mjs";
     import Quaternion from "./engine/quaternion.mjs";
@@ -303,35 +303,6 @@
 
         stats.update();
       });
-
-      function LOD(levels = []) {
-        this.levels = levels;
-        this.gameObject = null;
-
-        this.currentLevel = null;
-        var i = Math.floor(Math.random() * 10);
-
-        this.render = function(camera, currentMatrix, shadowPass, opaquePass) {
-          if (i % 10 == 0) {
-            if (camera.transform) {
-              var cameraPos = camera.transform.position;
-              var distanceToCenter = Vector.distanceSqr(this.gameObject.transform.worldPosition, cameraPos);
-              this.currentLevel = this.levels.find(l => distanceToCenter < l.upToDistance * l.upToDistance);
-            }
-            else {
-              this.currentLevel = this.levels[0];
-            }
-          }
-
-          if (this.currentLevel) {
-            var prevModelMatrix = this.gameObject.prevModelMatrix;
-            var meshRenderer = this.currentLevel.meshRenderer;
-            meshRenderer.render(camera, currentMatrix, shadowPass, opaquePass, prevModelMatrix);
-          }
-          
-          i++;
-        }
-      }
 
     })();
 

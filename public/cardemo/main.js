@@ -1,4 +1,4 @@
-import Renderer, { Scene, GameObject, Camera, Light } from "../engine/renderer.mjs";
+import Renderer, { Scene, GameObject, Camera, Light, LOD } from "../engine/renderer.mjs";
 import Vector from "../engine/vector.mjs";
 import Matrix from "../engine/matrix.mjs";
 import Quaternion from "../engine/quaternion.mjs";
@@ -352,9 +352,11 @@ document.addEventListener("DOMContentLoaded", function () {
       renderScale: 1,
       debug: true,
 
-      shadowResolution: 256 * 8,
-      shadowSizes: [4, 48],
+      shadowResolution: 256 * 4,
+      // shadowSizes: [4, 12],
+      shadowSizes: [6, 64],
     });
+    renderer.disableContextMenu();
     renderer.canvas.style.position = "fixed";
 
     window.isDay = isDay;
@@ -370,12 +372,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
     scene.environmentIntensity = 1.1;//1.5 * 1.2;
     scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(5500, 27));
-    renderer.postprocessing.exposure.value = -1;
-    renderer.postprocessing.vignette.amount.value = 0.3;
-    renderer.postprocessing.vignette.falloff.value = 0.3;
+    scene.postprocessing.exposure = -1;
+    scene.postprocessing.vignette.amount = 0.3;
+    scene.postprocessing.vignette.falloff = 0.3;
     // renderer.postprocessing.saturation.value = 0.4;
     // renderer.settings.enableShadows = false;
     // renderer.postprocessing.rainTexture = await renderer.loadTextureAsync("../assets/textures/rain-normal-map.jpg");
+    renderer.shadowCascades.refreshRate = 0;
+    // renderer.settings.enableShadows = false;
 
     await scene.loadEnvironment({
       // hdr: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr",
@@ -465,7 +469,7 @@ document.addEventListener("DOMContentLoaded", function () {
     setProgress(7, totalTasks, "Loading car models");
     var models = {};
     var modelOffset = {};
-    var allowedCars = [ "skyline", "bus" ];
+    var allowedCars = [ "skyline", "bus", "drift", "aventador", "audiRS6" ];
 
     var i = 0;
     for (var key of allowedCars) {
@@ -889,15 +893,19 @@ document.addEventListener("DOMContentLoaded", function () {
       model.transform.matrix = Matrix.identity();
       await car.setup(model);
 
+      // car.gameObject.castShadows = false;
+
       car.gameObject.traverse(gameObject => {
         if (gameObject.meshRenderer) {
           var mats = gameObject.meshRenderer.materials;
           for (var mat of mats) {
-            if (mat.name.toLowerCase() == "carpaint") {
-              var i = mats.indexOf(mat);
-              mats[i] = paints.darkgray;
-              mats[i].setUniform("flakeScale", 50);
-            }
+            // if (mat.name.toLowerCase() == "carpaint") {
+            //   var i = mats.indexOf(mat);
+            //   mats[i] = paints.darkgray;
+            //   mats[i].setUniform("flakeScale", 50);
+            // }
+
+            // mat.setUniform("roughness", 0);
 
             mat.doubleSided = false;
             mat.doubleSidedShadows = false;
@@ -1043,7 +1051,7 @@ document.addEventListener("DOMContentLoaded", function () {
       var chunkSize = 100;
 
       var leavesMaterial = renderer.CreateLitMaterial({
-        albedoTexture: renderer.loadTexture("leaves.png", { ...renderer.getSRGBFormats() }),
+        albedoTexture: renderer.loadTexture("leaves5.png", { ...renderer.getSRGBFormats() }),
       });
       var leavesBase = renderer.CreateShape("plane", leavesMaterial);
 
@@ -1054,21 +1062,23 @@ document.addEventListener("DOMContentLoaded", function () {
       grassMaterial.setUniform("doNoTiling", true);
 
       var simpleFoliageProgram = new renderer.CustomProgram(simpleFoliage);
-      var treesBase = await renderer.loadGLTF("../assets/models/trees/stylizedAutumnBillboard.glb");
-      // var treesBase = await renderer.loadGLTF("../assets/models/trees/stylizedAutumn.glb");
+      var billboardTreesBase = await renderer.loadGLTF("../assets/models/trees/stylizedAutumnBillboard.glb");
+      var treesBase = await renderer.loadGLTF("../assets/models/trees/stylizedAutumn.glb");
 
-      // var dirtRoadMaterial = renderer.CreateLitMaterial({
-      //   albedoColor: [0.8, 0.8, 0.8, 1],
-      //   albedoTexture: renderer.loadTexture("../assets/textures/aerial_mud_1_4k_jpg/aerial_mud_1_diff_4k.jpg", { ...renderer.getSRGBFormats() }),
-      //   normalTexture: renderer.loadTexture("../assets/textures/aerial_mud_1_4k_jpg/aerial_mud_1_nor_4k.jpg"),
-      // });
-      // dirtRoadMaterial.setUniform("normalStrength", 3);
+      var dirtRoadMaterial = renderer.CreateLitMaterial({
+        // albedoColor: [0.8, 0.8, 0.8, 1],
+        albedoTexture: renderer.loadTexture("../assets/textures/aerial_mud_1_4k_jpg/aerial_mud_1_diff_4k.jpg", { ...renderer.getSRGBFormats() }),
+        normalTexture: renderer.loadTexture("../assets/textures/aerial_mud_1_4k_jpg/normalWithWater.png"),
+        metallicRoughnessTexture: renderer.loadMetalRoughness("../assets/textures/aerial_mud_1_4k_jpg/aerial_mud_1_ref_4k.jpg", "../assets/textures/aerial_mud_1_4k_jpg/aerial_mud_1_ref_4k.jpg")
+      });
+      dirtRoadMaterial.setUniform("roughness", 0.9);
+      dirtRoadMaterial.setUniform("normalStrength", 3);
 
       var asphaltRoadMaterial = renderer.CreateLitMaterial({
         albedoColor: [0.3, 0.3, 0.3, 1],
-        albedoTexture: renderer.loadTexture("../assets/textures/roadNoCenterLine/albedo.png", { ...renderer.getSRGBFormats() }),
-        normalTexture: renderer.loadTexture("../assets/textures/roadNoCenterLine/normal.png"),
-        metallicRoughness: renderer.loadTexture("../assets/textures/roadNoCenterLine/metallicRoughness.png"),
+        albedoTexture: renderer.loadTexture("../assets/textures/road/albedo.png", { ...renderer.getSRGBFormats(), anisotropicFiltering: true }),
+        normalTexture: renderer.loadTexture("../assets/textures/road/normal.png", { anisotropicFiltering: true }),
+        metallicRoughnessTexture: renderer.loadTexture("../assets/textures/road/metallicRoughness.png", { anisotropicFiltering: true }),
         // albedoTexture: renderer.loadTexture("../assets/textures/asphalt_01_1k/asphalt_01_diff_1k.jpg", { ...renderer.getSRGBFormats() }),
         // normalTexture: renderer.loadTexture("../assets/textures/asphalt_01_1k/asphalt_01_nor_gl_1k.png"),
       });
@@ -1076,7 +1086,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // roadMaterial.setUniform("albedoTexture", renderer.loadTexture("./assets/textures/checkerboard2.png"));
 
       var roadSettings = {
-        rally: { width: 10 / 2.5, material: null/*dirtRoadMaterial*/, flipUV: true, uvScale: 0.75 },
+        rally: { width: 10 / 2.5, material: dirtRoadMaterial, flipUV: true, uvScale: 0.75 },
         asphalt: { width: 10, material: asphaltRoadMaterial, flipUV: false, uvScale: 1 }
       };
 
@@ -1086,6 +1096,8 @@ document.addEventListener("DOMContentLoaded", function () {
       var curveXMax = 0.3;
       var flipUV = roadSettings[roadKey].flipUV;
       var uvScale = roadSettings[roadKey].uvScale;
+      // var treeDensity = 5;
+      var treeDensity = 0.4;
 
       var points = [];
       var startY = 0;
@@ -1108,7 +1120,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         for (let i = 0; i < chunks.length; i++) {
           var chunk = chunks[i];
-          chunk.visible = (Math.abs(i * chunkSize - car.rb.position.z) < chunkSize * 2);
+          chunk.active = (Math.abs(i * chunkSize - car.rb.position.z) < chunkSize * 2);
         }
 
         if (car.rb.position.z > (chunks.length - 2) * chunkSize) {
@@ -1134,47 +1146,128 @@ document.addEventListener("DOMContentLoaded", function () {
       async function generateRoad(chunkCenter, crCurve, width = 12, segments = 100) {
         var container = new GameObject("Chunk");
         container.transform.position = chunkCenter;
-  
-        // // Ground
-        // var plane = renderer.CreateShape("plane", grassMaterial);
-  
-        // var uvScale = 50;
-        // plane.meshRenderer.meshData[0].setAttribute("uv", { bufferData: new Float32Array([
-        //   uvScale, uvScale,
-        //   0, uvScale,
-        //   0, 0,
-        //   uvScale, 0
-        // ]) });
-  
-        // plane.transform.rotation = Quaternion.euler(-Math.PI / 2, 0, 0);
-        // plane.transform.scale = Vector.fill(50);
-        // plane.addComponent(new MeshCollider());
-        
-        // plane.customData.bumpiness = 0.03;
-        // plane.customData.friction = 0.5;
-        // plane.customData.offroad = 1;
-  
-        // container.addChild(plane);
+
+        var isForest = true;//Math.random() > 0.25;
   
         // Trees
-        var trees = container.add(treesBase.copy());
-        trees.children[0].meshRenderer = trees.children[0].meshRenderer.getInstanceMeshRenderer();
-        var mr = trees.children[0].meshRenderer;
+        // var trees = container.add(treesBase.copy());
+        // trees.children[0].meshRenderer = trees.children[0].meshRenderer.getInstanceMeshRenderer();
+        // var mr = trees.children[0].meshRenderer;
 
-        // mr.materials[0].programContainer = renderer.programContainers.unlitInstanced;
-        mr.materials[0].setUniform("albedo", [0.3, 0.3, 0.3, 1]);
-        mr.materials[0].setUniform("alphaCutoff", 0.5);
-        // mr.materials[0].programContainer = simpleFoliageProgram;
-        // mr.materials[0].doubleSided = false;
+        // // mr.materials[0].programContainer = renderer.programContainers.unlitInstanced;
+        // mr.materials[0].setUniform("albedo", [0.3, 0.3, 0.3, 1]);
+        // mr.materials[0].setUniform("alphaCutoff", 0.5);
+
+        // // mr.materials[0].programContainer = simpleFoliageProgram;
+        // // mr.materials[0].doubleSided = false;
   
+        // function addTree(origin) {
+        //   mr.addInstance(Matrix.transform([
+        //     ["translate", Vector.add(chunkCenter, origin)],
+        //     ["scale", Vector.fill(1 + Math.random() * 1)],
+        //     ["ry", Math.random() * 2 * Math.PI],
+        //     ["rx", (Math.random() - 0.5) * 0.07],
+        //     ["rz", (Math.random() - 0.5) * 0.07],
+        //   ]));
+        // }
+
+        var instanceTrees = container.add(treesBase.copy());
+        instanceTrees.children[0].meshRenderer = instanceTrees.children[0].meshRenderer.getInstanceMeshRenderer();
+        instanceTrees.children[0].meshRenderer.materials[0].setUniform("albedo", [0.3, 0.3, 0.3, 1]);
+        instanceTrees.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.5);
+        // instanceTrees.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
+        instanceTrees.children[0].meshRenderer.materials[0].doubleSided = false;
+        instanceTrees.children[0].meshRenderer.materials[0].doubleSidedShadows = false;
+
+        var instanceBillboardTrees = container.add(billboardTreesBase.copy());
+        instanceBillboardTrees.children[0].meshRenderer = instanceBillboardTrees.children[0].meshRenderer.getInstanceMeshRenderer();
+        instanceBillboardTrees.children[0].meshRenderer.materials[0].setUniform("albedo", [0.1, 0.1, 0.1, 1]);
+        instanceBillboardTrees.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.5);
+        // instanceBillboardTrees.castShadows = false;
+
+        var trees = [];
+
+        var treesContainer = container.addChild(new GameObject("Tree container"));
+        treesContainer.visible = false;
+
+        function addSimpleTree(origin) {
+          trees.push(origin);
+        }
+
         function addTree(origin) {
-          mr.addInstance(Matrix.transform([
+
+          instanceTrees.children[0].meshRenderer.addInstance(Matrix.transform([
             ["translate", Vector.add(chunkCenter, origin)],
             ["scale", Vector.fill(1 + Math.random() * 1)],
             ["ry", Math.random() * 2 * Math.PI],
             ["rx", (Math.random() - 0.5) * 0.07],
             ["rz", (Math.random() - 0.5) * 0.07],
           ]));
+          return;
+
+          var lodTree = treesContainer.add(new GameObject("LOD Tree"));
+          lodTree.visible = false;
+
+          // lodTree.transform.matrix = Matrix.transform([
+          //   ["translate", origin],
+          //   // ["translate", Vector.add(chunkCenter, origin)], // Only add chunkCenter when instanced mesh
+          //   ["scale", Vector.fill(1 + Math.random() * 1)],
+          //   ["ry", Math.random() * 2 * Math.PI],
+          //   ["rx", (Math.random() - 0.5) * 0.07],
+          //   ["rz", (Math.random() - 0.5) * 0.07],
+          // ]);
+          // lodTree.addComponent(new LOD([
+          //   { meshRenderer: treesBase.children[0].meshRenderer, upToDistance: 50 },
+          //   { meshRenderer: billboardTreesBase.children[0].meshRenderer, upToDistance: 500 },
+          // ]));
+
+          function TreeLOD(matrix) {
+            this.instanceMatrix = Matrix.copy(matrix);
+
+            var levels = [
+              { meshRenderer: instanceTrees.children[0].meshRenderer, upToDistance: 50 },
+              { meshRenderer: instanceBillboardTrees.children[0].meshRenderer, upToDistance: 500 },
+            ];
+            var lastLevel = null;
+
+            this.updateInterval = 20;
+            var i = Math.floor(Math.random() * this.updateInterval);
+
+            this.update = function() {
+              if (car && i % this.updateInterval == 0) {
+                var cameraPos = car.mainCamera.transform.position;
+                var distanceToCenter = Vector.distanceSqr(Matrix.getPosition(this.instanceMatrix), cameraPos);
+              
+                var currentLevel = levels.find(l => distanceToCenter < l.upToDistance * l.upToDistance);
+
+                if (currentLevel != lastLevel) {
+                  for (var level of levels) {
+                    if (currentLevel == level) {
+                      level.meshRenderer.addInstanceDontCopy(this.instanceMatrix);
+                    }
+                    else {
+                      level.meshRenderer.removeInstance(this.instanceMatrix);
+                    }
+                  }
+                }
+
+                lastLevel = currentLevel;
+              }
+
+              i++;
+            };
+          }
+
+          lodTree.addComponent(new TreeLOD(Matrix.transform([
+            // ["translate", origin],
+            ["translate", Vector.add(chunkCenter, origin)], // Only add chunkCenter when instanced mesh
+            ["scale", Vector.fill(1 + Math.random() * 1)],
+            ["ry", Math.random() * 2 * Math.PI],
+            ["rx", (Math.random() - 0.5) * 0.07],
+            ["rz", (Math.random() - 0.5) * 0.07],
+          ])));
+
+          // trees.push(lodTree);
         }
 
         // Leaves
@@ -1217,26 +1310,16 @@ document.addEventListener("DOMContentLoaded", function () {
         var groundCounter = 0;
         var step = 1 / segments;
         for (let s = 0; s < segments; s++) {
-          var t = s / (segments - 1) * 0.75;
-          var center = crCurve.getPoint(t);
+          let t = s / (segments - 1) * 0.75;
+          let center = crCurve.getPoint(t);
           
-          var diff;
-          // if (t + step >= 1) {
-          //   diff = Vector.subtract(
-          //     center,
-          //     crCurve.getPoint(t - step),
-          //   );
-          // }
-          // else {
-            diff = Vector.subtract(
-              crCurve.getPoint(t + step),
-              center
-            );
-            // console.log(diff);
-          // }
-          var tangent = Vector.normalize(diff);
+          let diff = Vector.subtract(
+            crCurve.getPoint(t + step),
+            center
+          );
+          let tangent = Vector.normalize(diff);
   
-          var normal = Quaternion.QxV(Quaternion.angleAxis(Math.PI / 2, tangent), Vector.up());
+          let normal = Quaternion.QxV(Quaternion.angleAxis(Math.PI / 2, tangent), Vector.up());
           
           var edge = Vector.multiply(normal, width / 2); // inner edge
           var margin = Vector.multiply(normal, width / 2 * 1.4); // outer edge
@@ -1273,13 +1356,15 @@ document.addEventListener("DOMContentLoaded", function () {
             uvs.push(1 * uvScale, v * uvScale);
             uvs.push(1.4 * uvScale, v * uvScale);
           }
+          
+          var mountainHeight = (perlin.noise(0, 0, (chunkCenter.z + center.z) * 0.01) + 1) / 2;
 
           // var farEdge = Vector.multiply(normal, width * 2);
           var steepness = 1.6;//0.2 + (perlin.noise(0, 0, center.z * 0.07) + 1) / 2 * 4;
-          var l1 = Vector.add(e1, new Vector(-width * steepness, width * 0.4, 0));
-          var ll1 = Vector.add(e1, new Vector(-width * 8, width * 0.55, 0));
-          var l2 = Vector.add(e2, new Vector(width * steepness, width * 0.4, 0));
-          var ll2 = Vector.add(e2, new Vector(width * 8, width * 0.55, 0));
+          var l1 = Vector.add(e1, new Vector(-width * steepness, width * 0.4 * mountainHeight, 0));
+          var ll1 = Vector.add(e1, new Vector(-width * 8, width * 0.55 * mountainHeight, 0));
+          var l2 = Vector.add(e2, new Vector(width * steepness, width * 0.4 * mountainHeight, 0));
+          var ll2 = Vector.add(e2, new Vector(width * 8, width * 0.55 * 5 * mountainHeight, 0));
 
           if (groundCounter % 3 == 0) {
             groundVertices.push(ll1.x, ll1.y, ll1.z);
@@ -1300,11 +1385,45 @@ document.addEventListener("DOMContentLoaded", function () {
 
           distanceAlongPath += Vector.length(diff);
   
-          // if (Math.random() > 0.6) {
-          for (let _i = 0; _i < 5; _i++) {
-            addTree(Vector.add(Vector.add(center, Vector.multiply(normal, width / 2 * 1.6 + Math.random() * 3 * 15)), new Vector(0, -width * 0.06 + (Math.random() - 0.5) * width, 0)));
-            addTree(Vector.add(Vector.subtract(center, Vector.multiply(normal, width / 2 * 1.6 + Math.random() * 3 * 15)), new Vector(0, -width * 0.06 + (Math.random() - 0.5) * width, 0)));
+          let plant = () => {
+            addTree(
+              Vector.add(
+                Vector.add(center, Vector.multiply(normal, width * 0.6 + Math.random() * 3 * 15 / 1)),
+                new Vector(0, -width * 0.06 + (Math.random() - 0.5) * width * 0, 0)
+              )
+            );
+            addTree(
+              Vector.add(
+                Vector.subtract(center, Vector.multiply(normal, width * 0.6 + Math.random() * 3 * 15 / 1)),
+                new Vector(0, -width * 0.06 + (Math.random() - 0.5) * width * 0, 0)
+              )
+            );
+          };
+          if (treeDensity >= 1) {
+            for (let _i = 0; _i < treeDensity; _i++) {
+              plant();
+            }
           }
+          else {
+            if (Math.random() < treeDensity) {
+              plant();
+            }
+          }
+
+          // for (let _i = 0; _i < 1; _i++) {
+          //   addSimpleTree(
+          //     Vector.add(
+          //       Vector.add(center, Vector.multiply(normal, width * 0.6 + Math.random() * 3 * 15)),
+          //       new Vector(0, -width * 0.06 + (Math.random() - 0.5) * width * 0, 0)
+          //     )
+          //   );
+          //   addSimpleTree(
+          //     Vector.add(
+          //       Vector.subtract(center, Vector.multiply(normal, width * 0.6 + Math.random() * 3 * 15)),
+          //       new Vector(0, -width * 0.06 + (Math.random() - 0.5) * width * 0, 0)
+          //     )
+          //   );
+          // }
 
           addLeaves(Vector.add(Vector.add(center, Vector.multiply(normal, width / 2 - Math.random() * 2)), new Vector(0, 0.05 + Math.random() * 0.02, 0)));
           addLeaves(Vector.add(Vector.subtract(center, Vector.multiply(normal, width / 2 - Math.random() * 2)), new Vector(0, 0.05 + Math.random() * 0.02, 0)));
@@ -1407,9 +1526,36 @@ document.addEventListener("DOMContentLoaded", function () {
         terrain.customData.offroad = 1;
 
         container.addChild(terrain);
-  
-        // Export
+
         scene.add(container);
+
+        if (isForest) {
+          for (var origin of trees) {
+            var p = Vector.add(chunkCenter, origin);
+            var hit = physicsEngine.Raycast(
+              new Vector(p.x, p.y + 50, p.z),
+              Vector.down()
+            );
+            if (hit && hit.firstHit) {
+              // tree.transform.position.y = hit.firstHit.point.y;
+
+              let m = Matrix.transform([
+                ["translate", Vector.add(hit.firstHit.point, new Vector(0, -Math.random() * 2, 0))],
+                ["scale", Vector.fill(1 + Math.random() * 1)],
+                ["ry", Math.random() * 2 * Math.PI],
+                ["rx", (Math.random() - 0.5) * 0.07],
+                ["rz", (Math.random() - 0.5) * 0.07],
+              ]);
+              let m2 = Matrix.copy(m);
+              Matrix.transform([
+                ["ry", Math.PI / 2]
+              ], m2);
+              instanceBillboardTrees.children[0].meshRenderer.addInstance(m);
+              instanceBillboardTrees.children[0].meshRenderer.addInstance(m2);
+            }
+          }
+        }
+
         return container;
       }
     }

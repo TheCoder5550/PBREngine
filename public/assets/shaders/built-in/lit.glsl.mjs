@@ -248,10 +248,10 @@ float fadeToNextShadowMap(float v1, float v2, vec3 proj) {
 }
 
 float random(vec3 seed, int i){
-      vec4 seed4 = vec4(seed,i);
-      float dot_product = dot(seed4, vec4(12.9898,78.233,45.164,94.673));
-      return fract(sin(dot_product) * 43758.5453);
-    }
+  vec4 seed4 = vec4(seed,i);
+  float dot_product = dot(seed4, vec4(12.9898,78.233,45.164,94.673));
+  return fract(sin(dot_product) * 43758.5453);
+}
 
 float getShadowAmount(float cosTheta) {
   if (shadowQuality == 0) {
@@ -865,7 +865,7 @@ void main() {
   float _metallic = metallic;
   float _roughness = roughness;
   if (useMetallicRoughnessTexture) {
-    vec3 ts = sampleTexture(metallicRoughnessTexture, vUV).rgb;
+    vec4 ts = sampleTexture(metallicRoughnessTexture, vUV);
     _metallic *= ts.b;
     _roughness *= ts.g;
   }

@@ -352,8 +352,8 @@ var output = {
             result /= float(nSamples);
             col += result;
           #else
-            // vec4 samp = texture2D(mainTexture, uv);
-            vec4 samp = applyFXAA(mainTexture, gl_FragCoord.xy, SIZE);
+            vec4 samp = texture2D(mainTexture, uv);
+            // vec4 samp = applyFXAA(mainTexture, gl_FragCoord.xy, SIZE);
             col += samp;
           #endif
         

@@ -675,7 +675,7 @@ function PhysicsEngine(scene, settings = {}) {
           }
         }
       }
-    }, child => child.visible);
+    }, child => child.active && child.visible);
 
     // this.scene.root.traverse(function(gameObject) {
     //   if (gameObject.meshRenderer && rayToAABB(origin, direction, gameObject.meshRenderer.aabb)) {
@@ -856,7 +856,7 @@ function PhysicsEngine(scene, settings = {}) {
     // this.eventHandler.fireEvent("fixedUpdate", this.dt);
 
     // Find constraints
-    this.scene.root.traverse(function(gameObject) {
+    this.scene.root.traverseCondition(function(gameObject) {
       var rigidbodies = gameObject.findComponents("Rigidbody");
       var rigidbody = rigidbodies[0];
       if (rigidbody) {
@@ -1062,7 +1062,7 @@ function PhysicsEngine(scene, settings = {}) {
         //   });
         // }
       }
-    });
+    }, child => child.active && child.visible);
 
     // Sphere - sphere collision
     for (var r1 of rigidbodiesWithColliders) {
