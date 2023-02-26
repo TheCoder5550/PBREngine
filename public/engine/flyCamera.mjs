@@ -14,11 +14,11 @@ export default function FlyCamera(renderer, cameraSettings) {
 
   var resizeEvent = () => {
     this.camera.setAspect(renderer.aspect);
-  }
+  };
   renderer.on("resize", resizeEvent);
   resizeEvent();
 
-  renderer.canvas.addEventListener("mousedown", function(e) {
+  renderer.canvas.addEventListener("mousedown", function() {
     renderer.lockPointer();
   });
 
@@ -33,13 +33,13 @@ export default function FlyCamera(renderer, cameraSettings) {
     this.speed = renderer.getKey(16) ? this.sprintSpeed : this.baseSpeed;
 
     if (renderer.getKey([87])) {
-      var c = Math.cos(this.eulerAngles.x);
+      let c = Math.cos(this.eulerAngles.x);
       this.camera.transform.position.x += Math.cos(this.eulerAngles.y + Math.PI / 2) * this.speed * dt * c;
       this.camera.transform.position.z += -1 * Math.sin(this.eulerAngles.y + Math.PI / 2) * this.speed * dt * c;
       this.camera.transform.position.y += Math.sin(this.eulerAngles.x) * this.speed * dt;
     }
     if (renderer.getKey([83])) {
-      var c = Math.cos(this.eulerAngles.x);
+      let c = Math.cos(this.eulerAngles.x);
       this.camera.transform.position.x -= Math.cos(this.eulerAngles.y + Math.PI / 2) * this.speed * dt * c;
       this.camera.transform.position.z -= -1 * Math.sin(this.eulerAngles.y + Math.PI / 2) * this.speed * dt * c;
       this.camera.transform.position.y -= Math.sin(this.eulerAngles.x) * this.speed * dt;
@@ -68,5 +68,47 @@ export default function FlyCamera(renderer, cameraSettings) {
     }
 
     this.camera.transform.rotation = Quaternion.euler(this.eulerAngles.x, this.eulerAngles.y, this.eulerAngles.z);
+  };
+}
+
+function flyCamera(renderer, camera, eulerAngles, dt = 1) {
+  var speed = 15;
+  if (renderer.getKey([87])) {
+    let c = Math.cos(eulerAngles.x);
+    camera.transform.position.x += Math.cos(eulerAngles.y + Math.PI / 2) * speed * dt * c;
+    camera.transform.position.z += -Math.sin(eulerAngles.y + Math.PI / 2) * speed * dt * c;
+    camera.transform.position.y += Math.sin(eulerAngles.x) * speed * dt;
+  }
+  if (renderer.getKey([83])) {
+    let c = Math.cos(eulerAngles.x);
+    camera.transform.position.x -= Math.cos(eulerAngles.y + Math.PI / 2) * speed * dt * c;
+    camera.transform.position.z -= -Math.sin(eulerAngles.y + Math.PI / 2) * speed * dt * c;
+    camera.transform.position.y -= Math.sin(eulerAngles.x) * speed * dt;
+  }
+  if (renderer.getKey([65])) {
+    camera.transform.position.x -= Math.cos(eulerAngles.y) * speed * dt;
+    camera.transform.position.z -= -Math.sin(eulerAngles.y) * speed * dt;
+  }
+  if (renderer.getKey([68])) {
+    camera.transform.position.x += Math.cos(eulerAngles.y) * speed * dt;
+    camera.transform.position.z += -Math.sin(eulerAngles.y) * speed * dt;
+  }
+
+  var rotSpeed = 3;
+  if (renderer.getKey([37])) {
+    eulerAngles.y += rotSpeed * dt;
+  }
+  if (renderer.getKey([39])) {
+    eulerAngles.y -= rotSpeed * dt;
+  }
+  if (renderer.getKey([38])) {
+    eulerAngles.x += rotSpeed * dt;
+  }
+  if (renderer.getKey([40])) {
+    eulerAngles.x -= rotSpeed * dt;
   }
 }
+
+export {
+  flyCamera
+};
