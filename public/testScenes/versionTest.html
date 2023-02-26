@@ -54,9 +54,10 @@
 
   <script type="module">
 
-    import Renderer, { Scene, GameObject } from "./engine/renderer.mjs";
-    import OrbitCamera from "./engine/orbitCamera.mjs";
-    import Vector from "./engine/vector.mjs";
+    import * as ENUMS from "../engine/constants.mjs";
+    import Renderer, { Scene, GameObject } from "../engine/renderer.mjs";
+    import OrbitCamera from "../engine/orbitCamera.mjs";
+    import Vector from "../engine/vector.mjs";
 
     (async function() {
       /*
@@ -64,7 +65,8 @@
       */
 
       var renderer = new Renderer({
-        version: 1
+        version: 1,
+        renderpipeline: ENUMS.RENDERPIPELINE.FORWARD
       });
       renderer.setCanvasSize(innerWidth / 2, innerHeight);
       document.querySelector(".canvas1Container").appendChild(renderer.canvas);
@@ -97,7 +99,8 @@
       */
 
       var renderer2 = new Renderer({
-        version: 2
+        version: 2,
+        renderpipeline: ENUMS.RENDERPIPELINE.FORWARD
       });
       renderer2.setCanvasSize(innerWidth / 2, innerHeight);
       document.querySelector(".canvas2Container").appendChild(renderer2.canvas);

@@ -2051,7 +2051,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }, 0.2, 2, 0.05),
 
         motionBlur: new SliderSetting("Motion blur", 0.15, value => {
-          renderer.postprocessing.motionBlurStrength.value = value;
+          scene.postprocessing.motionBlurStrength = value;
           saveSettings();
         }, 0, 0.5, 0.01),
 

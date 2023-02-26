@@ -16,22 +16,9 @@ out vec3 vColor;
 out vec2 vUV;
 out mat3 vTBN;
 
-// const int levels = 2;
-
-// uniform sharedPerScene {
-//   mat4 projectionMatrix;
-//   mat4 viewMatrix;
-//   mat4 inverseViewMatrix;
-//   float biases[levels];
-// };
-
 uniform mat4 projectionMatrix;
 uniform mat4 viewMatrix;
 uniform mat4 modelMatrix;
-
-// //Shadows
-// uniform mat4 textureMatrices[levels];
-// out vec4 projectedTexcoords[levels];
 
 void main() {
   vNormal = mat3(modelMatrix) * normal; // in world-space
@@ -45,10 +32,6 @@ void main() {
   vTBN = mat3(_T, _B, _N);
 
   vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-  // for (int i = 0; i < levels; i++) {
-  //   projectedTexcoords[i] = textureMatrices[i] * worldPosition;
-  // }
-
   vPosition = worldPosition;
   
   gl_Position = projectionMatrix * viewMatrix * worldPosition;

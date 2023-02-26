@@ -45,6 +45,7 @@ uniform vec3 sunDirection;
 uniform vec3 sunIntensity;
 
 // Environment
+uniform vec3 ambientColor;
 uniform float environmentIntensity;
 uniform samplerCube u_diffuseIBL;
 uniform samplerCube u_specularIBL;

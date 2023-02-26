@@ -387,7 +387,7 @@ float getShadowAmount(vec3 worldPosition, float cosTheta) {
           //   visibility -= 1. / 64.;
           // }
 
-          if (texture(projectedTextures[0], proj.xy + hash(worldPosition.xz * 0.01 + float(i) * vec2(1, -.9)) * shadowStepSize * shadowSampleRadius).r < currentDepth) {
+          if (texture(projectedTextures[0], proj.xy + hash(worldPosition.xz + worldPosition.yy + float(i) * vec2(1, -.9)) * shadowStepSize * shadowSampleRadius).r < currentDepth) {
             visibility -= 1. / float(shadowSamples);
           }
 

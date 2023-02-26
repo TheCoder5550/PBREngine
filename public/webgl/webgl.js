@@ -315,7 +315,6 @@ async function setup() {
     ws.close();
   });
 
-  renderer.postprocessing.exposure = -0.5;
   console.timeEnd("renderer.setup");
 
   keybindings = new Keybindings(renderer, gamepadManager);
@@ -338,8 +337,10 @@ async function setup() {
   scene = new Scene("Main scene");
   renderer.add(scene);
 
-  scene.environmentIntensity = 0.8//0.4;
+  scene.environmentIntensity = 0.8;//0.4;
   scene.sunIntensity = Vector.fill(4);
+  scene.postprocessing.exposure = -0.5;
+  scene.postprocessing.motionBlurStrength = 0;
   // await scene.loadEnvironment();
   // await scene.loadEnvironment({ hdrFolder: "../assets/hdri/sky_only" });
   // var oldSkybox = scene.skyboxCubemap;
@@ -357,6 +358,7 @@ async function setup() {
   menuScene.sunIntensity = Vector.fill(3);
   menuScene.environmentIntensity = 0.35;
   menuScene.sunDirection.z *= -1;
+  menuScene.postprocessing.motionBlurStrength = 0;
 
   /*
     Cameras
@@ -830,9 +832,9 @@ async function setup() {
   });
   window.car = car;
   await car.setup("../cargame/tocus.glb");
-  car.camera.followDistance = 5;
-  car.camera.followHeight = 0.3;
-  car.camera.pitch = 0.1;
+  // car.camera.followDistance = 5;
+  // car.camera.followHeight = 0.3;
+  // car.camera.pitch = 0.1;
   car.keybindings.setBinding("resetCar", {});
   car.canMove = false;
 

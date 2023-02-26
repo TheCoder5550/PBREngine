@@ -756,7 +756,7 @@ function Car(scene, physicsEngine, settings = {}) {
       //   targetClutchInput = 1;
       // }
 
-      if (isChangingGear && !this.canDriveWhenChangingGear) {
+      if (isChangingGear && !this.canDriveWhenChangingGear && keybindings.getInput("clutch") < 0.05) {
         driveInput = 0;
       }
 
