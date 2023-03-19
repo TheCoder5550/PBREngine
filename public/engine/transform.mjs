@@ -11,6 +11,10 @@ function Transform(matrix, position, rotation, scale) {
     worldMatrix: false
   };
 
+  // Object pool
+  var _m = Matrix.identity();
+  // -----------
+
   var _matrix = Matrix.identity();
   var _worldMatrix = Matrix.identity();
   var _translationMatrix = Matrix.identity();
@@ -46,16 +50,24 @@ function Transform(matrix, position, rotation, scale) {
     },
     set: function(val) {
       if (Vector.isVectorIsh(val)) {
-        if (!Vector.equal(val, _lastPosition)) {
-          // everythingHasChanged();
-          // _position = val;
-
-          _positionProxy.x = val.x;
-          _positionProxy.y = val.y;
-          _positionProxy.z = val.z;
-
-          _lastPosition = Vector.copy(val);
+        if (Vector.equal(val, _lastPosition)) {
+          return;
         }
+
+        if (Vector.isNaN(val)) {
+          console.error("Position is NaN: ", val);
+          return;
+        }
+
+        // everythingHasChanged();
+        // _position = val;
+
+        _positionProxy.x = val.x;
+        _positionProxy.y = val.y;
+        _positionProxy.z = val.z;
+
+        Vector.set(_lastPosition, val);
+        // _lastPosition = Vector.copy(val);
       }
       else {
         console.warn("Position is not vector", val);
@@ -80,20 +92,28 @@ function Transform(matrix, position, rotation, scale) {
     },
     set: function(val) {
       if (Quaternion.isQuaternionIsh(val)) {
-        if (!Quaternion.equal(val, _lastRotation)) {
-          // everythingHasChanged();
-
-          _rotationProxy.x = val.x;
-          _rotationProxy.y = val.y;
-          _rotationProxy.z = val.z;
-          _rotationProxy.w = val.w;
-
-          // _rotation = val;
-          Matrix.fromQuaternion(_rotation, _rotationMatrix);
-          // _rotationMatrix = Matrix.fromQuaternion(_rotation);
-
-          _lastRotation = Quaternion.copy(val);
+        if (Quaternion.equal(val, _lastRotation)) {
+          return;
         }
+
+        if (Quaternion.isNaN(val)) {
+          console.error("Rotation is NaN: ", val);
+          return;
+        }
+
+        // everythingHasChanged();
+
+        _rotationProxy.x = val.x;
+        _rotationProxy.y = val.y;
+        _rotationProxy.z = val.z;
+        _rotationProxy.w = val.w;
+
+        // _rotation = val;
+        Matrix.fromQuaternion(_rotation, _rotationMatrix);
+        // _rotationMatrix = Matrix.fromQuaternion(_rotation);
+
+        Quaternion.set(_lastRotation, val);
+        // _lastRotation = Quaternion.copy(val);
       }
       else {
         console.warn("Rotation is not quaternion", val);
@@ -107,16 +127,24 @@ function Transform(matrix, position, rotation, scale) {
     },
     set: function(val) {
       if (Vector.isVectorIsh(val)) {
-        if (!Vector.equal(val, _lastScale)) {
-          // everythingHasChanged();
-          // _scale = val;
-
-          _scaleProxy.x = val.x;
-          _scaleProxy.y = val.y;
-          _scaleProxy.z = val.z;
-
-          _lastScale = Vector.copy(val);
+        if (Vector.equal(val, _lastScale)) {
+          return;
         }
+
+        if (Vector.isNaN(val)) {
+          console.error("Scale is NaN: ", val);
+          return;
+        }
+
+        // everythingHasChanged();
+        // _scale = val;
+
+        _scaleProxy.x = val.x;
+        _scaleProxy.y = val.y;
+        _scaleProxy.z = val.z;
+
+        Vector.set(_lastScale, val);
+        // _lastScale = Vector.copy(val);
       }
       else {
         console.warn("Scale is not vector", val);
@@ -153,8 +181,16 @@ function Transform(matrix, position, rotation, scale) {
       return _worldMatrix;
     },
     set: function(val) {
-      var m = Matrix.multiply(Matrix.inverse(_this.gameObject.parent.transform.worldMatrix), val);
-      _this.matrix = m;
+      if (Matrix.isNaN(val)) {
+        console.error("World matrix is NaN: ", val);
+        return;
+      }
+
+      const inv = Matrix.inverse(_this.gameObject.parent.transform.worldMatrix);
+      Matrix.multiply(inv, val, _this.matrix);
+
+      // var m = Matrix.multiply(Matrix.inverse(_this.gameObject.parent.transform.worldMatrix), val);
+      // _this.matrix = m;
     }
   });
 
@@ -169,11 +205,15 @@ function Transform(matrix, position, rotation, scale) {
       return _rotationMatrix;
     },
     set: function(val) {
+      if (Matrix.isNaN(val)) {
+        console.error("Rotation matrix is NaN: ", val);
+        return;
+      }
+
       everythingHasChanged();
 
-      _rotation = Quaternion.fromMatrix(val);
+      Quaternion.fromMatrix(val, _rotation);
       Matrix.copy(val, _rotationMatrix);
-      // _rotationMatrix = Matrix.copy(val);
     }
   });
 
@@ -209,13 +249,13 @@ function Transform(matrix, position, rotation, scale) {
   }
 
   function setMatrixFromTRS() {
-    var m = Matrix.translate(_position);
-    Matrix.multiply(m, _rotationMatrix, m);
+    Matrix.translate(_position, _m);
+    Matrix.multiply(_m, _rotationMatrix, _m);
     Matrix.transform([
       ["scale", _scale]
-    ], m);
+    ], _m);
 
-    setMatrix(m, false);
+    setMatrix(_m, false);
 
     // setMatrix(Matrix.transform([
     //   ["translate", _position],
@@ -227,28 +267,32 @@ function Transform(matrix, position, rotation, scale) {
   }
 
   function setMatrix(m, setTRS = true) {
+    if (Matrix.isNaN(m)) {
+      console.error("Matrix is NaN: ", m);
+      return;
+    }
+
     Matrix.copy(m, _matrix);
     Matrix.getTranslationMatrix(_matrix, _translationMatrix);
     Matrix.getRotationMatrix(_matrix, _rotationMatrix);
     Matrix.getScaleMatrix(_matrix, _scaleMatrix);
 
-    // _matrix = m;
-    // _translationMatrix = Matrix.getTranslationMatrix(_matrix);
-    // _rotationMatrix = Matrix.getRotationMatrix(_matrix);
-    // _scaleMatrix = Matrix.getScaleMatrix(_matrix);
-
     if (setTRS) {
-      setProxyVector(_positionProxy, Matrix.getPosition(_matrix));
-      setProxyQuat(_rotationProxy, Quaternion.fromMatrix(_matrix));
-      setProxyVector(_scaleProxy, Matrix.getScale(_matrix));
+      Matrix.getPosition(_matrix, _positionProxy);
+      Quaternion.fromMatrix(_matrix, _rotationProxy);
+      Matrix.getScale(_matrix, _scaleProxy);
 
-      _lastPosition = Vector.copy(_positionProxy);
-      _lastRotation = Quaternion.copy(_rotationProxy);
-      _lastScale = Vector.copy(_scaleProxy);
+      Vector.set(_lastPosition, _positionProxy);
+      Quaternion.set(_lastRotation, _rotationProxy);
+      Vector.set(_lastScale, _scaleProxy);
 
-      // _position = Matrix.getPosition(_matrix);
-      // _rotation = Quaternion.fromMatrix(_matrix);
-      // _scale = Matrix.getScale(_matrix);
+      // setProxyVector(_positionProxy, Matrix.getPosition(_matrix));
+      // setProxyQuat(_rotationProxy, Quaternion.fromMatrix(_matrix));
+      // setProxyVector(_scaleProxy, Matrix.getScale(_matrix));
+
+      // _lastPosition = Vector.copy(_positionProxy);
+      // _lastRotation = Quaternion.copy(_rotationProxy);
+      // _lastScale = Vector.copy(_scaleProxy);
     }
 
     _this.onUpdateMatrix?.(_matrix);
@@ -272,27 +316,33 @@ function Transform(matrix, position, rotation, scale) {
     return this.matrix;
   };
 
-  function setProxyVector(p, v) {
-    p.x = v.x;
-    p.y = v.y;
-    p.z = v.z;
-  }
+  // function setProxyVector(p, v) {
+  //   p.x = v.x;
+  //   p.y = v.y;
+  //   p.z = v.z;
+  // }
 
-  function setProxyQuat(p, q) {
-    p.x = q.x;
-    p.y = q.y;
-    p.z = q.z;
-    p.w = q.w;
-  }
+  // function setProxyQuat(p, q) {
+  //   p.x = q.x;
+  //   p.y = q.y;
+  //   p.z = q.z;
+  //   p.w = q.w;
+  // }
 
   function createProxy(obj, callback = () => {}) {
     return new Proxy(obj, {
       set: function(obj, prop, value) {
-        obj[prop] = value;
-        
         if (prop == "x" || prop == "y" || prop == "z" || prop == "w") {
+          if (isNaN(value)) {
+            console.error("Proxy property " + prop + " is NaN", obj, prop, value);
+            return true; // Returning false here will throw an error and stop program. I want to log an error and keep running :)
+          }
+          obj[prop] = value;
           callback?.();
           // everythingHasChanged();
+        }
+        else {
+          obj[prop] = value;
         }
         
         return true;

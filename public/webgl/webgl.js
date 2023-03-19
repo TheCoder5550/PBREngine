@@ -1,3 +1,4 @@
+import * as ENUMS from "../engine/constants.mjs";
 import Renderer, { Scene, GameObject, Transform, AudioListener3D, Camera, Light, FindMaterials, flyCamera, IK, AnimationController, AnimationBlend } from "../engine/renderer.mjs";
 import { 
   AABB,
@@ -47,6 +48,7 @@ import * as waterSource from "../assets/shaders/custom/water.glsl.mjs";
 import Keybindings from "../keybindingsController.mjs";
 import { Car } from "../car.js";
 import GamepadManager, { deadZone } from "../gamepadManager.js";
+import { NewMaterial } from "../engine/material.mjs";
 
 var perlin = new Perlin();
 
@@ -302,7 +304,8 @@ async function setup() {
     shadowSizes: [4, 30],
     shadowBiases: [-0.0003, -0.001],
     renderScale: 1,
-    path: "../"
+    path: "../",
+    // renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
   });
 
   renderer.on("error", function() {
@@ -408,12 +411,13 @@ async function setup() {
     Materials
   */
 
-  reddotMaterial = new renderer.Material(reddotProgram);
+  reddotMaterial = new NewMaterial(reddotProgram);
   reddotMaterial.setUniform("albedoTexture", reddotTexture);
   reddotMaterial.setUniform("textureScale", 0.2 * 0.3 * 2);
   reddotMaterial.setUniform("scopeColor", [20, 0.1, 0.1]);
+  reddotMaterial.opaque = false;
 
-  var foliageMat = new renderer.Material(foliage);
+  var foliageMat = new NewMaterial(foliage);
   foliageMat.doubleSided = true;
   foliageMat.setUniform("useTexture", 1);
   foliageMat.setUniform("albedoTexture", leaves);
@@ -424,7 +428,7 @@ async function setup() {
   waterMaterial.setUniform("uvScale", [100_000, 100_000]);
   window.waterMaterial = waterMaterial;
 
-  // var waterMaterial = new renderer.Material(waterShader);
+  // var waterMaterial = new NewMaterial(waterShader);
   // waterMaterial.setUniform("useNormalTexture", 1);
   // waterMaterial.setUniform("normalTexture", waterNormal);
   // waterMaterial.setUniform("uvScale", [20, 20]);
@@ -435,7 +439,7 @@ async function setup() {
   */
 
   var aabbVis = scene.add(new GameObject("AABB", {
-    meshRenderer: new renderer.MeshInstanceRenderer([new renderer.Material(solidColorInstanceProgram)], [new renderer.MeshData(renderer.getLineCubeData())], {drawMode: renderer.gl.LINES}),
+    meshRenderer: new renderer.MeshInstanceRenderer([new NewMaterial(solidColorInstanceProgram)], [new renderer.MeshData(renderer.getLineCubeData())], {drawMode: renderer.gl.LINES}),
     castShadows: false
   }));
 
@@ -463,9 +467,10 @@ async function setup() {
 
   var mat = renderer.CreateLitMaterial({
     albedoTexture: renderer.loadTexture(renderer.path + "assets/textures/smoke.png"),
-    albedoColor: [1, 1, 1, 1],
+    albedo: [1, 1, 1, 1],
   }, renderer.programContainers.particle);
   mat.doubleSided = true;
+  mat.opaque = false;
   sparks.material = mat;
 
   sparksObject.addComponent(sparks);
@@ -480,12 +485,12 @@ async function setup() {
   muzzleFlash.startSize = new Vector(2.5, 0.25, 0.25);
   muzzleFlash.emitHealth = 0.25;
   muzzleFlash.gravityScale = 0;
-  muzzleFlash.wind = () => Vector.zero();
+  muzzleFlash.wind = (dst) => Vector.zero(dst);
   muzzleFlashObject.addComponent(muzzleFlash);
 
   var mat = renderer.CreateLitMaterial({
     albedoTexture: renderer.loadTexture(renderer.path + "assets/textures/muzzleFlashParticle.png"),
-    albedoColor: [20, 5, 2, 1],
+    albedo: [20, 5, 2, 1],
   }, renderer.programContainers.particle);
   mat.doubleSided = true;
   muzzleFlash.material = mat;
@@ -716,7 +721,7 @@ async function setup() {
   // Reflection probe
   // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 4, 0));
   // window.reflectionCubemap = cubemap;
-  // var mat = new renderer.Material(await renderer.createProgramFromFile("../assets/shaders/cubemapVis"), [
+  // var mat = new NewMaterial(await renderer.createProgramFromFile("../assets/shaders/cubemapVis"), [
   //   {type: "1i", name: "cubemap", arguments: [0]}
   // ], [{type: renderer.gl.TEXTURE_CUBE_MAP, texture: cubemap}]);
 
@@ -2350,7 +2355,7 @@ function CaptureZone(position = Vector.zero(), zoneInstance) {
       this.gameObject.children[0].castShadows = false;
 
       var zoneProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/captureZone"));
-      var mat = this.gameObject.children[0].meshRenderer.materials[0] = new renderer.Material(zoneProgram);
+      var mat = this.gameObject.children[0].meshRenderer.materials[0] = new NewMaterial(zoneProgram);
       mat.setUniform("zoneColor", [5, 5, 5]);
       mat.doubleSided = true;
       mat.opaque = false;
@@ -3289,7 +3294,7 @@ async function setupWeapons() {
 }
 
 async function renderWeaponIcons() {
-  var whiteMat = new renderer.Material(renderer.programContainers.unlit);
+  var whiteMat = new NewMaterial(renderer.programContainers.unlit);
   whiteMat.setUniform("albedo", [1, 1, 1, 1]);
 
   scene.skyboxVisible = false;

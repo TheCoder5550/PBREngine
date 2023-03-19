@@ -6,6 +6,7 @@ import { PhysicsEngine } from "./engine/physics.mjs";
 import { clamp } from "./engine/helper.mjs";
 import { getTriangleNormal } from "./engine/algebra.mjs";
 import FlyCamera from "./engine/flyCamera.mjs";
+import { NewMaterial } from "./engine/material.mjs";
 
 // window.mobileCheck = function() {
 //   let check = false;
@@ -61,7 +62,7 @@ async function setup() {
 
   // AABB visualizer
   scene.add(new GameObject("AABB", {
-    meshRenderer: new renderer.MeshInstanceRenderer([new renderer.Material(solidColorInstanceProgram)], [new renderer.MeshData(renderer.getLineCubeData())], {drawMode: renderer.gl.LINES}),
+    meshRenderer: new renderer.MeshInstanceRenderer([new NewMaterial(solidColorInstanceProgram)], [new renderer.MeshData(renderer.getLineCubeData())], {drawMode: renderer.gl.LINES}),
     castShadows: false
   }));
 

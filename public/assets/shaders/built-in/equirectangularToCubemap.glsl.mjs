@@ -79,9 +79,11 @@ var output = {
         void main()
         {
             vec2 uv = SampleSphericalMap(normalize(localPos)); // make sure to normalize localPos
-            vec3 color = texture(equirectangularMap, uv).rgb;
+            vec4 color = texture(equirectangularMap, uv);
             
-            FragColor = vec4(color, 1.0);
+            color.rgb *= pow(2., color.a * 255. - (128. + 8.)) * 255.;
+
+            FragColor = vec4(color.rgb, 1.0);
         }
       `
     }

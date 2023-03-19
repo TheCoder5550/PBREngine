@@ -9,6 +9,7 @@ import Quaternion from "../engine/quaternion.mjs";
 import { clamp, lerp } from "../engine/helper.mjs";
 import Keybindings from "../keybindingsController.mjs";
 import GamepadManager, { deadZone, quadraticCurve } from "../gamepadManager.js";
+import { NewMaterial } from "../engine/material.mjs";
 
 window.Vector = Vector;
 
@@ -129,7 +130,6 @@ async function setup() {
     // renderScale: 0.1,
   });
   renderer.canvas.classList.add("webglCanvas");
-  renderer.postprocessing.exposure = -0.5;
   renderer.add(scene);
 
   // flyCamera = new FlyCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, fov: 20});
@@ -148,6 +148,7 @@ async function setup() {
   });
   scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(6000, 10));
   scene.environmentIntensity = 1.5;
+  scene.postprocessing.exposure = -0.5;
   // scene.skyboxVisible = false;
   // scene.skyboxCubemap = scene.diffuseCubemap;
 
@@ -155,7 +156,7 @@ async function setup() {
 
   // AABB visualizer
   scene.add(new GameObject("AABB", {
-    meshRenderer: new renderer.MeshInstanceRenderer([new renderer.Material(solidColorInstanceProgram)], [new renderer.MeshData(renderer.getLineCubeData())], {drawMode: renderer.gl.LINES}),
+    meshRenderer: new renderer.MeshInstanceRenderer([new NewMaterial(solidColorInstanceProgram)], [new renderer.MeshData(renderer.getLineCubeData())], {drawMode: renderer.gl.LINES}),
     castShadows: false
   }));
 
@@ -746,7 +747,7 @@ function Car(settings = {}) {
     smoke.endSize = () => Vector.fill(3);
     smoke.emitHealth = 5;
     smoke.gravityScale = 0;
-    smoke.wind = () => Vector.zero();
+    smoke.wind = (dst) => Vector.zero(dst);
     smoke.drag = 0.1;
     smoke.orientation = "faceCamera";
     this.smoke = smoke;

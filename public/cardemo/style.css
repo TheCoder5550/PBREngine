@@ -147,7 +147,7 @@ canvas {
 }
 
 .pauseOverlay {
-  backdrop-filter: blur(10px);
+  backdrop-filter: brightness(70%) blur(10px);
   z-index: 100;
 
   display: flex;

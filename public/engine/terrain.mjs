@@ -7,7 +7,7 @@ import { getTriangleNormal } from "./algebra.mjs";
 
 var perlin = new Perlin();
 
-function Terrain(scene) {
+function Terrain(scene, settings = {}) {
   var _terrain = this;
   this.scene = scene;
   if (!(this.scene instanceof Scene)) {
@@ -18,9 +18,11 @@ function Terrain(scene) {
   this.chunkUpdatesPerFrame = 1;
   this.chunkRes = 41;
   this.minimumChunkSize = 20;
-  this.terrainSize = 1000;
+  this.terrainSize = settings.terrainSize ?? 1000;
   this.uvScale = 1 / 2;
   this.position = Vector.zero();
+  this.enableCollision = settings.enableCollision ?? true;
+  let colliderDepthThreshold = settings.colliderDepthThreshold ?? 0;
 
   // var chunkOrders = [];
   this.meshPool = [];
@@ -40,8 +42,8 @@ function Terrain(scene) {
 
     var SRGBFormat = renderer.getSRGBFormats();
 
-    var grassAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/Ground037_4K-JPG/Ground037_4K_Color.jpg", { ...SRGBFormat });
-    var grassNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/Ground037_4K-JPG/Ground037_4K_Normal.jpg");
+    var grassAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/brown_mud_leaves_01_2k_jpg/brown_mud_leaves_01_diff_2k.jpg", { ...SRGBFormat });
+    var grassNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/brown_mud_leaves_01_2k_jpg/brown_mud_leaves_01_Nor_2k.jpg");
 
     var stoneAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/rocks_ground_06/diffuse.jpg", { ...SRGBFormat });
     var stoneNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/rocks_ground_06/normal.png");
@@ -53,21 +55,42 @@ function Terrain(scene) {
     this.terrainMat.setUniform("roughness", 1);
     this.terrainMat.setUniform("albedoTextures[0]", [ grassAlbedo, stoneAlbedo, snowAlbedo ]);
     this.terrainMat.setUniform("normalTextures[0]", [ grassNormal, stoneNormal, snowNormal ]);
-  }
+  };
 
-  // const myWorker = new Worker("./engine/terrainDataWorker.js");
-  // myWorker.onmessage = function(e) {
-  //   console.log(e);
-  // }
+  var chunkLookup = new Map();
+
+  const myWorker = new Worker("../engine/terrainDataWorker.js");
+  myWorker.onmessage = (e) => {
+    // console.log(e);
+
+    let chunk = chunkLookup.get(e.data.id);
+    let terrainData = e.data.data;
+    terrainData.indices.target = this.scene.renderer.gl.ELEMENT_ARRAY_BUFFER;
+
+    if (!chunk.terrain.meshRenderer) {
+      chunk.terrain.meshRenderer = new this.scene.renderer.MeshRenderer(
+        this.terrainMat,
+        new renderer.MeshData(terrainData),
+      );
+    }
+    else {
+      chunk.terrain.meshRenderer.meshData[0].updateData(terrainData);
+    }
+
+    chunk.terrain.visible = true;
+    chunk.terrain.isGenerated = true;
+    chunk.whenDone();
+  };
+  // console.log("posting!");
   // myWorker.postMessage({
   //   w: 40,
   //   h: 40,
   //   res: 50,
-  //   heightFactor: maxHeight,
+  //   heightFactor: 500,
   //   noiseOffset: new Vector(0, 0, 0),
   //   noiseScale: 0.001,
   //   uvOffset: Vector.zero(),
-  //   uvScale: uvScale,
+  //   uvScale: 1,
   // });
 
   this.getHeight = function(i, j) {
@@ -80,15 +103,11 @@ function Terrain(scene) {
     var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * height * heightFalloff;
 
     return elevation;
-  }
+  };
 
   this.update = function(transform) {
-    if (transform) {
-      this.quadtree.placeTransform(transform);
-    }
-    else {
-      this.quadtree.placeTransform(zeroTransform);
-    }
+    var t = transform || zeroTransform;
+    this.quadtree.placeTransform(t);
 
     // for (var order of chunkOrders) {
     //   if (!order.chunk) {
@@ -107,8 +126,8 @@ function Terrain(scene) {
     // chunkOrders = [];
 
     // chunkQueue.sort((a, b) => {
-    //   var da = (a.quadtree.position.x - transform.position.x) ** 2 + (a.quadtree.position.z - transform.position.z) ** 2;
-    //   var db = (b.quadtree.position.x - transform.position.x) ** 2 + (b.quadtree.position.z - transform.position.z) ** 2;
+    //   var da = (a.quadtree.position.x - t.position.x) ** 2 + (a.quadtree.position.z - t.position.z) ** 2;
+    //   var db = (b.quadtree.position.x - t.position.x) ** 2 + (b.quadtree.position.z - t.position.z) ** 2;
     //   return da - db;
     // });
 
@@ -124,46 +143,71 @@ function Terrain(scene) {
           var neighbors = chunk.quadtree.getNeighbors();
           chunk.quadtree.lastNeighborDepths = neighbors.map(n => n?.depth);
 
-          var terrainData = createTerrainData(chunk.quadtree, neighbors, {
+          var id = Math.floor(Math.random() * 1e7);
+
+          myWorker.postMessage({
             w: chunk.chunkSize,
             h: chunk.chunkSize,
             res: chunk.chunkRes,
             noiseOffset: new Vector(chunk.x, chunk.z, 0),
             uvOffset: new Vector((chunk.x - chunk.chunkSize / 2) * this.uvScale, (chunk.z - chunk.chunkSize / 2) * this.uvScale, 0),
             uvScale: chunk.chunkSize * this.uvScale,
+
+            heightFactor: 100,
+            noiseScale: 0.001,
+
+            id,
           });
 
-          if (!chunk.terrain.meshRenderer) {
-            chunk.terrain.meshRenderer = new this.scene.renderer.MeshRenderer(
-              this.terrainMat,
-              new renderer.MeshData(terrainData),
-            );
-          }
-          else {
-            chunk.terrain.meshRenderer.meshData[0].updateData(terrainData);
-          }
+          chunkLookup.set(id, chunk);
 
-          chunk.terrain.visible = true;
+          // var terrainData = createTerrainData(chunk.quadtree, neighbors, {
+          //   w: chunk.chunkSize,
+          //   h: chunk.chunkSize,
+          //   res: chunk.chunkRes,
+          //   noiseOffset: new Vector(chunk.x, chunk.z, 0),
+          //   uvOffset: new Vector((chunk.x - chunk.chunkSize / 2) * this.uvScale, (chunk.z - chunk.chunkSize / 2) * this.uvScale, 0),
+          //   uvScale: chunk.chunkSize * this.uvScale,
+          // });
 
-          // for (var neighbor of neighbors) {
-          //   if (neighbor && neighbor.depth <= chunk.quadtree.depth) {
-          //     neighbor.regenerateThisMesh();
-          //   }
+          // if (!chunk.terrain.meshRenderer) {
+          //   chunk.terrain.meshRenderer = new this.scene.renderer.MeshRenderer(
+          //     this.terrainMat,
+          //     new renderer.MeshData(terrainData),
+          //   );
           // }
+          // else {
+          //   chunk.terrain.meshRenderer.meshData[0].updateData(terrainData);
+          //   // console.log(chunk.terrain.getComponents("MeshCollider")[0].octree);
+          //   // chunk.terrain.getComponents("MeshCollider")[0].octree = null;
+          // }
+
+          // // for (var comp of chunk.terrain.getComponents()) {
+          // //   if (comp.type == "MeshCollider") {
+          // //     chunk.terrain.removeComponent(comp);
+          // //   }
+          // // }
+          // // chunk.terrain.addComponent(new MeshCollider());
+
+          // chunk.terrain.visible = true;
+
+          // // for (var neighbor of neighbors) {
+          // //   if (neighbor && neighbor.depth <= chunk.quadtree.depth) {
+          // //     neighbor.regenerateThisMesh();
+          // //   }
+          // // }
         }
 
-        chunk.terrain.isGenerated = true;
-        chunk.whenDone();
+        // chunk.terrain.isGenerated = true;
+        // chunk.whenDone();
       }
       else {
         break;
       }
     }
-  }
+  };
 
   function TerrainQuadtree(position, size, parent = null, siblingDirection = null, depth = 0) {
-    var _quadtree = this;
-
     this.position = position;
     this.size = size;
 
@@ -218,14 +262,14 @@ function Terrain(scene) {
           // this.highlight();
         }
       }
-    }
+    };
 
     this.onChunkGenerated = function() {
       if (this.waitingToCleanMesh && this.isAreaFilled(true)) {
         this.cleanMesh();
         this.waitingToCleanMesh = false;
       }
-    }
+    };
 
     this.regenerateThisMesh = function() {
       if (this.chunk) {
@@ -247,7 +291,7 @@ function Terrain(scene) {
           }
         });
       }
-    }
+    };
 
     this.regenerateMesh = function() {
       this.cleanMesh();
@@ -268,7 +312,7 @@ function Terrain(scene) {
       for (var child of this.children) {
         child.regenerateMesh();
       }
-    }
+    };
 
     this.getNeighbors = function() {
       return [
@@ -277,26 +321,26 @@ function Terrain(scene) {
         this._getNeighborInDirection(1, 0),
         this._getNeighborInDirection(0, 1),
       ];
-    }
+    };
 
     this._getNeighborInDirection = function(x, z) {
       if (this.parent) {
-        var trivialNeighbor = this.parent.children.find(c => c.siblingDirection.x == this.siblingDirection.x + x * 2 && c.siblingDirection.z == this.siblingDirection.z + z * 2);
+        let trivialNeighbor = this.parent.children.find(c => c.siblingDirection.x == this.siblingDirection.x + x * 2 && c.siblingDirection.z == this.siblingDirection.z + z * 2);
         if (trivialNeighbor) {
           return trivialNeighbor;
         }
 
-        var p = this.parent._getNeighborInDirection(x, z);
+        let p = this.parent._getNeighborInDirection(x, z);
         while (p && p.depth < this.depth && p.children.length > 0) {
-          var sgnX = x == 0 ? 1 : -1;
-          var sgnZ = z == 0 ? 1 : -1;
+          let sgnX = x == 0 ? 1 : -1;
+          let sgnZ = z == 0 ? 1 : -1;
           p = p.children.find(c => c.siblingDirection.x == this.siblingDirection.x * sgnX && c.siblingDirection.z == this.siblingDirection.z * sgnZ);
         }
         return p;
       }
 
       return null;
-    }
+    };
 
     this.isAreaFilled = function(ignoreMe = false) {
       if (!ignoreMe && this.chunk && this.chunk.isGenerated) {
@@ -314,7 +358,7 @@ function Terrain(scene) {
       }
 
       return false;
-    }
+    };
 
     this.cleanup = function() {
       this.cleanMesh();
@@ -324,7 +368,7 @@ function Terrain(scene) {
       }
 
       this.children = [];
-    }
+    };
 
     this.cleanMesh = function() {
       // for (var mesh of this.allMeshes) {
@@ -340,6 +384,13 @@ function Terrain(scene) {
       // this.chunk = null;
       
       if (this.chunk) {
+        for (var comp of this.chunk.getComponents()) {
+          if (comp.type == "MeshCollider") {
+            this.chunk.removeComponent(comp);
+          }
+        }
+
+        // Dont clean mesh when using pooling
         // if (this.chunk.meshRenderer) {
         //   this.chunk.meshRenderer.meshData[0].cleanup();
         // }
@@ -366,7 +417,7 @@ function Terrain(scene) {
       if (this.visInst) {
         aabbVis.meshRenderer.removeInstance(this.visInst);
       }
-    }
+    };
 
     this.highlight = function(highlightChildren = false) {
       this.visInst = aabbVis.meshRenderer.addInstance(Matrix.transform([
@@ -381,31 +432,47 @@ function Terrain(scene) {
           child.highlight(true);
         }
       }
-    }
+    };
   }
 
   function createChunk(quadtree, x, z, chunkSize, chunkRes, whenDone = () => {}) {
     var pooled = _terrain.meshPool.shift();
     if (pooled) {
-      var terrain = pooled;
+      let terrain = pooled;
       terrain.name = "Terrain chunk " + x + "," + z;
       terrain.transform.position = new Vector(x, 0, z);
+
+      terrain.meshRenderer = null; // bruh, pooling does nothing when resetting the mesh
+      if (_terrain.enableCollision) {
+        for (var comp of terrain.getComponents()) {
+          if (comp.type == "MeshCollider") {
+            terrain.removeComponent(comp);
+          }
+        }
+        if (quadtree.depth >= colliderDepthThreshold) {
+          terrain.addComponent(new MeshCollider());
+        }
+      }
+
+      terrain.visible = false;
       terrain.isDeleted = false;
       terrain.isGenerated = false;
       _terrain.scene.add(terrain);
 
-      var queueEntry = {x, z, chunkSize, chunkRes, terrain, whenDone, quadtree};
+      let queueEntry = {x, z, chunkSize, chunkRes, terrain, whenDone, quadtree};
       chunkQueue.push(queueEntry);
 
       return [terrain, queueEntry];
     }
 
-    var terrain = _terrain.scene.add(new GameObject("Terrain chunk " + x + "," + z));
+    let terrain = _terrain.scene.add(new GameObject("Terrain chunk " + x + "," + z));
     terrain.transform.position = new Vector(x, 0, z);
     terrain.visible = false;
-    terrain.addComponent(new MeshCollider());
+    if (_terrain.enableCollision && quadtree.depth >= colliderDepthThreshold) {
+      terrain.addComponent(new MeshCollider());
+    }
 
-    var queueEntry = {x, z, chunkSize, chunkRes, terrain, whenDone, quadtree};
+    let queueEntry = {x, z, chunkSize, chunkRes, terrain, whenDone, quadtree};
     chunkQueue.push(queueEntry);
 
     // quadtree.allMeshes.push(terrain);
@@ -439,15 +506,15 @@ function Terrain(scene) {
     var edgeVertexIndices = [[], [], [], []];
 
     var normals = new Array(res * res);
-    for (var i = 0; i < normals.length; i++) {
+    for (let i = 0; i < normals.length; i++) {
       normals[i] = [];
     }
 
     var counter = 0;
-    for (var i = 0; i < res; i++) {
-      for (var j = 0; j < res; j++) {
-        var x = mapValue(i, 0, res - 1, -w / 2, w / 2);
-        var z = mapValue(j, 0, res - 1, -h / 2, h / 2);
+    for (let i = 0; i < res; i++) {
+      for (let j = 0; j < res; j++) {
+        let x = mapValue(i, 0, res - 1, -w / 2, w / 2);
+        let z = mapValue(j, 0, res - 1, -h / 2, h / 2);
 
         vertices[counter * 3 + 0] = x;
         vertices[counter * 3 + 1] = getHeight(x + noiseOffset.x, z + noiseOffset.y);
@@ -473,15 +540,15 @@ function Terrain(scene) {
       }
     }
 
-    for (var i = 0; i < 4; i++) {
-      var neighbor = neighbors[i];
+    for (let i = 0; i < 4; i++) {
+      let neighbor = neighbors[i];
       if (neighbor && quadtree.depth > neighbor.depth) {
-        var stepsize = Math.pow(2, quadtree.depth - neighbor.depth);
+        let stepsize = Math.pow(2, quadtree.depth - neighbor.depth);
 
-        var currentHeight = getHeight(vertices[edgeVertexIndices[i][0] * 3 + 0] + noiseOffset.x, vertices[edgeVertexIndices[i][0] * 3 + 2] + noiseOffset.y);
-        var nextHeight = getHeight(vertices[edgeVertexIndices[i][stepsize] * 3 + 0] + noiseOffset.x, vertices[edgeVertexIndices[i][stepsize] * 3 + 2] + noiseOffset.y);
+        let currentHeight = getHeight(vertices[edgeVertexIndices[i][0] * 3 + 0] + noiseOffset.x, vertices[edgeVertexIndices[i][0] * 3 + 2] + noiseOffset.y);
+        let nextHeight = getHeight(vertices[edgeVertexIndices[i][stepsize] * 3 + 0] + noiseOffset.x, vertices[edgeVertexIndices[i][stepsize] * 3 + 2] + noiseOffset.y);
 
-        for (var j = 0; j < res; j++) {
+        for (let j = 0; j < res; j++) {
           if (j % stepsize == 0 && j != 0) {
             currentHeight = nextHeight;
             nextHeight = getHeight(vertices[edgeVertexIndices[i][j + stepsize] * 3 + 0] + noiseOffset.x, vertices[edgeVertexIndices[i][j + stepsize] * 3 + 2] + noiseOffset.y);
@@ -496,10 +563,10 @@ function Terrain(scene) {
     }
 
     counter = 0;
-    for (var i = 0; i < res - 1; i++) {
-      for (var j = 0; j < res - 1; j++) {
-        var ind = j + i * res;
-        var indices = [
+    for (let i = 0; i < res - 1; i++) {
+      for (let j = 0; j < res - 1; j++) {
+        let ind = j + i * res;
+        let indices = [
           ind,
           ind + 1,
           ind + res,
@@ -516,8 +583,8 @@ function Terrain(scene) {
         triangles[counter * 6 + 4] = ind + res + 1;
         triangles[counter * 6 + 5] = ind + res;
 
-        var t1Normal = getTriangleNormal([Vector.fromArray(vertices, indices[0] * 3), Vector.fromArray(vertices, indices[1] * 3), Vector.fromArray(vertices, indices[2] * 3)]);
-        var t2Normal = getTriangleNormal([Vector.fromArray(vertices, indices[3] * 3), Vector.fromArray(vertices, indices[4] * 3), Vector.fromArray(vertices, indices[5] * 3)]);
+        let t1Normal = getTriangleNormal([Vector.fromArray(vertices, indices[0] * 3), Vector.fromArray(vertices, indices[1] * 3), Vector.fromArray(vertices, indices[2] * 3)]);
+        let t2Normal = getTriangleNormal([Vector.fromArray(vertices, indices[3] * 3), Vector.fromArray(vertices, indices[4] * 3), Vector.fromArray(vertices, indices[5] * 3)]);
 
         normals[indices[0]].push(t1Normal);
         normals[indices[1]].push(t1Normal);
@@ -526,10 +593,10 @@ function Terrain(scene) {
         normals[indices[4]].push(t2Normal);
         normals[indices[5]].push(t2Normal);
 
-        // var x = mapValue(i, 0, res - 1, -w / 2, w / 2);
-        // var z = mapValue(j, 0, res - 1, -h / 2, h / 2);
-        // var dx = w / res / 2;
-        // var dz = h / res / 2;
+        // let x = mapValue(i, 0, res - 1, -w / 2, w / 2);
+        // let z = mapValue(j, 0, res - 1, -h / 2, h / 2);
+        // let dx = w / res / 2;
+        // let dz = h / res / 2;
 
         // normals[indices[0]].push(getNormal(x, z));
         // normals[indices[1]].push(getNormal(x + dx, z));
@@ -540,27 +607,27 @@ function Terrain(scene) {
       }
     }
 
-    for (var i = 0; i < 4; i++) {
-      var neighbor = neighbors[i];
+    for (let i = 0; i < 4; i++) {
+      let neighbor = neighbors[i];
       if (neighbor) {
-        for (var j = 0; j < res; j++) {
-          var vertex = Vector.fromArray(vertices, edgeVertexIndices[i][j] * 3);
+        for (let j = 0; j < res; j++) {
+          let vertex = Vector.fromArray(vertices, edgeVertexIndices[i][j] * 3);
 
           if (i == 1) {
-            var step = new Vector(w / (res - 1), 0, h / (res - 1));
-            var t1Normal = getTriangleNormal([
+            let step = new Vector(w / (res - 1), 0, h / (res - 1));
+            let t1Normal = getTriangleNormal([
               vertex,
               new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
               new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
             ]);
 
-            var t2Normal = getTriangleNormal([
+            let t2Normal = getTriangleNormal([
               vertex,
               new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
               new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
             ]);
 
-            var t3Normal = getTriangleNormal([
+            let t3Normal = getTriangleNormal([
               vertex,
               new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
               new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
@@ -574,20 +641,20 @@ function Terrain(scene) {
           }
 
           if (i == 3) {
-            var step = new Vector(w / (res - 1), 0, h / (res - 1));
-            var t1Normal = getTriangleNormal([
+            let step = new Vector(w / (res - 1), 0, h / (res - 1));
+            let t1Normal = getTriangleNormal([
               vertex,
               new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
               new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
             ]);
 
-            var t2Normal = getTriangleNormal([
+            let t2Normal = getTriangleNormal([
               vertex,
               new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
               new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
             ]);
 
-            var t3Normal = getTriangleNormal([
+            let t3Normal = getTriangleNormal([
               vertex,
               new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
               new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
@@ -601,20 +668,20 @@ function Terrain(scene) {
           }
 
           if (i == 0) {
-            var step = new Vector(w / (res - 1), 0, h / (res - 1));
-            var t1Normal = getTriangleNormal([
+            let step = new Vector(w / (res - 1), 0, h / (res - 1));
+            let t1Normal = getTriangleNormal([
               vertex,
               new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
               new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
             ]);
 
-            var t2Normal = getTriangleNormal([
+            let t2Normal = getTriangleNormal([
               vertex,
               new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
               new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
             ]);
 
-            var t3Normal = getTriangleNormal([
+            let t3Normal = getTriangleNormal([
               vertex,
               new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
               new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
@@ -628,20 +695,20 @@ function Terrain(scene) {
           }
 
           if (i == 2) {
-            var step = new Vector(w / (res - 1), 0, h / (res - 1));
-            var t1Normal = getTriangleNormal([
+            let step = new Vector(w / (res - 1), 0, h / (res - 1));
+            let t1Normal = getTriangleNormal([
               vertex,
               new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
               new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
             ]);
 
-            var t2Normal = getTriangleNormal([
+            let t2Normal = getTriangleNormal([
               vertex,
               new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
               new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
             ]);
 
-            var t3Normal = getTriangleNormal([
+            let t3Normal = getTriangleNormal([
               vertex,
               new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
               new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
@@ -657,9 +724,9 @@ function Terrain(scene) {
       }
     }
 
-    var outNormals = new Float32Array(res * res * 3);
-    for (var i = 0; i < normals.length; i++) {
-      var normal = Vector.divide(normals[i].reduce((a, b) => {
+    let outNormals = new Float32Array(res * res * 3);
+    for (let i = 0; i < normals.length; i++) {
+      let normal = Vector.divide(normals[i].reduce((a, b) => {
         return Vector.add(a, b);
       }, Vector.zero()), normals[i].length);
 
@@ -672,8 +739,8 @@ function Terrain(scene) {
       tangents[i * 3 + 2] = normal.z;
     }
 
-    var renderer = _terrain.scene.renderer;
-    var meshData = {
+    let renderer = _terrain.scene.renderer;
+    let meshData = {
       indices: {
         bufferData: triangles,
         target: renderer.gl.ELEMENT_ARRAY_BUFFER

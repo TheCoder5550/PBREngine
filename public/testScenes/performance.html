@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+  <title>Performance test</title>
+  <!-- <meta name='viewport' content='width=device-width, initial-scale=1'> -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;400&display=swap" rel="stylesheet">
+
+  <script src="../Stats.js"></script>
+
+  <style>
+
+    :root {
+      font-family: 'Oswald', sans-serif;
+    }
+
+    body {
+      background: white;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+    }
+
+  </style>
+</head>
+<body>
+  <script type="module">
+
+    import * as ENUMS from "../engine/constants.mjs";
+    import Renderer, { GameObject, Scene, Light } from "../engine/renderer.mjs";
+    import OrbitCamera from "../engine/orbitCamera.mjs";
+    import Vector from "../engine/vector.mjs";
+    import Quaternion from "../engine/quaternion.mjs";
+    import Matrix from "../engine/matrix.mjs";
+
+    var stats = new Stats();
+    document.body.appendChild(stats.dom);
+
+    (async function() {
+      const renderer = new Renderer({ 
+        debug: true,
+        path: "../",
+        renderScale: 1,
+        shadowResolution: 2048,
+        // renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
+        // version: 1,
+      });
+
+      const scene = new Scene();
+      renderer.add(scene);
+
+      scene.environmentIntensity = 0.5;
+      scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(5200, 20));
+      scene.sunDirection.z *= -1;
+      scene.postprocessing.vignette.amount = 0.3;
+      scene.postprocessing.vignette.falloff = 0.3;
+      scene.postprocessing.motionBlurStrength = 0;
+
+      // scene.bloom.enabled = false;
+      // scene.shadowQuality = 0;
+
+      // renderer.renderpipeline.enableSSR = true;
+      // renderer.renderpipeline.ssr.blur = 0;
+
+      scene.loadEnvironment({
+        hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k_precomputed",
+        // res: 512
+      });
+
+      const camera = new OrbitCamera(renderer, {near: 0.1, far: 300, fov: 30});
+      camera.distance = 4;
+      camera.center = new Vector(0, 1, 0);
+      camera.rotation = new Vector(-Math.PI / 2, 0, 0);
+      camera.distance = 2.5;
+
+      var plane = scene.add(renderer.CreateShape("plane"));
+      plane.transform.rotation = Quaternion.euler(-Math.PI / 2, 0, 0);
+      plane.transform.scale = Vector.fill(500);
+
+      // var skin1 = scene.add(await renderer.loadGLTF("../assets/models/dancingMonster.glb"));
+      // skin1.animationController.loop = true;
+      // skin1.animationController.play();
+
+      var cubeMat = renderer.CreateLitMaterial({
+        albedo: [1, 0, 0, 1],
+        // albedoTexture: await renderer.loadTextureAsync("../assets/textures/brown_mud_leaves_01_2k_jpg/brown_mud_leaves_01_diff_2k.jpg")
+      });
+      // var cube = scene.add(renderer.CreateShape(ENUMS.SHAPES.CUBE, cubeMat));
+      // cube.transform.position.y = 2;
+
+      for (var i = 0; i < 50; i++) {
+        var cube = scene.add(renderer.CreateShape(ENUMS.SHAPES.CUBE, cubeMat));
+        cube.transform.position.x = i * 3;
+        cube.transform.position.y = 2;
+      }
+
+      window.renderer = renderer;
+      window.scene = scene;
+      window.camera = camera;
+
+      renderer.on("renderloop", function(frameTime, totalTime) {
+        renderer.update(frameTime);
+        renderer.render(camera.camera);
+
+        stats.update();
+      });
+
+    })();
+
+  </script>
+</body>
+</html>

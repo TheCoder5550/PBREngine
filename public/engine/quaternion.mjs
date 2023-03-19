@@ -3,8 +3,15 @@ import Matrix from "./matrix.mjs";
 import Vector from "./vector.mjs";
 
 export default class Quaternion {
-  constructor(x = 0, y = 0, z = 0, w = 0) {
-    return {x, y, z, w};
+  constructor(x = 0, y = 0, z = 0, w = 0, dst) {
+    dst = dst || {x: 0, y: 0, z: 0, w: 0};
+
+    dst.x = x;
+    dst.y = y;
+    dst.z = z;
+    dst.w = w;
+
+    return dst;
   }
 
   static isQuaternionIsh(q) {
@@ -20,13 +27,15 @@ export default class Quaternion {
     };
   }
 
-  static identity() {
-    return {
-      x: 0,
-      y: 0,
-      z: 0,
-      w: 1
-    };
+  static identity(dst) {
+    dst = dst || new Quaternion();
+
+    dst.x = 0;
+    dst.y = 0;
+    dst.z = 0;
+    dst.w = 1;
+
+    return dst;
   }
 
   static copy(q) {
@@ -38,11 +47,24 @@ export default class Quaternion {
     };
   }
 
+  static set(to, from) {
+    to.x = from.x;
+    to.y = from.y;
+    to.z = from.z;
+    to.w = from.w;
+
+    return to;
+  }
+
   static equal(a, b, epsilon = 1e-6) {
     return Math.abs(a.x - b.x) < epsilon &&
            Math.abs(a.y - b.y) < epsilon &&
            Math.abs(a.z - b.z) < epsilon &&
            Math.abs(a.w - b.w) < epsilon;
+  }
+
+  static isNaN(q) {
+    return isNaN(q.x) || isNaN(q.y) || isNaN(q.z) || isNaN(q.w);
   }
 
   static normalize(q) {
@@ -53,6 +75,16 @@ export default class Quaternion {
       z: q.z / len,
       w: q.w / len
     };
+  }
+
+  static normalizeTo(q) {
+    const len = Math.sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+    q.x /= len;
+    q.y /= len;
+    q.z /= len;
+    q.w /= len;
+
+    return q;
   }
 
   static dot(a, b) {
@@ -86,30 +118,32 @@ export default class Quaternion {
     );
   }
 
-  static QxV(q, v) {
-    var target = new Vector();
+  static QxV(q, v, dst) {
+    dst = dst || new Vector();
     
-    var x = v.x,
-        y = v.y,
-        z = v.z;
+    var
+      x = v.x,
+      y = v.y,
+      z = v.z;
 
-    var qx = q.x,
-        qy = q.y,
-        qz = q.z,
-        qw = q.w;
+    var
+      qx = q.x,
+      qy = q.y,
+      qz = q.z,
+      qw = q.w;
 
-    // q*v
-    var ix =  qw * x + qy * z - qz * y,
-    iy =  qw * y + qz * x - qx * z,
-    iz =  qw * z + qx * y - qy * x,
-    iw = -qx * x - qy * y - qz * z;
+    var
+      ix =  qw * x + qy * z - qz * y,
+      iy =  qw * y + qz * x - qx * z,
+      iz =  qw * z + qx * y - qy * x,
+      iw = -qx * x - qy * y - qz * z;
 
-    target.x = ix * qw + iw * -qx + iy * -qz - iz * -qy;
-    target.y = iy * qw + iw * -qy + iz * -qx - ix * -qz;
-    target.z = iz * qw + iw * -qz + ix * -qy - iy * -qx;
+    dst.x = ix * qw + iw * -qx + iy * -qz - iz * -qy;
+    dst.y = iy * qw + iw * -qy + iz * -qx - ix * -qz;
+    dst.z = iz * qw + iw * -qz + ix * -qy - iy * -qx;
 
-    return target;
-};
+    return dst;
+  }
 
   static slerp(a, b, t) {
     var d = Quaternion.dot(a, b);
@@ -134,17 +168,28 @@ export default class Quaternion {
     };
   }
 
-  static euler(x, y, z) {
-    var [roll, pitch, yaw] = [x, y, z];
-    var qx = Math.sin(roll/2) * Math.cos(pitch/2) * Math.cos(yaw/2) - Math.cos(roll/2) * Math.sin(pitch/2) * Math.sin(yaw/2);
-    var qy = Math.cos(roll/2) * Math.sin(pitch/2) * Math.cos(yaw/2) + Math.sin(roll/2) * Math.cos(pitch/2) * Math.sin(yaw/2);
-    var qz = Math.cos(roll/2) * Math.cos(pitch/2) * Math.sin(yaw/2) - Math.sin(roll/2) * Math.sin(pitch/2) * Math.cos(yaw/2);
-    var qw = Math.cos(roll/2) * Math.cos(pitch/2) * Math.cos(yaw/2) + Math.sin(roll/2) * Math.sin(pitch/2) * Math.sin(yaw/2);
-    return new Quaternion(qx, qy, qz, qw);
-  };
+  static euler(x, y, z, dst) {
+    dst = dst || new Quaternion();
 
-  static eulerVector(v) {
-    return Quaternion.euler(v.x, v.y, v.z);
+    const roll = x;
+    const pitch = y;
+    const yaw = z;
+
+    const qx = Math.sin(roll/2) * Math.cos(pitch/2) * Math.cos(yaw/2) - Math.cos(roll/2) * Math.sin(pitch/2) * Math.sin(yaw/2);
+    const qy = Math.cos(roll/2) * Math.sin(pitch/2) * Math.cos(yaw/2) + Math.sin(roll/2) * Math.cos(pitch/2) * Math.sin(yaw/2);
+    const qz = Math.cos(roll/2) * Math.cos(pitch/2) * Math.sin(yaw/2) - Math.sin(roll/2) * Math.sin(pitch/2) * Math.cos(yaw/2);
+    const qw = Math.cos(roll/2) * Math.cos(pitch/2) * Math.cos(yaw/2) + Math.sin(roll/2) * Math.sin(pitch/2) * Math.sin(yaw/2);
+    
+    dst.x = qx;
+    dst.y = qy;
+    dst.z = qz;
+    dst.w = qw;
+    
+    return dst;
+  }
+
+  static eulerVector(v, dst) {
+    return Quaternion.euler(v.x, v.y, v.z, dst);
   }
 
   static toEulerAngles(q) {
@@ -166,54 +211,63 @@ export default class Quaternion {
     return [roll, pitch, yaw];
   }
 
-  static angleAxis(angle, axis) {
-    return new Quaternion(
-      axis.x * Math.sin(angle / 2),
-      axis.y * Math.sin(angle / 2),
-      axis.z * Math.sin(angle / 2),
-      Math.cos(angle / 2)
-    );
+  static angleAxis(angle, axis, dst) {
+    dst = dst || new Quaternion();
+
+    dst.x = axis.x * Math.sin(angle / 2);
+    dst.y = axis.y * Math.sin(angle / 2);
+    dst.z = axis.z * Math.sin(angle / 2);
+    dst.w = Math.cos(angle / 2);
+
+    return dst;
+
+    // return new Quaternion(
+    //   axis.x * Math.sin(angle / 2),
+    //   axis.y * Math.sin(angle / 2),
+    //   axis.z * Math.sin(angle / 2),
+    //   Math.cos(angle / 2)
+    // );
   }
 
-  static fromMatrix(m) {
+  static fromMatrix(m, dst) {
+    dst = dst || new Quaternion();
+
     var trace = Matrix.get(m, 0, 0) + Matrix.get(m, 1, 1) + Matrix.get(m, 2, 2);
     if (trace > 0) {
-      var s = 0.5 / Math.sqrt(trace + 1);
-      return new Quaternion(
-        (Matrix.get(m, 2, 1) - Matrix.get(m, 1, 2)) * s,
-        (Matrix.get(m, 0, 2) - Matrix.get(m, 2, 0)) * s,
-        (Matrix.get(m, 1, 0) - Matrix.get(m, 0, 1)) * s,
-        0.25 / s
-      );
+      let s = 0.5 / Math.sqrt(trace + 1);
+
+      dst.x = (Matrix.get(m, 2, 1) - Matrix.get(m, 1, 2)) * s;
+      dst.y = (Matrix.get(m, 0, 2) - Matrix.get(m, 2, 0)) * s;
+      dst.z = (Matrix.get(m, 1, 0) - Matrix.get(m, 0, 1)) * s;
+      dst.w = 0.25 / s;
     }
     else {
       if (Matrix.get(m, 0, 0) > Matrix.get(m, 1, 1) && Matrix.get(m, 0, 0) > Matrix.get(m, 2, 2)) {
-        var s = 2 * Math.sqrt(1 + Matrix.get(m, 0, 0) - Matrix.get(m, 1, 1) - Matrix.get(m, 2, 2));
-        return new Quaternion(
-          0.25 * s,
-          (Matrix.get(m, 0, 1) + Matrix.get(m, 1, 0)) / s,
-          (Matrix.get(m, 0, 2) + Matrix.get(m, 2, 0)) / s,
-          (Matrix.get(m, 2, 1) - Matrix.get(m, 1, 2)) / s,
-        );
+        let s = 2 * Math.sqrt(1 + Matrix.get(m, 0, 0) - Matrix.get(m, 1, 1) - Matrix.get(m, 2, 2));
+
+        dst.x = 0.25 * s;
+        dst.y = (Matrix.get(m, 0, 1) + Matrix.get(m, 1, 0)) / s;
+        dst.z = (Matrix.get(m, 0, 2) + Matrix.get(m, 2, 0)) / s;
+        dst.w = (Matrix.get(m, 2, 1) - Matrix.get(m, 1, 2)) / s;
       }
       else if (Matrix.get(m, 1, 1) > Matrix.get(m, 2, 2)) {
-        var s = 2 * Math.sqrt(1 + Matrix.get(m, 1, 1) - Matrix.get(m, 0, 0) - Matrix.get(m, 2, 2));
-        return new Quaternion(
-          (Matrix.get(m, 0, 1) + Matrix.get(m, 1, 0)) / s,
-          0.25 * s,
-          (Matrix.get(m, 1, 2) + Matrix.get(m, 2, 1)) / s,
-          (Matrix.get(m, 0, 2) + Matrix.get(m, 2, 0)) / s
-        );
+        let s = 2 * Math.sqrt(1 + Matrix.get(m, 1, 1) - Matrix.get(m, 0, 0) - Matrix.get(m, 2, 2));
+
+        dst.x = (Matrix.get(m, 0, 1) + Matrix.get(m, 1, 0)) / s;
+        dst.y = 0.25 * s;
+        dst.z = (Matrix.get(m, 1, 2) + Matrix.get(m, 2, 1)) / s;
+        dst.w = (Matrix.get(m, 0, 2) + Matrix.get(m, 2, 0)) / s;
       }
       else {
-        var s = 2 * Math.sqrt(1 + Matrix.get(m, 2, 2) - Matrix.get(m, 0, 0) - Matrix.get(m, 1, 1));
-        return new Quaternion(
-          (Matrix.get(m, 0, 2) + Matrix.get(m, 2, 0)) / s,
-          (Matrix.get(m, 1, 2) + Matrix.get(m, 2, 1)) / s,
-          0.25 * s,
-          (Matrix.get(m, 1, 0) + Matrix.get(m, 0, 1)) / s
-        );
+        let s = 2 * Math.sqrt(1 + Matrix.get(m, 2, 2) - Matrix.get(m, 0, 0) - Matrix.get(m, 1, 1));
+
+        dst.x = (Matrix.get(m, 0, 2) + Matrix.get(m, 2, 0)) / s;
+        dst.y = (Matrix.get(m, 1, 2) + Matrix.get(m, 2, 1)) / s;
+        dst.z = 0.25 * s;
+        dst.w = (Matrix.get(m, 1, 0) + Matrix.get(m, 0, 1)) / s;
       }
     }
+
+    return dst;
   }
 }

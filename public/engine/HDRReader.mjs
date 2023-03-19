@@ -98,6 +98,13 @@ async function LoadHDR(path, exposure = 1, gamma = 1) {
         return;
       }
 
+      // resolve({
+      //   data: [],
+      //   width: 100,
+      //   height: 100
+      // });
+      // return;
+
       console.time("Load hdr");
 
       var arrayBuffer = oReq.response;
@@ -128,7 +135,8 @@ async function LoadHDR(path, exposure = 1, gamma = 1) {
         // Read all scanlines
         for (var j = 0; j < height; j++) {
           var rgbe = d8.slice(pos, pos += 4);
-          var scanline = [];
+          // var scanline = [];
+          var scanline = new Array(width * 4);
 
           if (rgbe[0] != 2 || (rgbe[1] != 2) || (rgbe[2] & 0x80)) {
             var len = width;
@@ -162,21 +170,24 @@ async function LoadHDR(path, exposure = 1, gamma = 1) {
             for (var i = 0; i < 4; i++) {
               var ptr = i * width;
               var ptr_end = (i+1) * width;
-              var buf;
               var count;
 
               while (ptr < ptr_end) {
-                buf = d8.slice(pos, pos += 2);
+                let buf0 = d8[pos];
+                let buf1 = d8[pos + 1];
+                pos += 2;
 
-                if (buf[0] > 128) {
-                  count = buf[0] - 128;
-                  while (count-- > 0) {
-                    scanline[ptr++] = buf[1];
-                  }
+                if (buf0 > 128) {
+                  count = buf0 - 128;
+                  // while (count-- > 0) {
+                  //   scanline[ptr++] = buf1;
+                  // }
+                  scanline.fill(buf1, ptr, ptr + count);
+                  ptr += count;
                 } 
                 else {
-                  count = buf[0]-1;
-                  scanline[ptr++] = buf[1];
+                  count = buf0-1;
+                  scanline[ptr++] = buf1;
                   while(count-- > 0) {
                     scanline[ptr++] = d8[pos++];
                   }
@@ -193,44 +204,52 @@ async function LoadHDR(path, exposure = 1, gamma = 1) {
           }
         }
 
-        var pixelData = new Float32Array(width * height * 3);
-
-        var buffer = img;
-        var one_over_gamma = 1 / gamma;
-
-        var highestBrightness = 0;
-        var highestPixel;
-
-        for (var i = 0; i < width * height; i++) {
-          var s = exposure * Math.pow(2,buffer[i*4+3]-(128+8));
-
-          if (gamma !== 1) {
-            pixelData[i*3]   = Math.pow(buffer[i*4]*s, one_over_gamma);
-            pixelData[i*3+1] = Math.pow(buffer[i*4+1]*s, one_over_gamma);
-            pixelData[i*3+2] = Math.pow(buffer[i*4+2]*s, one_over_gamma);
-          }
-          else {
-            pixelData[i*3]   = buffer[i*4]*s
-            pixelData[i*3+1] = buffer[i*4+1]*s
-            pixelData[i*3+2] = buffer[i*4+2]*s
-          }
-
-          var brightness = (pixelData[i*3] + pixelData[i*3+1] + pixelData[i*3+2]) / 3;
-          if (brightness > highestBrightness) {
-            highestBrightness = brightness;
-            highestPixel = [pixelData[i*3], pixelData[i*3 + 1], pixelData[i*3 + 2]];
-          }
-        }
-        
         console.timeEnd("Load hdr");
 
-        // console.log("HDR loaded!", highestBrightness, highestPixel);
-
         resolve({
-          data: pixelData,
+          data: img,
           width,
           height
         });
+
+        // var pixelData = new Float32Array(width * height * 3);
+
+        // var buffer = img;
+        // var one_over_gamma = 1 / gamma;
+
+        // // var highestBrightness = 0;
+        // // var highestPixel;
+
+        // for (var i = 0; i < width * height; i++) {
+        //   var s = exposure * Math.pow(2,buffer[i*4+3]-(128+8));
+
+        //   if (gamma !== 1) {
+        //     pixelData[i*3]   = Math.pow(buffer[i*4]*s, one_over_gamma);
+        //     pixelData[i*3+1] = Math.pow(buffer[i*4+1]*s, one_over_gamma);
+        //     pixelData[i*3+2] = Math.pow(buffer[i*4+2]*s, one_over_gamma);
+        //   }
+        //   else {
+        //     pixelData[i*3]   = buffer[i*4]*s
+        //     pixelData[i*3+1] = buffer[i*4+1]*s
+        //     pixelData[i*3+2] = buffer[i*4+2]*s
+        //   }
+
+        //   // var brightness = (pixelData[i*3] + pixelData[i*3+1] + pixelData[i*3+2]) / 3;
+        //   // if (brightness > highestBrightness) {
+        //   //   highestBrightness = brightness;
+        //   //   highestPixel = [pixelData[i*3], pixelData[i*3 + 1], pixelData[i*3 + 2]];
+        //   // }
+        // }
+        
+        // console.timeEnd("Load hdr");
+
+        // console.log("HDR loaded!", highestBrightness, highestPixel);
+
+        // resolve({
+        //   data: pixelData,
+        //   width,
+        //   height
+        // });
 
 
       // resolve({

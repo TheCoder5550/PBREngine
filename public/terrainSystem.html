@@ -119,6 +119,7 @@
     import { lerp, mapValue, clamp, loadImage, getImagePixelData } from "./engine/helper.mjs";
     import { getTriangleNormal } from "./engine/algebra.mjs";
     import Perlin from "./engine/perlin.mjs";
+    import { NewMaterial } from "./engine/material.mjs";
 
     import * as roadSource from "./assets/shaders/custom/road.glsl.mjs";
     import { PhysicsEngine, MeshCollider, Rigidbody } from "./engine/physics.mjs";
@@ -520,7 +521,7 @@
           var road = new GameObject("Road");
           road.transform.position.y = 0.22;
           var roadMaterial = renderer.CreateLitMaterial({
-            albedoColor: [0.3, 0.3, 0.3, 1],
+            albedo: [0.3, 0.3, 0.3, 1],
             albedoTexture: renderer.loadTexture("./assets/textures/asphalt_01_1k/asphalt_01_diff_1k.jpg", { ...renderer.getSRGBFormats() }),
             normalTexture: renderer.loadTexture("./assets/textures/asphalt_01_1k/asphalt_01_nor_gl_1k.png"),
           }, roadProgram);
@@ -648,7 +649,7 @@
           var snow = new GameObject("Snow");
           var snowParticles = new renderer.ParticleSystem(5000);
           
-          var m = new renderer.Material(renderer.programContainers.particle);
+          var m = new NewMaterial(renderer.programContainers.particle);
           m.setUniform("albedoTexture", renderer.loadTexture("./assets/textures/snowParticle32x32.png"));
           snowParticles.material = m;
 

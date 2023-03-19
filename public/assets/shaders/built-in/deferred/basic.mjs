@@ -54,6 +54,8 @@ in vec3 vColor;
 in vec2 vUV;
 in mat3 vTBN;
 
+uniform float enableMotionBlur;
+
 // Material properties
 uniform sampler2D albedoTexture;
 uniform bool useTexture;
@@ -113,7 +115,7 @@ void main() {
     _metallic *= ts.b;
     _roughness *= ts.g;
   }
-  gProperties = vec4(_roughness, _metallic, 0, 1);
+  gProperties = vec4(_roughness, _metallic, enableMotionBlur, 1);
 }
 `;
 

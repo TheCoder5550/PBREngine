@@ -128,7 +128,7 @@
       }
 
       // var ball = await renderer.loadGLTF("./assets/models/primitives/texturedUVSphere.glb", { loadMaterials: true });
-      // // FindMaterials("", ball)[0].setUniform("opaque", 0);
+      // // FindMaterials("", ball)[0].opaque = false;
       // // FindMaterials("", ball)[0].setUniform("albedo", [1, 1, 1, 0.5]);
       // FindMaterials("", ball)[0].setUniform("roughness", 0.9);
 
@@ -147,7 +147,7 @@
       // }
 
       // var ball = scene.add(await renderer.loadGLTF("./assets/models/primitives/capsule.glb"));
-      // FindMaterials("", ball)[0].setUniform("opaque", 0);
+      // FindMaterials("", ball)[0].opaque = false;
       // FindMaterials("", ball)[0].setUniform("albedo", [1, 1, 1, 0.5]);
       // window.rb = ball.addComponent(new Rigidbody());
       // // ball.addComponent(new SphereCollider(1, new Vector(0, -1.25, 0)));
@@ -393,7 +393,7 @@
           capsule.children[0].castShadows = false;
           capsule.transform.scale.x = capsule.transform.scale.z = this.colliderRadius / 1;
           capsule.transform.scale.y = this.colliderHeight / 3.5 * 0.76;
-          FindMaterials("", capsule)[0].setUniform("opaque", 0);
+          FindMaterials("", capsule)[0].opaque = false;
           FindMaterials("", capsule)[0].setUniform("albedo", [1, 1, 1, 0.2]);
         }
 

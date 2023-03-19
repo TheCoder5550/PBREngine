@@ -57,6 +57,7 @@
         renderScale: 1,
         shadowResolution: 2048,
         // renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
+        // version: 1,
       });
 
       scene = new Scene();
@@ -73,7 +74,7 @@
       // renderer.renderpipeline.enableSSR = true;
       // renderer.renderpipeline.ssr.blur = 0;
 
-      await scene.loadEnvironment({
+      scene.loadEnvironment({
         hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k_precomputed",
         // res: 512
       });

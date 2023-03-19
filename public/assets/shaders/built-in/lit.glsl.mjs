@@ -4,6 +4,8 @@
 
 */
 
+import { shadowBase } from "./base.mjs";
+
 function trimStrings(obj) {
   for (var key in obj) {
     var e = obj[key];
@@ -89,34 +91,6 @@ in vec4 projectedTexcoords[levels];
 // uniform float biases[levels];
 uniform sampler2D projectedTextures[levels];
 
-uniform int shadowQuality; // = 2;
-float shadowDarkness = 0.;
-// vec2 shadowStepSize = 1. / vec2(1024) * 10.; // bruh
-const float shadowKernalSize = 2.;
-mat3 shadowKernel = mat3(
-  1, 2, 1,
-  2, 4, 2,
-  1, 2, 1
-);
-vec2 poissonDisk[16] = vec2[]( 
-   vec2( -0.94201624, -0.39906216 ), 
-   vec2( 0.94558609, -0.76890725 ), 
-   vec2( -0.094184101, -0.92938870 ), 
-   vec2( 0.34495938, 0.29387760 ), 
-   vec2( -0.91588581, 0.45771432 ), 
-   vec2( -0.81544232, -0.87912464 ), 
-   vec2( -0.38277543, 0.27676845 ), 
-   vec2( 0.97484398, 0.75648379 ), 
-   vec2( 0.44323325, -0.97511554 ), 
-   vec2( 0.53742981, -0.47373420 ), 
-   vec2( -0.26496911, -0.41893023 ), 
-   vec2( 0.79197514, 0.19090188 ), 
-   vec2( -0.24188840, 0.99706507 ), 
-   vec2( -0.81409955, 0.91437590 ), 
-   vec2( 0.19984126, 0.78641367 ), 
-   vec2( 0.14383161, -0.14100790 ) 
-);
-
 // uniform mat4 inverseViewMatrix;
 uniform mat4 modelMatrix;
 
@@ -173,7 +147,7 @@ vec3 textureNoTile( sampler2D samp, in vec2 uv, float v ) {
     return mix( va/w1, res, v );
 }
 
-vec2 hash( vec2 p ) { // replace this by something better
+vec2 noiseHash( vec2 p ) { // replace this by something better
 	p = vec2( dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)) );
 	return -1.0 + 2.0*fract(sin(p)*43758.5453123);
 }
@@ -189,7 +163,7 @@ float noise( in vec2 p ) {
   vec2  b = a - o + K2;
 	vec2  c = a - 1.0 + 2.0*K2;
   vec3  h = max( 0.5-vec3(dot(a,a), dot(b,b), dot(c,c) ), 0.0 );
-	vec3  n = h*h*h*h*vec3( dot(a,hash(i+0.0)), dot(b,hash(i+o)), dot(c,hash(i+1.0)));
+	vec3  n = h*h*h*h*vec3( dot(a,noiseHash(i+0.0)), dot(b,noiseHash(i+o)), dot(c,noiseHash(i+1.0)));
   return (dot( n, vec3(70.0) ) + 1.) / 2.;
 }
 
@@ -230,129 +204,7 @@ vec3 setNormalStrength(vec3 normal, float strength) {
 //   return sampleTexture(texture, uv).rgb * 2. - 1.
 // }
 
-// Shadow functions
-bool inRange(vec3 projCoord) {
-  return projCoord.x >= 0.0 &&
-      projCoord.x <= 1.0 &&
-      projCoord.y >= 0.0 &&
-      projCoord.y <= 1.0 &&
-      projCoord.z < 1.0;
-}
-
-float fadeOutShadow(float visibility, vec3 proj) {
-  return mix(visibility, 1., clamp(pow(length(proj.xy - vec2(0.5, 0.5)) * 2., 5.), 0., 1.));
-}
-
-float fadeToNextShadowMap(float v1, float v2, vec3 proj) {
-  return mix(v1, v2, clamp(pow(length(proj.xy - vec2(0.5, 0.5)) * 2., 30.), 0., 1.));
-}
-
-float random(vec3 seed, int i){
-  vec4 seed4 = vec4(seed,i);
-  float dot_product = dot(seed4, vec4(12.9898,78.233,45.164,94.673));
-  return fract(sin(dot_product) * 43758.5453);
-}
-
-float getShadowAmount(float cosTheta) {
-  if (shadowQuality == 0) {
-    return 1.;
-  }
-
-  if (shadowQuality == 1) {
-    vec3 proj = projectedTexcoords[0].xyz / projectedTexcoords[0].w;
-    float currentDepth = proj.z + biases[0];
-    float projectedDepth = texture(projectedTextures[0], proj.xy).r;
-    bool inside = inRange(proj);
-    
-    if (inside) {
-      return (projectedDepth <= currentDepth ? shadowDarkness : 1.);
-    }
-    
-    proj = projectedTexcoords[1].xyz / projectedTexcoords[1].w;
-    currentDepth = proj.z + biases[1];
-    projectedDepth = texture(projectedTextures[1], proj.xy).r;
-    inside = inRange(proj);
-
-    if (inside) {
-      return (projectedDepth <= currentDepth ? shadowDarkness : 1.);
-    }
-
-    return 1.;
-  }
-
-  vec2 shadowStepSize = vec2(1) / vec2(textureSize(projectedTextures[0], 0));
-
-  if (shadowQuality >= 2) {
-    vec4 ShadowCoord = projectedTexcoords[0];
-    vec3 proj = ShadowCoord.xyz / ShadowCoord.w;
-    float bias = -biases[0];//0.00005 * tan(acos(cosTheta));
-    // bias = clamp(bias, 0., 0.01);
-    float currentDepth = proj.z - bias;
-    bool inside = inRange(proj);
-
-    if (inside) {
-      // float visibility = 1.;
-      // for (int i=0;i<16;i++){
-      //   int index = int(16.0*random(floor(vPosition.xyz*1000.0), i))%16;
-        
-      //   if (texture(projectedTextures[0], proj.xy + poissonDisk[index] * shadowStepSize * 3.).r < currentDepth) {
-      //     visibility -= 1. / 16.;
-      //   }
-
-      //   // visibility -= 0.2*(1.0-textureProj(projectedTextures[0], vec3(ShadowCoord.xy + poissonDisk[index]/700.0, (ShadowCoord.z-bias) / ShadowCoord.w)).r);
-      // }
-      // return visibility;
-
-      float sum = 0.0;
-      for (float j = -shadowKernalSize / 2. + 0.5; j <= shadowKernalSize / 2. - 0.5; j++) {
-        for (float k = -shadowKernalSize / 2. + 0.5; k <= shadowKernalSize / 2. - 0.5; k++) {
-          // float projectedDepth = texture(projectedTextures[0], proj.xy + shadowStepSize * hash(vec2(j, k) / 1000.)).r;
-          float projectedDepth = texture(projectedTextures[0], proj.xy + shadowStepSize * vec2(j, k)).r;
-
-          sum += 1. - step(projectedDepth, currentDepth);//(projectedDepth <= currentDepth ? shadowDarkness : 1.);// * shadowKernel[j + 1][k + 1];
-        }
-      }
-
-      return sum / float(shadowKernalSize * shadowKernalSize);
-
-      // // bruh double calc
-      // vec3 projNext = projectedTexcoords[1].xyz / projectedTexcoords[1].w;
-      // float depthNext = projNext.z + biases[1];
-      // float projectedDepthNext = texture(projectedTextures[1], projNext.xy).r;
-      // float nextVis = (projectedDepthNext <= depthNext ? shadowDarkness : 1.);
-
-      // return fadeToNextShadowMap(sum / float(shadowKernalSize * shadowKernalSize), nextVis, proj);
-    }
-
-    proj = projectedTexcoords[1].xyz / projectedTexcoords[1].w;
-    inside = inRange(proj);
-
-    if (inside) {
-      currentDepth = proj.z + biases[1];
-      
-      if (shadowQuality == 2) {
-        float projectedDepth = texture(projectedTextures[1], proj.xy).r;
-        return fadeOutShadow((projectedDepth <= currentDepth ? shadowDarkness : 1.), proj);
-      }
-
-      if (shadowQuality == 3) {
-        float sum = 0.0;
-        for (float j = -shadowKernalSize / 2. + 0.5; j <= shadowKernalSize / 2. - 0.5; j++) {
-          for (float k = -shadowKernalSize / 2. + 0.5; k <= shadowKernalSize / 2. - 0.5; k++) {
-            float projectedDepth = texture(projectedTextures[1], proj.xy + shadowStepSize * vec2(j, k)).r;
-            sum += (projectedDepth <= currentDepth ? shadowDarkness : 1.);
-          }
-        }
-
-        return fadeOutShadow(sum / 16., proj);
-      }
-    }
-
-    return 1.;
-  }
-
-  return 1.;
-}
+${shadowBase}
 
 // PBR
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
@@ -524,7 +376,7 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 
   float f0 = 0.04;
 
-  float shadowAmount = getShadowAmount(dot(sunDirection.xyz, N));
+  float shadowAmount = getShadowAmount(vPosition, dot(sunDirection.xyz, N));
   float environmentMinLight = 0.25;
 
   vec3 col = vec3(0);
@@ -556,7 +408,8 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 
 var fogBase = `
 #define USEFOG
-const vec4 fogColor = vec4(0.23, 0.24, 0.26, 1);
+
+uniform vec4 fogColor;// = vec4(0.23, 0.24, 0.26, 1);
 uniform float fogDensity;// = 0.0035;
 
 vec4 applyFog(vec4 color) {
@@ -883,6 +736,9 @@ void main() {
     _tangentNormal = _tangentNormal * 2. - 1.;
     _tangentNormal = setNormalStrength(_tangentNormal, normalStrength);
   }
+
+  // fragColor = vec4(_tangentNormal, 1);
+  // return;
 
   vec4 litColor = lit(currentAlbedo, alphaCutoff, _emission, _tangentNormal, _metallic, _roughness, _ao);
  

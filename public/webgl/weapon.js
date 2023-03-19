@@ -244,12 +244,12 @@ function Weapon(settings = {}) {
           bulletTrails.push(trail);
 
           // Get scene hit
-          var hit = physicsEngine.Raycast(origin, direction).firstHit;
+          let hit = physicsEngine.Raycast(origin, direction).firstHit;
 
           // Detect enemy hits
           var maxDistance = (hit && hit.point) ? hit.distance : Infinity;
           for (var enemy of enemies) {
-            var enemyHit = enemy.fireBullet(this, origin, direction, maxDistance);
+            let enemyHit = enemy.fireBullet(this, origin, direction, maxDistance);
             if (enemyHit) {
               hitmarker.markHit(enemyHit.type == 0 ? "body" : "head");
             }
@@ -275,14 +275,14 @@ function Weapon(settings = {}) {
             }
 
             // Sparks
-            var [ tangent, bitangent ] = Vector.formOrthogonalBasis(hit.normal);
-            var basis = Matrix.basis(tangent, bitangent, hit.normal);
+            let [ tangent, bitangent ] = Vector.formOrthogonalBasis(hit.normal);
+            let basis = Matrix.basis(tangent, bitangent, hit.normal);
    
             sparks.emitVelocity = () => {
-              var v = new Vector((Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, 2 * Math.random());
+              let v = new Vector((Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, 2 * Math.random());
               return Matrix.transformVector(basis, v);
             };
-            sparks.emitPosition = () => hit.point;
+            sparks.emitPosition = (dst) => Vector.set(dst, hit.point);
             sparks.emit(10);
           }
         }

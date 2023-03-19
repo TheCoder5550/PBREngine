@@ -2,6 +2,8 @@
 precision highp float;
 precision mediump int;
 
+#define USEFOG
+
 const float PI = 3.141592;
 
 layout (location = 0) out vec4 fragColor;
@@ -165,12 +167,12 @@ float LayeredNoise(vec2 p) {
   return _noise;
 }
 
-const vec4 fogColor = vec4(0.23, 0.24, 0.26, 1);
-const float density = 0.005;
+uniform vec4 fogColor;
+uniform float fogDensity;
 
 vec4 applyFog(vec4 color) {
   float distance = length(vec3(inverseViewMatrix * vec4(0, 0, 0, 1)) - vPosition);
-  float fogAmount = exp(-pow(distance * density, 2.));
+  float fogAmount = exp(-pow(distance * fogDensity, 2.));
   
   return mix(fogColor, color, fogAmount);
 }
@@ -187,6 +189,9 @@ void main() {
   vec3 stoneAlbedo = sampleTexture(albedoTextures[1], vUV).rgb;
   vec3 snowAlbedo = sampleTexture(albedoTextures[2], vUV).rgb;
 
+  // Large scale detail
+  grassAlbedo *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(vUV / 40.), 0., 1.));
+
   // fragColor = vec4(grassAlbedo, 1.0);
   // return;
 
@@ -194,7 +199,7 @@ void main() {
   vec3 stoneNormal = sampleTexture(normalTextures[1], vUV).rgb * 2. - 1.;
   vec3 snowNormal = sampleTexture(normalTextures[2], vUV).rgb * 2. - 1.;
 
-  vec4 litColor = lit(vec4(snowAlbedo, 1), 0.5, vec3(0), snowNormal, 0., 0.95, 1.);
+  vec4 litColor = lit(vec4(grassAlbedo, 1), 0.5, vec3(0), vec3(0, 0, 1), 0., 0.95, 1.);
   
   #ifdef USEFOG
     litColor = applyFog(litColor);

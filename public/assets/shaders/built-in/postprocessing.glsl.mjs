@@ -14,6 +14,8 @@ var output = {
       `,
       fragment: `
         precision highp float;
+
+        // #define DEBUG_COLOR
         
         out vec4 fragColor;
 
@@ -259,6 +261,11 @@ var output = {
         
         void main() {
           vec2 uv = gl_FragCoord.xy / SIZE;
+
+          #ifdef DEBUG_COLOR
+          fragColor = texture2D(mainTexture, uv);
+          return;
+          #endif
         
           // float stepSize = 0.02;
           // float size = 2.; //?

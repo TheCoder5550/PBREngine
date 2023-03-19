@@ -22,7 +22,7 @@ import {
   sphereToTriangle,
   capsuleToTriangle,
 } from "./algebra.mjs";
-import { EventHandler } from "./renderer.mjs";
+import { EventHandler, Scene } from "./renderer.mjs";
 
 function CreateCubeCollider(pos, scale, rot) {
   var aabb = new AABBCollider(Vector.subtract(pos, scale), Vector.add(pos, scale), Matrix.transform([
@@ -549,8 +549,8 @@ function GetMeshAABB(gameObject, padding, ignoreGameObjects) {
     }
 
     if (o.meshRenderer && !o.meshRenderer.skin) {
-      var noTranslateWorldMatrix = Matrix.copy(o.transform.worldMatrix);
-      Matrix.removeTranslation(noTranslateWorldMatrix);
+      // var noTranslateWorldMatrix = Matrix.copy(o.transform.worldMatrix);
+      // Matrix.removeTranslation(noTranslateWorldMatrix);
 
       for (var i = 0; i < o.meshRenderer.meshData.length; i++) {
         var md = o.meshRenderer.meshData[i];
@@ -578,6 +578,10 @@ function GetMeshAABB(gameObject, padding, ignoreGameObjects) {
 }
 
 function PhysicsEngine(scene, settings = {}) {
+  if (!(scene instanceof Scene)) {
+    throw new Error("scene is not of class 'Scene'");
+  }
+
   var physicsEngine = this;
   this.scene = scene;
 
@@ -1543,7 +1547,9 @@ class MeshCollider extends Collider {
 
   setup() {
     if (this.gameObject && this.gameObject.meshRenderer) {
-      var aabb = GetMeshAABB(this.gameObject, 0.1);
+      // var aabb = GetMeshAABB(this.gameObject, 0.1);
+
+      var aabb = new AABB(Vector.fill(Infinity), Vector.fill(-Infinity));
 
       var nrTriangles = 0;
 
@@ -1569,6 +1575,13 @@ class MeshCollider extends Collider {
             vec = {x: vec.x, y: vec.y, z: vec.z};
             var transVec = Matrix.transformVector(worldMatrix, vec);
 
+            if (transVec.x < aabb.bl.x) aabb.bl.x = transVec.x;
+            if (transVec.y < aabb.bl.y) aabb.bl.y = transVec.y;
+            if (transVec.z < aabb.bl.z) aabb.bl.z = transVec.z;
+            if (transVec.x > aabb.tr.x) aabb.tr.x = transVec.x;
+            if (transVec.y > aabb.tr.y) aabb.tr.y = transVec.y;
+            if (transVec.z > aabb.tr.z) aabb.tr.z = transVec.z;
+
             trianglesArray[triangleIndex * 9 + l * 3 + 0] = transVec.x;
             trianglesArray[triangleIndex * 9 + l * 3 + 1] = transVec.y;
             trianglesArray[triangleIndex * 9 + l * 3 + 2] = transVec.z;
@@ -1580,8 +1593,13 @@ class MeshCollider extends Collider {
         }
       }
 
-      this.octree = new Octree(aabb, 4);
+      aabb.addPadding(0.1);
+
+      this.octree = new Octree(aabb, 4 - 3);
       this.octree.addTriangles(trianglesArray, gameObjectLookup, gameObjects);
+    }
+    else {
+      this.octree = null;
     }
   }
 }
@@ -1611,7 +1629,15 @@ class BoxCollider extends Collider {
   }
 }
 
+var r = new Vector();
+var c = new Vector();
+
 class Rigidbody {
+  #gravitydt = new Vector();
+  #f = new Vector();
+  #q = new Quaternion();
+  #mat = new Matrix();
+
   constructor() {
     this.gameObject = null;
 
@@ -1637,6 +1663,9 @@ class Rigidbody {
 
     this.gravity = new Vector(0, -9.82, 0);
     this.gravityScale = 1;
+
+    this._worldCOMOffset = Vector.zero();
+    this.lastVelocity = new Vector();
   }
 
   set inertia(inertia) {
@@ -1664,68 +1693,133 @@ class Rigidbody {
   _updateInverseWorldInertiaMatrix() {
     // bruh
     if (this.gameObject) {
-      var R = Matrix.removeTranslation(Matrix.copy(this.gameObject.transform.worldMatrix));
+      Matrix.copy(this.gameObject.transform.worldMatrix, this.#mat);
+      Matrix.removeTranslation(this.#mat);
 
       Matrix.identity(this.inverseWorldInertia);
-      Matrix.multiply(R, this._inverseLocalInertiaMatrix, this.inverseWorldInertia);
-      Matrix.multiply(this.inverseWorldInertia, Matrix.transpose(R), this.inverseWorldInertia);
+      Matrix.multiply(this.#mat, this._inverseLocalInertiaMatrix, this.inverseWorldInertia);
+
+      Matrix.transpose(this.#mat, this.#mat);
+      Matrix.multiply(this.inverseWorldInertia, this.#mat, this.inverseWorldInertia);
 
       // Matrix.copy(this._inverseLocalInertiaMatrix, this.inverseWorldInertia);
     }
   }
 
-  getWorldCOMOffset() {
+  _updateWorldCOMOffset() {
     // bruh
     if (this.gameObject) {
-      var mat = Matrix.removeTranslation(Matrix.copy(this.gameObject.transform.worldMatrix));
-      return Matrix.transformVector(mat, this.COMOffset);
+      Matrix.copy(this.gameObject.transform.worldMatrix, this.#mat);
+      Matrix.removeTranslation(this.#mat);
+      Matrix.transformVector(this.#mat, this.COMOffset, this._worldCOMOffset);
     }
-
-    return this.COMOffset;
+    else {
+      Vector.set(this._worldCOMOffset, this.COMOffset);
+    }
   }
 
-  GetPointVelocity(position) {
-    var r = Vector.subtract(position, Vector.add(this.position, this.getWorldCOMOffset()));
-    return Vector.add(this.velocity, Vector.cross(this.angularVelocity, r));
+  getWorldCOMOffset() {
+    return this._worldCOMOffset;
+  }
+
+  GetPointVelocity(position, dst) {
+    dst = dst || new Vector();
+
+    var worldCOM = this.getWorldCOMOffset();
+
+    Vector.set(r, position);
+    Vector.subtractTo(r, this.position);
+    Vector.subtractTo(r, worldCOM);
+
+    Vector.set(dst, this.velocity);
+    Vector.cross(this.angularVelocity, r, c);
+    Vector.addTo(dst, c);
+
+    return dst;
+
+    // var worldCOM = this.getWorldCOMOffset();
+    // var r = Vector.subtract(position, Vector.add(this.position, worldCOM));
+    // return Vector.add(this.velocity, Vector.cross(this.angularVelocity, r));
   }
 
   AddForceAtPosition(force, position) {
+    if (Vector.isNaN(force)) {
+      console.error("Force is NaN: ", force);
+      return;
+    }
+
+    if (Vector.isNaN(position)) {
+      console.error("Position is NaN: ", position);
+      return;
+    }
+
     if (this.frozen) {
       return;
     }
     
     this.AddForce(force);
-    var r = Vector.subtract(position, Vector.add(this.position, this.getWorldCOMOffset()));
-    this.AddTorque(Vector.cross(r, force));
+
+    var worldCOM = this.getWorldCOMOffset();
+    Vector.set(r, position);
+    Vector.subtractTo(r, this.position);
+    Vector.subtractTo(r, worldCOM);
+    Vector.cross(r, force, r);
+    this.AddTorque(r);
   }
 
   AddImpulseAtPosition(force, position) {
+    if (Vector.isNaN(force)) {
+      console.error("Impulse is NaN: ", force);
+      return;
+    }
+
+    if (Vector.isNaN(position)) {
+      console.error("Position is NaN: ", position);
+      return;
+    }
+
     if (this.frozen) {
       return;
     }
 
-    Vector.addTo(this.velocity, Vector.multiply(force, 1 / this.mass));
-    var r = Vector.subtract(position, Vector.add(this.position, this.getWorldCOMOffset()));
-    var torque = Vector.cross(r, force);
-    this._updateInverseWorldInertiaMatrix(); // bruh
-    Vector.addTo(this.angularVelocity, Matrix.transformVector(this.inverseWorldInertia, torque));
-    // this.angularVelocity = Vector.add(this.angularVelocity, Vector.compMultiply(torque, this.getInverseWorldInertiaMatrix()));
+    Vector.set(r, force);
+    Vector.multiplyTo(r, 1 / this.mass);
+    Vector.addTo(this.velocity, r);
+
+    var worldCOM = this.getWorldCOMOffset();
+
+    Vector.set(r, position);
+    Vector.subtractTo(r, this.position);
+    Vector.subtractTo(r, worldCOM);
+    Vector.cross(r, force, r);
+    Matrix.transformVector(this.inverseWorldInertia, r, r);
+    Vector.addTo(this.angularVelocity, r);
   }
 
   AddForce(force) {
+    if (Vector.isNaN(force)) {
+      console.error("Force is NaN: ", force);
+      return;
+    }
+
     if (this.frozen) {
       return;
     }
 
-    this.force = Vector.add(this.force, force);
+    Vector.addTo(this.force, force);
   }
 
   AddTorque(torque) {
+    if (Vector.isNaN(torque)) {
+      console.error("Torque is NaN: ", torque);
+      return;
+    }
+
     if (this.frozen) {
       return;
     }
 
-    this.torque = Vector.add(this.torque, torque);
+    Vector.addTo(this.torque, torque);
   }
 
   applyForces(dt) {
@@ -1733,45 +1827,55 @@ class Rigidbody {
       return;
     }
 
-    this.lastVelocity = Vector.copy(this.velocity);
+    Vector.set(this.lastVelocity, this.velocity);
 
     // Apply force
-    this.velocity = Vector.add(this.velocity, Vector.multiply(this.force, dt / this.mass));
-    this.force = Vector.zero();
+    Vector.set(this.#f, this.force);
+    Vector.multiplyTo(this.#f, dt / this.mass);
+    Vector.addTo(this.velocity, this.#f);
+    Vector.zero(this.force);
 
     // Apply gravity
-    this.velocity = Vector.add(this.velocity, Vector.multiply(this.gravity, this.gravityScale * dt));
+    Vector.set(this.#gravitydt, this.gravity);
+    Vector.multiplyTo(this.#gravitydt, dt);
+    Vector.addTo(this.velocity, this.#gravitydt);
 
     // Apply torque
     if (!this.lockRotation) {
-      this._updateInverseWorldInertiaMatrix(); // bruh
-      this.angularVelocity = Vector.add(this.angularVelocity, Matrix.transformVector(this.inverseWorldInertia, this.torque));
-      // this.angularVelocity = Vector.add(this.angularVelocity, Vector.multiply(Vector.compDivide(this.torque, this.getWorldInertiaTensor()), dt));
+      Matrix.transformVector(this.inverseWorldInertia, this.torque, this.#f);
+      Vector.addTo(this.angularVelocity, this.#f);
     }
-    this.torque = Vector.zero();
+    Vector.zero(this.torque);
   }
 
+  // !
   integrate(dt) {
     if (this.frozen) {
       return;
     }
 
-    this.position = Vector.add(this.position, Vector.multiply(this.velocity, dt));
+    Vector.set(this.#f, this.velocity);
+    Vector.multiplyTo(this.#f, dt);
+    Vector.addTo(this.position, this.#f);
 
     if (this.lockRotation) {
-      this.rotation = Quaternion.identity();
+      Quaternion.identity(this.rotation);
     }
     else {
-      var w = new Quaternion(
+      new Quaternion(
         this.angularVelocity.x,
         this.angularVelocity.y,
         this.angularVelocity.z,
-        0
+        0,
+        this.#q
       );
-      this.rotation = Quaternion.add(this.rotation, Quaternion.multiply(Quaternion.QxQ(w, this.rotation), dt / 2));
+      // !
+      this.rotation = Quaternion.add(this.rotation, Quaternion.multiply(Quaternion.QxQ(this.#q, this.rotation), dt / 2));
     }
 
-    this.acceleration = Vector.multiply(Vector.subtract(this.velocity, this.lastVelocity), dt);
+    Vector.set(this.acceleration, this.velocity);
+    Vector.subtractTo(this.acceleration, this.lastVelocity);
+    Vector.multiplyTo(this.acceleration, dt);
 
     this.updateGameObject();
   }
@@ -1783,13 +1887,13 @@ class Rigidbody {
     }
 
     this._updateInverseWorldInertiaMatrix();
+    this._updateWorldCOMOffset();
   }
 }
 
 export {
   CreateCubeCollider,
   AABBCollider,
-  // MeshCollider,
   GetMeshAABB,
   Octree,
   AABB,

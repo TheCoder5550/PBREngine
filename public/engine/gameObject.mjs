@@ -391,16 +391,34 @@ function GameObject(name = "Unnamed", options = {}) {
       output += " (Not visible)";
     }
 
-    if (this.children.length > 0) {
+    if (!this.active) {
+      output += " (Not active)";
+    }
+
+    if (this.children.length > 0 || this.getComponents().length > 0) {
       output += "\n";
     }
 
     var list = [];
-    for (var i = 0; i < this.children.length; i++) {
+    for (let i = 0; i < this.getComponents().length; i++) {
+      var component = this.getComponents()[i];
+      var isLast = i == this.getComponents().length - 1 && this.children.length == 0;
+
+      let spacing = "";
+      for (let j = 0; j < lastChild.length; j++) {
+        spacing += lastChild[j] ? "   " : "|  ";
+      }
+      spacing += isLast ? "└──" : "├──";
+
+      let entry = spacing + "(COMPONENT) " + component.constructor.name;
+      list.push(entry);
+    }
+
+    for (let i = 0; i < this.children.length; i++) {
       var thisIsLastChild = i == this.children.length - 1;
 
       var spacing = "";
-      for (var j = 0; j < lastChild.length; j++) {
+      for (let j = 0; j < lastChild.length; j++) {
         spacing += lastChild[j] ? "   " : "|  ";
       }
       spacing += thisIsLastChild ? "└──" : "├──";

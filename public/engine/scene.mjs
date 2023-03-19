@@ -3,6 +3,7 @@ import Vector from "./vector.mjs";
 import Matrix from "./matrix.mjs";
 import { PostProcessingSettings } from "./postprocessingSettings.mjs";
 import { BloomSettings } from "./bloomSettings.mjs";
+import { NewMaterial } from "./material.mjs";
 
 function Scene(name) {
   this.renderer = null;
@@ -14,8 +15,10 @@ function Scene(name) {
   this.skyboxVisible = true;
   this.smoothSkybox = false;
   this.environmentIntensity = 1;
+  this.environmentMinLight = 0.25;
   this.ambientColor = [0, 0, 0];
   this.fogDensity = 0.0035;
+  this.fogColor = [0.23, 0.24, 0.26, 1];
   this.shadowQuality = 2;
 
   this.postprocessing = new PostProcessingSettings();
@@ -24,6 +27,10 @@ function Scene(name) {
   var lights = [];
 
   this.setupUBO = function() {
+    // if (this.renderer.renderpipeline instanceof this.renderer.DeferredPBRRenderpipeline) {
+    //   return;
+    // }
+
     var uboData = this.renderer.programContainers.lit.uniformBuffers["sharedPerScene"];
     if (uboData) {
       this.sharedUBO = new this.renderer.UniformBuffer(this.renderer.UBOLocationCounter++, uboData.blockSize);
@@ -90,7 +97,7 @@ function Scene(name) {
       }
       else {
         var program = new this.renderer.ProgramContainer(await this.renderer.createProgramFromFile(this.renderer.path + `assets/shaders/built-in/webgl${this.renderer.version}/procedualSkybox`));
-        var mat = new this.renderer.Material(program);
+        var mat = new NewMaterial(program);
         this.skyboxCubemap = await this.renderer.createCubemapFromCube(mat, res);
         this.diffuseCubemap = await this.renderer.getDiffuseCubemap(this.skyboxCubemap);
       }

@@ -1,3 +1,4 @@
+import { shadowBase } from "../built-in/base.mjs";
 import * as lit from "../built-in/lit.glsl.mjs";
 
 var vertex = lit.webgl2.lit.vertex;
@@ -56,34 +57,6 @@ const int levels = 2;
 in vec4 projectedTexcoords[levels];
 // uniform float biases[levels];
 uniform sampler2D projectedTextures[levels];
-
-int shadowQuality = 2;
-float shadowDarkness = 0.;
-// vec2 shadowStepSize = 1. / vec2(1024) * 10.; // bruh
-const float shadowKernalSize = 2.;
-mat3 shadowKernel = mat3(
-  1, 2, 1,
-  2, 4, 2,
-  1, 2, 1
-);
-vec2 poissonDisk[16] = vec2[]( 
-   vec2( -0.94201624, -0.39906216 ), 
-   vec2( 0.94558609, -0.76890725 ), 
-   vec2( -0.094184101, -0.92938870 ), 
-   vec2( 0.34495938, 0.29387760 ), 
-   vec2( -0.91588581, 0.45771432 ), 
-   vec2( -0.81544232, -0.87912464 ), 
-   vec2( -0.38277543, 0.27676845 ), 
-   vec2( 0.97484398, 0.75648379 ), 
-   vec2( 0.44323325, -0.97511554 ), 
-   vec2( 0.53742981, -0.47373420 ), 
-   vec2( -0.26496911, -0.41893023 ), 
-   vec2( 0.79197514, 0.19090188 ), 
-   vec2( -0.24188840, 0.99706507 ), 
-   vec2( -0.81409955, 0.91437590 ), 
-   vec2( 0.19984126, 0.78641367 ), 
-   vec2( 0.14383161, -0.14100790 ) 
-);
 
 // uniform mat4 inverseViewMatrix;
 uniform mat4 modelMatrix;

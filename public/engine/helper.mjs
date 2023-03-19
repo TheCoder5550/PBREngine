@@ -1,5 +1,9 @@
 // Math
 
+function wrap(x, m) {
+  return (x % m + m) % m;
+}
+
 function getAngleBetween(ax, ay, bx, by) {
   return Math.atan2(by - ay, bx - ax);
 }
@@ -247,6 +251,7 @@ function downloadURL(url, name = "download") {
 }
 
 export {
+  wrap,
   getAngleBetween,
   getDistanceBetween,
   xor,

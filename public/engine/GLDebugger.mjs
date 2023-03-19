@@ -1,6 +1,7 @@
 import { GameObject, FindMaterials } from "./renderer.mjs";
 import Matrix from "./matrix.mjs";
 import Vector from "./vector.mjs";
+import { NewMaterial } from "./material.mjs";
 
 function GLDebugger(scene) {
   var renderer = scene.renderer;
@@ -9,7 +10,7 @@ function GLDebugger(scene) {
   renderer.createProgramFromFile(renderer.path + "assets/shaders/custom/webgl2/solidColor").then(r => {
     var solidColorInstanceProgram = new renderer.ProgramContainer(r);
     aabbVis = scene.add(new GameObject("AABB", {
-      meshRenderer: new renderer.MeshInstanceRenderer([new renderer.Material(solidColorInstanceProgram)], [new renderer.MeshData(renderer.getLineCubeData())], {drawMode: renderer.gl.LINES}),
+      meshRenderer: new renderer.MeshInstanceRenderer([new NewMaterial(solidColorInstanceProgram)], [new renderer.MeshData(renderer.getLineCubeData())], {drawMode: renderer.gl.LINES}),
       castShadows: false
     }));
   });

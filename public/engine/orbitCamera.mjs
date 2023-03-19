@@ -6,13 +6,36 @@ import Quaternion from "./quaternion.mjs";
 export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
   var _this = this;
 
+  {
+    let v = new Vector();
+    let c = new Vector();
+    let q = new Quaternion();
+
+    var updateCameraMatrix = function() {
+      Quaternion.eulerVector(rotation, q);
+      _this.camera.transform.rotation = q;
+  
+      Matrix.getForward(_this.camera.transform.worldMatrix, v);
+      Vector.multiplyTo(v, -_this.distance);
+      Vector.set(c, center);
+      Vector.addTo(c, v);
+      _this.camera.transform.position = c;
+  
+      // _this.camera.transform.matrix = Matrix.lookAt(new Vector(
+      //   center.x + Math.cos(rotation.y) * Math.cos(rotation.x) * _this.distance,
+      //   center.y + Math.sin(rotation.x) * _this.distance,
+      //   center.z + Math.sin(rotation.y) * Math.cos(rotation.x) * _this.distance
+      // ), center, Math.abs(limitRange(rotation.x)) > Math.PI / 2 ? Vector.down() : Vector.up());
+    };
+  }
+
   var allowRotate = settings.rotate ?? true;
   var allowTranslate = settings.translate ?? true;
   var allowScale = settings.scale ?? true;
   var stylePointer = settings.stylePointer ?? true;
 
   var _distance = 5;
-  Object.defineProperty(this, 'distance', {
+  Object.defineProperty(this, "distance", {
     get: function() {
       return _distance;
     },
@@ -23,7 +46,7 @@ export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
   });
 
   var center = Vector.zero();
-  Object.defineProperty(this, 'center', {
+  Object.defineProperty(this, "center", {
     get: function() {
       return center;
     },
@@ -33,8 +56,8 @@ export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
     }
   });
 
-  var rotation = new Vector(0, 0, 0);
-  Object.defineProperty(this, 'rotation', {
+  var rotation = Vector.zero();
+  Object.defineProperty(this, "rotation", {
     get: function() {
       return rotation;
     },
@@ -54,16 +77,16 @@ export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
   if (stylePointer) {
     renderer.canvas.style.cursor = "grab";
 
-    renderer.canvas.addEventListener("mousedown", function(e) {
+    renderer.canvas.addEventListener("mousedown", function() {
       renderer.canvas.style.cursor = "grabbing";
     });
 
-    document.addEventListener("mouseup", function(e) {
+    document.addEventListener("mouseup", function() {
       renderer.canvas.style.cursor = "grab";
     });
   }
 
-  renderer.canvas.addEventListener('contextmenu', function(e) {
+  renderer.canvas.addEventListener("contextmenu", function(e) {
     e.preventDefault();
   });
   
@@ -106,10 +129,10 @@ export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
 
   renderer.canvas.addEventListener("touchmove", function(e) {
     if (canSwipe) {
-      var dx = e.touches[0].clientX - lastTouch.x;
-      var dy = e.touches[0].clientY - lastTouch.y;
+      let dx = e.touches[0].clientX - lastTouch.x;
+      let dy = e.touches[0].clientY - lastTouch.y;
 
-      var m = 0.005;// * Math.min(2, _this.distance - 0.9);
+      let m = 0.005;// * Math.min(2, _this.distance - 0.9);
       rotation.x += -dy * m;
       rotation.y += -dx * m;
       setRotationMatrix();
@@ -119,11 +142,11 @@ export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
     }
 
     if (e.touches.length == 2) {
-      var px = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      var py = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      let px = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      let py = (e.touches[0].clientY + e.touches[1].clientY) / 2;
 
-      var dx = px - lastTouch.x;
-      var dy = py - lastTouch.y;
+      let dx = px - lastTouch.x;
+      let dy = py - lastTouch.y;
 
       moveCenter(dx, dy);
 
@@ -135,9 +158,9 @@ export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
     e.preventDefault();
   });
 
-  document.addEventListener('touchmove', function(event) {
+  document.addEventListener("touchmove", function(event) {
     if (event.scale !== 1) {
-        event.preventDefault();
+      event.preventDefault();
     }
   }, { passive: false });
 
@@ -153,11 +176,11 @@ export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
 
   var lastScale = 1;
 
-  renderer.canvas.addEventListener('gesturestart', function(e) {
+  renderer.canvas.addEventListener("gesturestart", function(e) {
     lastScale = e.scale;
   }, false);
 
-  renderer.canvas.addEventListener('gesturechange', function(e) {
+  renderer.canvas.addEventListener("gesturechange", function(e) {
     var dScale = lastScale / e.scale;
     lastScale = e.scale;
 
@@ -175,19 +198,17 @@ export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
   this.setCenter = function(newCenter) {
     center = newCenter;
     updateCameraMatrix();
-  }
+  };
 
+  let v = new Vector();
+  let d = new Vector();
   function moveCenter(dx, dy) {
     var f = 0.0006 * _this.distance;
-    var v = Matrix.transformVector(rotationMatrix, new Vector(-dx * f, dy * f, 0));
-
+    d.x = -dx * f;
+    d.y = dy * f;
+    d.z = 0;
+    Matrix.transformVector(rotationMatrix, d, v);
     Vector.addTo(center, v);
-
-    // var v = Matrix.transformVector(rotationMatrix, new Vector(-e.movementX * f, e.movementY * f, 0));
-
-    // center.x += -v.z;
-    // center.y += v.y;
-    // center.z += -v.x;
   }
 
   function setRotationMatrix() {
@@ -202,19 +223,6 @@ export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
   //   _this.camera.transform.rotation = Quaternion.slerp(_this.camera.transform.rotation, Quaternion.eulerVector(rotation), 0.3);
   //   _this.camera.transform.position = Vector.lerp(_this.camera.transform.position, Vector.add(center, Vector.multiply(_this.camera.transform.forward, -_this.distance)), 0.3);
   // });
-  
-  function updateCameraMatrix() {
-    _this.camera.transform.rotation = Quaternion.eulerVector(rotation);
-    _this.camera.transform.position = Vector.add(center, Vector.multiply(_this.camera.transform.forward, -_this.distance));
-
-    // console.log(_this.camera.transform.rotation,_this.camera.transform.position );
-
-    // _this.camera.transform.matrix = Matrix.lookAt(new Vector(
-    //   center.x + Math.cos(rotation.y) * Math.cos(rotation.x) * _this.distance,
-    //   center.y + Math.sin(rotation.x) * _this.distance,
-    //   center.z + Math.sin(rotation.y) * Math.cos(rotation.x) * _this.distance
-    // ), center, Math.abs(limitRange(rotation.x)) > Math.PI / 2 ? Vector.down() : Vector.up());
-  }
   
   // function limitRange(a) {
   //   a = a % (Math.PI * 2);

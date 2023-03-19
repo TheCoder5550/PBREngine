@@ -1,4 +1,5 @@
 function BloomSettings(settings = {}) {
+  this.enabled = settings.enabled ?? true;
   this.sampleScale = settings.sampleScale ?? 1;
   this.threshold = settings.threshold ?? 1;
   this.knee = settings.knee ?? 0.5;
