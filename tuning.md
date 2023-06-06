@@ -3,6 +3,7 @@
 ## Easier 360s
 Can't do 360 entries? Try tuning these:
 1. Increase max steer angle (>= 70deg)
+1. Decrease the 4th element (index 3) in `advancedSlipAngleCoeffs` to move the peak further from 0 deg 
 1. How the wheels are pointed during the 360 is important. Disable steering assist or tune it.
 1. Increase max engine torque so the wheels can spin during the whole maneuver
 1. (Increase moment of inertia around up-axis to allow the car to keep momentum)

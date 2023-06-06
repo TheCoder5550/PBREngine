@@ -54,6 +54,7 @@ uniform sampler2D occlusionTexture;
 uniform bool useOcclusionTexture;
 
 uniform vec4 albedo;
+uniform bool useVertexColor;
 uniform float metallic;
 uniform float roughness;
 uniform vec3 emissiveFactor;
@@ -689,13 +690,18 @@ ${fogBase}
 
 void main() {
   ${motionBlurMain}
+  
+  // fragColor = vec4(1, 0, 0, 1);
+  // return;
 
   // fragColor = vec4(vNormal, 1);
   // return;
 
   vec4 currentAlbedo = useTexture ? sampleTexture(albedoTexture, vUV) : vec4(1);
   currentAlbedo *= albedo;
-  currentAlbedo.xyz *= vec3(1) - vColor;
+  if (useVertexColor) {
+    currentAlbedo.xyz *= vec3(1) - vColor;
+  }
   //#currentAlbedo
 
   // if (doNoTiling) {

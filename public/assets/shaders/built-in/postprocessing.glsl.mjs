@@ -25,6 +25,7 @@ var output = {
         uniform sampler2D bloomTexture;
         uniform sampler2D depthTexture;
         uniform sampler2D motionBlurTexture;
+        uniform sampler2D downscaledTexture;
         
         uniform float bloomIntensity;
         uniform float exposure;
@@ -363,6 +364,10 @@ var output = {
             // vec4 samp = applyFXAA(mainTexture, gl_FragCoord.xy, SIZE);
             col += samp;
           #endif
+
+          // Downscaled texture
+          vec4 downscaledCol = texture2D(downscaledTexture, uv);
+          col.rgb += downscaledCol.rgb;
         
           // Bloom
           #ifdef ENABLE_BLOOM

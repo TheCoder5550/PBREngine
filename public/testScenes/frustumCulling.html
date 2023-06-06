@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+  <title>Frustum culling test</title>
+  <!-- <meta name='viewport' content='width=device-width, initial-scale=1'> -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;400&display=swap" rel="stylesheet">
+
+  <script src="../Stats.js"></script>
+
+  <style>
+
+    :root {
+      font-family: 'Oswald', sans-serif;
+    }
+
+    body {
+      background: white;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+    }
+
+  </style>
+</head>
+<body>
+  <script type="module">
+
+    import * as ENUMS from "../engine/constants.mjs";
+    import Renderer, { GameObject, Scene, Light } from "../engine/renderer.mjs";
+    import OrbitCamera from "../engine/orbitCamera.mjs";
+    import Vector from "../engine/vector.mjs";
+    import Quaternion from "../engine/quaternion.mjs";
+    import Matrix from "../engine/matrix.mjs";
+    import { AABB } from "../engine/physics.mjs";
+
+    var stats = new Stats();
+    document.body.appendChild(stats.dom);
+
+    var renderer;
+    var scene;
+    var camera;
+
+    (async function() {
+      renderer = new Renderer({ 
+        debug: true,
+        path: "../",
+        renderScale: 1,
+        shadowResolution: 2048,
+        renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
+      });
+
+      scene = new Scene();
+      renderer.add(scene);
+
+      scene.environmentIntensity = 0.5;
+      scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(5200, 20));
+      scene.sunDirection.z *= -1;
+      scene.postprocessing.vignette.amount = 0.3;
+      scene.postprocessing.vignette.falloff = 0.3;
+      scene.postprocessing.motionBlurStrength = 0.2;
+      scene.bloom.intensity = 0.01;
+
+      await scene.loadEnvironment({
+        hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k_precomputed",
+        // res: 512
+      });
+
+      camera = new OrbitCamera(renderer, {near: 0.1, far: 300, fov: 30});
+      camera.distance = 4;
+
+      for (var x = -20; x <= 20; x++) {
+        for (var z = -20; z <= 20; z++) {
+          var shape = scene.add(renderer.CreateShape(ENUMS.SHAPES.CUBE));
+          shape.transform.position = new Vector(x, 0, z);
+          shape.transform.scale = Vector.fill(0.1);
+        }
+      }
+
+      // var shape = scene.add(renderer.CreateShape(ENUMS.SHAPES.CUBE));
+      // shape.transform.scale = Vector.fill(0.1);
+      
+      window.camera = camera;
+      window.scene = scene;
+
+      renderer.on("renderloop", function(frameTime, totalTime) {
+        renderer.update(frameTime);
+        renderer.render(camera.camera);
+
+        stats.update();
+      });
+
+    })();
+
+  </script>
+</body>
+</html>

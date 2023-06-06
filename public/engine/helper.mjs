@@ -1,5 +1,13 @@
 // Math
 
+function smoothstep(x, edge0, edge1) {
+  if (x < edge0) return 0;
+  if (x >= edge1) return 1;
+
+  x = (x - edge0) / (edge1 - edge0);
+  return x * x * (3 - 2 * x);
+}
+
 function wrap(x, m) {
   return (x % m + m) % m;
 }
@@ -251,6 +259,7 @@ function downloadURL(url, name = "download") {
 }
 
 export {
+  smoothstep,
   wrap,
   getAngleBetween,
   getDistanceBetween,

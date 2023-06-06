@@ -23,6 +23,10 @@ function updateBulletTrails(dt = 1 / 60) {
 }
 
 function Weapon(settings = {}) {
+  this.player = null;
+  this.audioHandler = settings.audioHandler;
+  let audioContext = this.audioHandler.getAudioContext();
+
   this.reloadTime = def(settings.reloadTime, 1000);
   this.sequentialReloading = def(settings.sequentialReloading, false);
   this.roundsPerSecond = def(settings.roundsPerSecond, 7);
@@ -33,36 +37,34 @@ function Weapon(settings = {}) {
   this.fireSoundPlayers = [];
   this.readyFireSoundPlayers = [];
 
-  var bufferSize = def(settings.fireSoundBufferSize, 20);
+  var bufferSize = def(settings.fireSoundBufferSize, 10);
   fetch(def(settings.fireSound, "../assets/sound/drumGun2.wav"))
     .then(response => response.blob())
     .then(blob => {
-      var fileBlob = URL.createObjectURL(blob);
+      let fileBlob = URL.createObjectURL(blob);
 
       for (var i = 0; i < bufferSize; i++) {
-        var audio = new Audio(fileBlob);
-        // audio.playbackRate = 0.8 + Math.random() * 0.4;
-    
+        let audio = new Audio(fileBlob);
         var audioSource = audioContext.createMediaElementSource(audio);
-        audioSource.connect(masterVolume);
+        this.audioHandler.connect(audioSource);
     
         this.fireSoundPlayers.push(audio);
         this.readyFireSoundPlayers.push(audio);
       }
-  });
+    });
 
   this.dryFireSoundPlayer = new Audio(def(settings.dryFireSound, "../assets/sound/dryFire.wav"));
-  audioContext.createMediaElementSource(this.dryFireSoundPlayer).connect(masterVolume);
+  this.audioHandler.connect(audioContext.createMediaElementSource(this.dryFireSoundPlayer));
 
   this.reloadSoundPlayer = new Audio(def(settings.reloadSound, "../assets/sound/reload.wav"));
-  this.reloadSoundPlayer.addEventListener('loadedmetadata', e => {
+  this.reloadSoundPlayer.addEventListener("loadedmetadata", () => {
     this.reloadSoundPlayer.playbackRate =  (this.reloadSoundPlayer.duration * 1000) / this.reloadTime;
   });
-  audioContext.createMediaElementSource(this.reloadSoundPlayer).connect(masterVolume);
+  this.audioHandler.connect(audioContext.createMediaElementSource(this.reloadSoundPlayer));
 
   if (settings.doneReloadingSound) {
     this.doneReloadingSoundPlayer = new Audio(settings.doneReloadingSound);
-    audioContext.createMediaElementSource(this.doneReloadingSoundPlayer).connect(masterVolume);
+    this.audioHandler.connect(audioContext.createMediaElementSource(this.doneReloadingSoundPlayer));
   }
 
   var reloadTimeouts = [];
@@ -147,6 +149,11 @@ function Weapon(settings = {}) {
 
   // this.bulletTrails = [];
 
+  let defaultWeaponFov = 32;
+  let targetWeaponFov = defaultWeaponFov;
+  let currentWeaponFov = defaultWeaponFov;
+
+  this.emitHitParticles = null;
   this.onFire = () => {};
 
   var playDoneReloading = () => {
@@ -158,7 +165,7 @@ function Weapon(settings = {}) {
 
   this.playAnimation = function(name) {
     this.weaponObject.animationController?.play(name);
-  }
+  };
 
   this.getSpeed = function() {
     if (this.mode == this.GunModes.ADS) {
@@ -166,11 +173,11 @@ function Weapon(settings = {}) {
     }
 
     return 1;
-  }
+  };
 
   this.getCurrentSensitivity = function() {
     return (this.mode == this.GunModes.ADS ? this.scope.ADSMouseSensitivity : 1);
-  }
+  };
 
   this.fire = function() {
     window.muzzleFlashEnabled = false;
@@ -217,7 +224,7 @@ function Weapon(settings = {}) {
           }, 10);
         }*/
 
-        // Vector.addTo(player.velocity, Vector.multiply(player.forward, -1));
+        // Vector.addTo(this.player.velocity, Vector.multiply(this.player.forward, -1));
 
         this.playAnimation("Fire");
 
@@ -225,8 +232,8 @@ function Weapon(settings = {}) {
         if (this.mode == this.GunModes.AIM) currentSpread *= this.aimBulletSpread;
         if (this.mode == this.GunModes.ADS) currentSpread *= lerp(this.ADSBulletSpread, 1, adsT);
 
-        var rot = player.getHeadRotation();
-        var origin = player.getHeadPos();//this.weaponObject.getChild("MuzzleOffset", true).transform.worldPosition;
+        var rot = this.player.getHeadRotation();
+        var origin = this.player.getHeadPos();//this.weaponObject.getChild("MuzzleOffset", true).transform.worldPosition;
 
         for (var i = 0; i < this.bulletsPerShot; i++) {
           var direction = Matrix.transformVector(Matrix.transform([
@@ -238,8 +245,9 @@ function Weapon(settings = {}) {
           ]), {x: 0, y: 0, z: -1});
 
           // Create trail
-          var trailPos = this.muzzleObject ? Matrix.getPosition(this.muzzleObject.transform.getWorldMatrix()) : player.position;
-          var trailVel = Vector.add(Vector.multiply(direction, 50), player.velocity);
+          let trailSpeed = 20;
+          var trailPos = this.muzzleObject ? Matrix.getPosition(this.muzzleObject.transform.getWorldMatrix()) : this.player.position;
+          var trailVel = Vector.multiply(direction, trailSpeed);//Vector.add(Vector.multiply(direction, trailSpeed), this.player.velocity);
           var trail = new BulletTrail(trailPos, trailVel, direction);
           bulletTrails.push(trail);
 
@@ -256,12 +264,13 @@ function Weapon(settings = {}) {
           }
 
           if (hit && hit.point) {
-            trail.health = hit.distance / 50;
+            trail.health = hit.distance / trailSpeed + 1;
 
             // Create bullethole
             var mat =  Matrix.lookAt(Vector.add(hit.point, Vector.multiply(hit.normal, 0.0001 + Math.random() * 0.005)), Vector.add(hit.point, hit.normal), Vector.normalize({x: 1, y: 0.1, z: 0}));
             Matrix.transform([
-              ["scale", Vector.fill(0.05)]
+              ["scale", Vector.fill(0.05)],
+              ["rz", Math.random() * 2 * Math.PI]
             ], mat);
 
             if (bulletHoles) {
@@ -274,16 +283,10 @@ function Weapon(settings = {}) {
               })(currentInstance), 15000);
             }
 
-            // Sparks
-            let [ tangent, bitangent ] = Vector.formOrthogonalBasis(hit.normal);
-            let basis = Matrix.basis(tangent, bitangent, hit.normal);
-   
-            sparks.emitVelocity = () => {
-              let v = new Vector((Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, 2 * Math.random());
-              return Matrix.transformVector(basis, v);
-            };
-            sparks.emitPosition = (dst) => Vector.set(dst, hit.point);
-            sparks.emit(10);
+            // Hit particles
+            if (typeof this.emitHitParticles === "function") {
+              this.emitHitParticles(hit);
+            }
           }
         }
     
@@ -313,13 +316,17 @@ function Weapon(settings = {}) {
     }
 
     return false;
-  }
+  };
 
   this.reload = function() {
     if (!this.isReloading && this.roundsInMag != this.magSize) {
       this.unADS();
       this.isReloading = true;
       this.reloadAnimationTime = 0;
+
+      // if (this.weaponObject) {
+      //   this.weaponObject.visible = false;
+      // }
   
       if (this.sequentialReloading) {
         this.seqReload();
@@ -335,10 +342,15 @@ function Weapon(settings = {}) {
 
           this.roundsInMag = this.magSize;
           this.isReloading = false;
+
+          // if (this.weaponObject) {
+          //   this.weaponObject.visible = true;
+          // }
+
         }, this.reloadTime);
       }
     }
-  }
+  };
 
   this.seqReload = () => {
     if (this.roundsInMag < this.magSize) {
@@ -357,7 +369,7 @@ function Weapon(settings = {}) {
       playDoneReloading();
       this.isReloading = false;
     }
-  }
+  };
 
   this.cancelReload = function() {
     if (this.isReloading) {
@@ -366,36 +378,38 @@ function Weapon(settings = {}) {
       }
       reloadTimeouts = [];
 
+      if (this.weaponObject) {
+        this.weaponObject.visible = true;
+      }
+
       this.isReloading = false;
       this.reloadAnimationTime = 1;
 
       this.reloadSoundPlayer.pause();
     }
-  }
+  };
 
   this.ADS = function() {
     if (this.mode != this.GunModes.ADS && !this.isReloading) {
       this.mode = this.GunModes.ADS;
-      targetFov = this.scope.ADSFOV;
       targetWeaponFov = this.scope.ADSWeaponFOV;
 
       if (this.scope.sniperScope && this.weaponObject) {
         this.weaponObject.visible = false;
       }
     }
-  }
+  };
 
   this.unADS = function() {
     if (this.mode == this.GunModes.ADS) {
       this.mode = this.GunModes.DEFAULT;
-      targetFov = defaultFov;
       targetWeaponFov = defaultWeaponFov;
 
       if (this.scope.sniperScope && this.weaponObject) {
         this.weaponObject.visible = true;
       }
     }
-  }
+  };
 
   // this.getWeaponOffset = function() {
   //   if (this.mode == this.GunModes.ADS) {
@@ -431,7 +445,7 @@ function Weapon(settings = {}) {
       //   ["rx", this.swayRotation.x],
       //   ["ry", this.swayRotation.y],
       //   ["scale", this.weaponObject.scale]
-      // ], player.getHandMatrix(adsT));
+      // ], this.player.getHandMatrix(adsT));
 
       // var baseMatrix = Matrix.transform([
       //   ["translate", Vector.lerp(this.weaponModelADSOffset, this.weaponModelOffset, adsT)],
@@ -440,19 +454,19 @@ function Weapon(settings = {}) {
       //   // ["ry", this.modelRecoilRotation.y],
       //   // ["rx", this.modelRecoilRotation.x],
       //   ["scale", this.weaponObject.scale]
-      // ], player.getHandMatrix(adsT));
+      // ], this.player.getHandMatrix(adsT));
 
-      var rot = player.handRotation;//player.getHeadRotation();
+      var rot = this.player.handRotation;//this.player.getHeadRotation();
       var ops = [
-        ["translate", player.getHeadPos()],
+        ["translate", this.player.getHeadPos()],
         ["ry", -rot.y],
         ["rx", -rot.x],
         // ["rz", -rot.z], // (When commented) Only spin head on z
-        ["translate", Vector.multiply(player.handOffset, adsT)],
-        ["translate", Vector.multiply(new Vector(Math.cos(player.walkTime * 0.5) * 0.005, Math.pow(Math.sin(player.walkTime * 0.5), 2) * 0.01, 0), adsT)], // Weapon bobbing
-        ["rz", player.handRotOffset.z * adsT],
-        ["ry", player.handRotOffset.y * adsT],
-        ["rx", player.handRotOffset.x * adsT],
+        ["translate", Vector.multiply(this.player.handOffset, adsT)],
+        ["translate", Vector.multiply(new Vector(Math.cos(this.player.walkTime * 0.5) * 0.005, Math.pow(Math.sin(this.player.walkTime * 0.5), 2) * 0.01, 0), adsT)], // Weapon bobbing
+        ["rz", this.player.handRotOffset.z * adsT],
+        ["ry", this.player.handRotOffset.y * adsT],
+        ["rx", this.player.handRotOffset.x * adsT],
 
         ["translate", Vector.lerp(this.weaponModelADSOffset, this.weaponModelOffset, adsT)],
         // ["translate", this.modelRecoil.translation],
@@ -495,11 +509,11 @@ function Weapon(settings = {}) {
 
       this.weaponObject.transform.matrix = baseMatrix;
     }
-  }
+  };
 
   this.fixedUpdate = function(dt) {
-    this.swayTime += dt * Vector.length({x: player.velocity.x, y: player.velocity.z}) / 3;
-    currentPlayerVelYOffset += (player.velocity.y - currentPlayerVelYOffset) * 0.2;
+    this.swayTime += dt * Vector.length({x: this.player.velocity.x, y: this.player.velocity.z}) / 3;
+    currentPlayerVelYOffset += (this.player.velocity.y - currentPlayerVelYOffset) * 0.2;
 
     adsT += -(adsT - (this.mode == this.GunModes.ADS ? 0 : 1)) * this.ADSSpeed;
 
@@ -519,6 +533,9 @@ function Weapon(settings = {}) {
     Vector.addTo(this.modelRecoil.translation, Vector.multiply(this.modelRecoil.velocity, dt));
     Vector.addTo(this.modelRecoil.rotation, Vector.multiply(this.modelRecoil.angularVelocity, dt));
   
+    // Lerp weapon camera FOV
+    currentWeaponFov += (targetWeaponFov - currentWeaponFov) * this.ADSSpeed;
+
     /*for (var casing of this.shellCasings) {
       casing.update(dt);
     }*/
@@ -528,7 +545,37 @@ function Weapon(settings = {}) {
         bullet.update(dt / 10);
       }
     }*/
-  }
+  };
+
+  this.unequip = function() {
+    targetWeaponFov = defaultWeaponFov;
+    currentWeaponFov = defaultWeaponFov;
+
+    clearTimeout(this.fireTimeout);
+    this.isFiring = false;
+    this.cancelReload();
+    this.mode = this.GunModes.DEFAULT;
+
+    this.recoilOffset = Vector.zero();
+    this.recoilOffsetTarget = Vector.zero();
+
+    if (this.weaponObject) {
+      this.weaponObject.visible = false;
+    }
+  };
+
+  this.equip = function() {
+    this.reloadAnimationTime = 1;
+    this.fireAnimationTime = 1;
+
+    if (this.weaponObject) {
+      this.weaponObject.visible = true;
+    }
+  };
+
+  this.getWeaponFov = function() {
+    return currentWeaponFov;
+  };
 }
 
 function Scope(settings = {}) {
@@ -548,7 +595,7 @@ function BulletTrail(pos, velocity, lookDirection) {
 
   Vector.addTo(this.position, Vector.multiply(this.velocity, 0.005));
 
-  this.health = 1;
+  this.health = 50;
 
   var matrix = Matrix.identity();
   this.instance = null;
@@ -571,7 +618,8 @@ function BulletTrail(pos, velocity, lookDirection) {
     var lookDir = Vector.projectOnPlane(Vector.subtract(cameraPos, this.position), this.direction);
 
     Matrix.lookAt(this.position, Vector.add(this.position, lookDir), this.direction, matrix);
-    Matrix.transform([["scale", new Vector(0.2, 1.5, 1)]], matrix);
+    Matrix.transform([["scale", new Vector(1, 1, 1)]], matrix);
+    // Matrix.transform([["scale", new Vector(0.2, 1.5, 1)]], matrix);
 
     this.bulletTrailObject.meshRenderer.updateInstance(this.instance, matrix);
   }

@@ -156,13 +156,13 @@ function Scene(name) {
   };
 
   this.updateLights = function() {
-    var allLights = [];
+    lights = [];
 
     this.root.traverseCondition(g => {
-      var lights = g.findComponents("Light");
-      if (lights) {
-        for (var light of lights) {
-          allLights.push({
+      let comps = g.getComponents();
+      for (var light of comps) {
+        if (light.constructor.name == "Light") {
+          lights.push({
             type: light.type,
             position: Matrix.getPosition(g.transform.worldMatrix),
             direction: Matrix.getForward(g.transform.worldMatrix),
@@ -172,8 +172,6 @@ function Scene(name) {
         }
       }
     }, child => child.active && child.visible);
-
-    lights = allLights;
 
     // var uboData = this.renderer.programContainers.lit.uniformBuffers["sharedPerScene"];
     // var gl = this.renderer.gl;

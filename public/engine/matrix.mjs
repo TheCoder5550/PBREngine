@@ -73,12 +73,16 @@ export default class Matrix {
 
   static copy(m, dst) {
     dst = dst || new Float32Array(16);
-    _fillFloat32Array(dst,
-      m[0], m[1], m[2], m[3],
-      m[4], m[5], m[6], m[7],
-      m[8], m[9], m[10], m[11],
-      m[12], m[13], m[14], m[15]
-    );
+
+    // _fillFloat32Array(dst,
+    //   m[0], m[1], m[2], m[3],
+    //   m[4], m[5], m[6], m[7],
+    //   m[8], m[9], m[10], m[11],
+    //   m[12], m[13], m[14], m[15]
+    // );
+
+    // bruh might be faster
+    dst.set(m);
 
     return dst;
   }
@@ -100,6 +104,27 @@ export default class Matrix {
            isNaN(m[13]) ||
            isNaN(m[14]) ||
            isNaN(m[15]);
+  }
+
+  static equal(a, b, epsilon = 1e-6) {
+    return (
+      Math.abs(a[0] - b[0]) < epsilon &&
+      Math.abs(a[1] - b[1]) < epsilon &&
+      Math.abs(a[2] - b[2]) < epsilon &&
+      Math.abs(a[3] - b[3]) < epsilon &&
+      Math.abs(a[4] - b[4]) < epsilon &&
+      Math.abs(a[5] - b[5]) < epsilon &&
+      Math.abs(a[6] - b[6]) < epsilon &&
+      Math.abs(a[7] - b[7]) < epsilon &&
+      Math.abs(a[8] - b[8]) < epsilon &&
+      Math.abs(a[9] - b[9]) < epsilon &&
+      Math.abs(a[10] - b[10]) < epsilon &&
+      Math.abs(a[11] - b[11]) < epsilon &&
+      Math.abs(a[12] - b[12]) < epsilon &&
+      Math.abs(a[13] - b[13]) < epsilon &&
+      Math.abs(a[14] - b[14]) < epsilon &&
+      Math.abs(a[15] - b[15]) < epsilon
+    );
   }
 
   static add(a, b, dst) {

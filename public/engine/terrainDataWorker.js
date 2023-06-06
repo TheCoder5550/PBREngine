@@ -16,10 +16,10 @@ self.onmessage = function(e) {
       // return Math.pow(LayeredNoise(i * noiseScale, j * noiseScale, 4), 2) * heightFactor;// * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
       // // return perlin.noise(i * noiseScale, j * noiseScale) * scale * heightFactor * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
     
-      var power = 1.5;
+      var power = 2.5;
       var noiseLayers = 2;
       var noiseScale = 0.001;
-      var height = 100;
+      var height = 200;
 
       var heightFalloff = 1;//1 - clamp((Vector.length(new Vector(i, j)) - 400) * 0.005, 0, 1);
       var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * height * heightFalloff;

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@48,400,0,0" />
+  
+  <title>PBR Model Viewer</title>
+
+  <script src="../Stats.js"></script>
+  <script src="main.js" type="module"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="modelView">
+    <canvas id="mainCanvas"></canvas>
+    <div id="dropZone">
+      <input type="file" accept=".glb" class="hidden">
+      <div class="dropPrompt noTextSelect">
+        <span class="material-symbols-outlined">upload</span>
+        <span>Drag and drop .glb file</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

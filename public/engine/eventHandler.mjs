@@ -16,7 +16,7 @@ function EventHandler() {
     }
   };
 
-  this.removeEvent = function(name, func) {
+  this.removeEvent = this.off = function(name, func) {
     var event = this.events[name];
     if (!event) return;
 

@@ -39,6 +39,7 @@ import { NewLitMaterial, NewMaterial } from "./material.mjs";
 
 import * as litSource from "../assets/shaders/built-in/lit.glsl.mjs";
 import * as unlitSource from "../assets/shaders/built-in/unlit.glsl.mjs";
+import * as billboardSource from "../assets/shaders/built-in/billboard.glsl.mjs";
 import * as particleSource from "../assets/shaders/built-in/particle.glsl.mjs";
 import * as skyboxSource from "../assets/shaders/built-in/skybox.glsl.mjs";
 import * as shadowSource from "../assets/shaders/built-in/shadow.glsl.mjs";
@@ -125,6 +126,7 @@ function Renderer(settings = {}) {
     get unlit() { return _getProgramContainer("unlit", unlitSource); },
     get unlitInstanced() { return _getProgramContainer("unlitInstanced", unlitSource); },
     get particle() { return _getProgramContainer("particle", particleSource); },
+    get billboard() { return _getProgramContainer("billboard", billboardSource); },
   };
 
   var currentProgram = null;
@@ -169,7 +171,7 @@ function Renderer(settings = {}) {
   this.renderpipeline = null;
 
   // Stats
-  // var drawCalls = 0;
+  let drawCalls = 0;
 
   /*
 
@@ -216,25 +218,25 @@ function Renderer(settings = {}) {
 
     console.log("Using Webgl version " + this.version);
 
-    // var logDrawCall = function() {
-    //   drawCalls++;
-    // }
+    var logDrawCall = function() {
+      drawCalls++;
+    };
 
-    // extendFunction(gl, "drawElements", logDrawCall);
-    // extendFunction(gl, "drawArrays", logDrawCall);
-    // extendFunction(gl, "drawElementsInstanced", logDrawCall);
-    // extendFunction(gl, "drawArraysInstanced", logDrawCall);
+    extendFunction(gl, "drawElements", logDrawCall);
+    extendFunction(gl, "drawArrays", logDrawCall);
+    extendFunction(gl, "drawElementsInstanced", logDrawCall);
+    extendFunction(gl, "drawArraysInstanced", logDrawCall);
 
-    // function extendFunction(parent, func, extFunc) {
-    //   var oldF = parent[func];
-    //   parent[func] = extendF;
-    //   function extendF() {
-    //     oldF.call(parent, ...arguments);
-    //     extFunc(...arguments);
-    //   }
+    function extendFunction(parent, func, extFunc) {
+      var oldF = parent[func];
+      parent[func] = extendF;
+      function extendF() {
+        oldF.call(parent, ...arguments);
+        extFunc(...arguments);
+      }
       
-    //   return oldF;
-    // }
+      return oldF;
+    }
 
     this.canvas.addEventListener("webglcontextlost", () => {
       console.error("WebGL context lost!");
@@ -392,16 +394,8 @@ function Renderer(settings = {}) {
     this.skybox = new Skybox(this.programContainers.skybox);
     logGLError("Skybox");
 
-    // bruh, should this be kept? i dont know :)
-    // if (!settings.disableLitBillboard) {
-    //   var litBillboard = await renderer.createProgramFromFile(this.path + `assets/shaders/built-in/webgl${renderer.version}/billboard/vertexBillboard.glsl`, this.path + `assets/shaders/built-in/webgl${renderer.version}/billboard/fragment.glsl`);
-    //   this.programContainers.litBillboard = new ProgramContainer(litBillboard);
-    // }
-    logGLError("Programs");
-
     this.splitsumTexture = this.loadSplitsum(this.path + "assets/pbr/splitsum.png");
-
-    logGLError("Missed error");
+    logGLError("Splitsum");
 
     lastUpdate = performance.now();
     requestAnimationFrame(loop);
@@ -411,11 +405,14 @@ function Renderer(settings = {}) {
     var ft = getFrameTime();
     time += ft;
 
-    // drawCalls = 0;
+    drawCalls = 0;
 
     renderer.eventHandler.fireEvent("renderloop", ft, time, frameNumber);
 
-    // document.querySelector("#debug_drawCalls").innerText = drawCalls;
+    let drawCallsSpan = document.querySelector("#debug_drawCalls");
+    if (drawCallsSpan) {
+      drawCallsSpan.textContent = drawCalls;
+    }
 
     frameNumber++;
     requestAnimationFrame(loop);
@@ -476,11 +473,12 @@ function Renderer(settings = {}) {
   }
 
   this.update = function(frameTime) {
-    this.scenes[this.currentScene].update(frameTime);
+    let scene = this.getActiveScene();
+    scene.update(frameTime);
   };
 
   this.render = function(camera, secondaryCameras = null, settings = {}) {
-    var scene = this.scenes[this.currentScene];
+    let scene = this.getActiveScene();
 
     this.postprocessing.exposure.value = scene.postprocessing.exposure;
     this.postprocessing.gamma.value = scene.postprocessing.gamma;
@@ -494,187 +492,6 @@ function Renderer(settings = {}) {
     this.bloom.setProperties(scene.bloom);
 
     this.renderpipeline.render(camera, secondaryCameras, scene, settings);
-    return;
-
-
-    // gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    // gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-    // gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-    // var scene = this.scenes[this.currentScene];
-    // if (scene.skyboxVisible) {
-    //   this.skybox.render(camera, scene.skyboxCubemap);
-    // }
-
-    // gl.activeTexture(gl.TEXTURE0 + diffuseCubemapUnit);
-    // gl.bindTexture(gl.TEXTURE_CUBE_MAP, scene.diffuseCubemap);
-
-    // gl.activeTexture(gl.TEXTURE0 + specularCubemapUnit);
-    // gl.bindTexture(gl.TEXTURE_CUBE_MAP, scene.specularCubemap);
-
-    // gl.activeTexture(gl.TEXTURE0 + splitsumUnit);
-    // gl.bindTexture(gl.TEXTURE_2D, this.splitsumTexture);
-
-    // // bruh, magic?
-    // gl.colorMask(true, true, true, false);
-
-    // gl.disable(gl.BLEND);
-    // scene.render(camera, { renderPass: ENUMS.RENDERPASS.OPAQUE });
-
-    // gl.enable(gl.BLEND);
-    // gl.depthMask(false);
-    // scene.render(camera, { renderPass: ENUMS.RENDERPASS.ALPHA });
-    // gl.depthMask(true);
-
-    // bindVertexArray(null);
-
-    // gl.colorMask(true, true, true, true);
-
-    // return;
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // var scene = this.scenes[this.currentScene];
-
-    // // scene.updateUniformBuffers(
-    // //   camera.projectionMatrix,
-    // //   camera.viewMatrix,
-    // //   camera.inverseViewMatrix
-    // // );
-
-    // // Shadows
-    // if (this.shadowCascades && _settings.enableShadows && (scene.sunIntensity.x != 0 || scene.sunIntensity.y != 0 || scene.sunIntensity.z != 0) && settings.shadows !== false) {
-    //   this.shadowCascades.renderShadowmaps(camera.transform.position);
-    // }
-
-    // scene.updateUniformBuffers(
-    //   camera.projectionMatrix,
-    //   camera.viewMatrix,
-    //   camera.inverseViewMatrix
-    // );
-
-    // // Bind post processing framebuffer
-    // if (this.postprocessing && _settings.enablePostProcessing) {
-    //   this.postprocessing.bindFramebuffer();
-    // }
-    // else {
-    //   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    // }
-
-    // // Clear framebuffer/screen
-    // if (renderer.version > 1) {
-    //   gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
-    // }
-    // gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-    // gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-    // // Skybox
-    // gl.disable(gl.BLEND);
-    // if (scene.skyboxVisible) {
-    //   this.skybox.render(camera, scene.skyboxCubemap);
-    // }
-    // // gl.enable(gl.BLEND);
-
-    // // bruh lit sometimes has unused sampler2D (ex occlusionTexture)
-    // //      with default location 0 so TEXTURE0 must be TEXTURE_2D
-    // //      (what about unused sampler2D and samplerCube?)
-
-    // // gl.activeTexture(gl.TEXTURE0);
-    // // gl.bindTexture(gl.TEXTURE_2D, this.blankTexture);
-    // // gl.bindTexture(gl.TEXTURE_2D, null);
-    // // gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
-
-    // gl.activeTexture(gl.TEXTURE0 + diffuseCubemapUnit);
-    // gl.bindTexture(gl.TEXTURE_CUBE_MAP, scene.diffuseCubemap);
-
-    // gl.activeTexture(gl.TEXTURE0 + specularCubemapUnit);
-    // gl.bindTexture(gl.TEXTURE_CUBE_MAP, scene.specularCubemap);
-
-    // gl.activeTexture(gl.TEXTURE0 + splitsumUnit);
-    // gl.bindTexture(gl.TEXTURE_2D, this.splitsumTexture);
-
-    // // bruh, magic?
-    // if (currentClearColor[3] == 1) {
-    //   gl.colorMask(true, true, true, false);
-    // }
-
-    // gl.disable(gl.BLEND);
-    // scene.render(camera, { renderPass: ENUMS.RENDERPASS.OPAQUE });
-    // this.gizmos.gameObject.render(camera);
-
-    // gl.enable(gl.BLEND);
-    // gl.depthMask(false);
-    // scene.render(camera, { renderPass: ENUMS.RENDERPASS.ALPHA });
-    // gl.depthMask(true);
-
-    // if (renderer.version > 1) {
-    //   gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
-    // }
-
-    // if (secondaryCameras) {
-    //   for (var cam of secondaryCameras) {
-    //     scene.updateUniformBuffers(
-    //       cam.projectionMatrix,
-    //       cam.viewMatrix,
-    //       cam.inverseViewMatrix
-    //     );
-
-    //     if (cam.renderTexture) {
-    //       cam.renderTexture.bind();
-    //       gl.viewport(0, 0, cam.renderTexture.width, cam.renderTexture.height);
-    //       gl.clear(cam.renderTexture.clearFlags);
-    //     }
-    //     else {
-    //       // Bind post processing framebuffer
-    //       if (this.postprocessing && _settings.enablePostProcessing) {
-    //         this.postprocessing.bindFramebuffer();
-    //       }
-    //       else {
-    //         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    //       }
-
-    //       gl.clear(gl.DEPTH_BUFFER_BIT);
-    //     }
-
-    //     scene.render(cam, { renderPass: ENUMS.RENDERPASS.OPAQUE, materialOverride: new Material(renderer.programContainers.shadow) });
-
-    //     gl.depthMask(false);
-    //     scene.render(cam, { renderPass: ENUMS.RENDERPASS.ALPHA });
-    //     gl.depthMask(true);
-    //   }
-    // }
-
-    // gl.colorMask(true, true, true, true);
-
-    // // Godrays
-    // if (this.godrays) {
-    //   this.godrays.render(scene, camera);
-    // }
-
-    // bindVertexArray(null);
-
-    // // Blit anti aliasing texture
-    // if (this.postprocessing && _settings.enablePostProcessing) {
-    //   this.postprocessing.blitAA();
-    // }
-
-    // // Bloom
-    // if (this.bloom && _settings.enableBloom) this.bloom.render();
-
-    // // Post processing
-    // if (this.postprocessing && _settings.enablePostProcessing) this.postprocessing.render();
-  
-    // camera.prevViewMatrix = Matrix.copy(camera.viewMatrix);
   };
 
   Object.defineProperty(this, "aspect", {
@@ -694,15 +511,13 @@ function Renderer(settings = {}) {
     this.eventHandler.addEvent(event, func);
   };
 
-  this.activeScene = function() { // bruh, bad name. Function below is better
-    return this.scenes[this.currentScene];
-  };
-
   this.getActiveScene = function() {
     return this.scenes[this.currentScene];
   };
 
   this.setActiveScene = function(scene) {
+    this.shadowCascades.clearShadowmaps();
+
     if (typeof scene == "number") {
       if (scene < 0 || scene >= this.scenes.length) {
         throw new Error("Scene index outside valid range (0-" + (this.scenes.length - 1) + "): " + scene);
@@ -1980,7 +1795,7 @@ function Renderer(settings = {}) {
       // Discard new point if too close to last point
       var distSqr = Vector.distanceSqr(lastTrailData.position, _currentEmitPos);
       if (distSqr < this.minDistance * this.minDistance) {
-        return;
+        return false;
       }
 
       // Calculate trail tangent
@@ -2012,17 +1827,29 @@ function Renderer(settings = {}) {
 
       indicesUsed++;
       indicesUsed = Math.min(indicesUsed, this.maxVertices);
+
+      return true;
+    };
+
+    const shiftLeft = (collection, steps = 1) => {
+      collection.set(collection.subarray(steps));
+      collection.fill(0, -steps);
+      return collection;
     };
 
     this.update = function(/*dt*/) {
-      addSegment();
+      if (addSegment()) {
+        shiftLeft(vertices, 6);
+        shiftLeft(uvs, 4);
+        shiftLeft(alphas, 2);
 
-      for (let i = 0; i < this.maxVertices; i++) {
-        let currentDataIndex = wrap(trailDataIndex - indicesUsed + Math.min(i, indicesUsed - 1), trailData.length);
+        let currentDataIndex = wrap(trailDataIndex - 1, trailData.length);
         let td = trailData[currentDataIndex];
 
         let pos = td.position;
         let normal = td.normal;
+        
+        let i = this.maxVertices - 1;
 
         // Calculate edge vertices of trail
         vertices[i * 6 + 0] = pos.x + normal.x;
@@ -2040,31 +1867,103 @@ function Renderer(settings = {}) {
         uvs[i * 4 + 2] = u;
         uvs[i * 4 + 3] = 0;
 
-        let alpha = td.alpha;
-        alpha = clamp(alpha, 0, 1);
-        alpha *= i / (indicesUsed - 1);
+        // let alpha = td.alpha;
+        // alpha = clamp(alpha, 0, 1);
+        // // alpha *= i / (indicesUsed - 1);
 
-        alphas[i * 2 + 0] = alpha;
-        alphas[i * 2 + 1] = alpha;
+        // alphas[i * 2 + 0] = alpha;
+        // alphas[i * 2 + 1] = alpha;
+
+        for (let i = this.maxVertices - 1; i >= 0; i--) {
+          let currentDataIndex = wrap(trailDataIndex - this.maxVertices + i, trailData.length);
+          let td = trailData[currentDataIndex];
+
+          let alpha = td.alpha;
+          alpha = clamp(alpha, 0, 1);
+          alpha *= i / (this.maxVertices - 1);
+
+          let j = i;
+          alphas[j * 2 + 0] = alpha;
+          alphas[j * 2 + 1] = alpha;
+        }
       }
+
+      // addSegment();
+
+      // for (let i = 0; i < this.maxVertices; i++) {
+      //   let currentDataIndex = wrap(trailDataIndex - indicesUsed + Math.min(i, indicesUsed - 1), trailData.length);
+      //   let td = trailData[currentDataIndex];
+
+      //   let pos = td.position;
+      //   let normal = td.normal;
+
+      //   // Calculate edge vertices of trail
+      //   vertices[i * 6 + 0] = pos.x + normal.x;
+      //   vertices[i * 6 + 1] = pos.y + normal.y;
+      //   vertices[i * 6 + 2] = pos.z + normal.z;
+
+      //   vertices[i * 6 + 3] = pos.x - normal.x;
+      //   vertices[i * 6 + 4] = pos.y - normal.y;
+      //   vertices[i * 6 + 5] = pos.z - normal.z;
+
+      //   let dist = td.distance;
+      //   let u = this.uvOriginAtStart ? dist : uvOffset - dist;
+      //   uvs[i * 4 + 0] = u;
+      //   uvs[i * 4 + 1] = 1;
+      //   uvs[i * 4 + 2] = u;
+      //   uvs[i * 4 + 3] = 0;
+
+      //   let alpha = td.alpha;
+      //   alpha = clamp(alpha, 0, 1);
+      //   alpha *= i / (indicesUsed - 1);
+
+      //   alphas[i * 2 + 0] = alpha;
+      //   alphas[i * 2 + 1] = alpha;
+      // }
 
       // Update gl buffers with the new data
       // let usage = gl.DYNAMIC_DRAW; // I thought dynamic draw should be used but stream seems better according to https://www.reddit.com/r/opengl/comments/57i9cl/comment/d8s8wnq/?utm_source=share&utm_medium=web2x&context=3
       let usage = gl.STREAM_DRAW;
 
       gl.bindBuffer(gl.ARRAY_BUFFER, meshData.buffers[0].buffer);
-      gl.bufferData(gl.ARRAY_BUFFER, vertices, usage);
+      gl.bufferData(gl.ARRAY_BUFFER, vertices, usage, (this.maxVertices - indicesUsed) * 6);
 
       gl.bindBuffer(gl.ARRAY_BUFFER, meshData.buffers[1].buffer);
-      gl.bufferData(gl.ARRAY_BUFFER, uvs, usage);
+      gl.bufferData(gl.ARRAY_BUFFER, uvs, usage, (this.maxVertices - indicesUsed) * 4);
 
       gl.bindBuffer(gl.ARRAY_BUFFER, meshData.buffers[2].buffer);
-      gl.bufferData(gl.ARRAY_BUFFER, alphas, usage);
+      gl.bufferData(gl.ARRAY_BUFFER, alphas, usage, (this.maxVertices - indicesUsed) * 2);
     };
 
     this.render = function(camera, matrix, shadowPass = false, opaquePass = true) {
       if (!shadowPass) {
-        meshRenderer.render(camera, _identity, shadowPass, opaquePass);
+        if (material.programContainer === null) {
+          return;
+        }
+
+        if (material.isOpaque() != opaquePass) {
+          return;
+        }
+  
+        useProgram(material.programContainer.program);
+        meshData.bindBuffers(material.programContainer);
+
+        bindMaterial(material, {
+          camera,
+          modelMatrix: _identity,
+          prevViewMatrix: camera.prevViewMatrix,
+          shadowPass,
+        });
+
+        if (!shadowPass && renderer.shadowCascades) {
+          renderer.shadowCascades.setUniforms(material);
+        }
+  
+        setMaterialCulling(material, shadowPass);
+        // meshData.drawCall(gl.TRIANGLE_STRIP);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, indicesUsed * 2);
+
+        // meshRenderer.render(camera, _identity, shadowPass, opaquePass);
       }
     };
   }
@@ -2074,6 +1973,8 @@ function Renderer(settings = {}) {
     var system = this;
 
     this.maxParticles = maxParticles;
+
+    this.drawOnDownscaledFramebuffer = false;
 
     this.drawMode = gl.TRIANGLES;
     this.material = CreateLitMaterial({
@@ -2197,7 +2098,11 @@ function Renderer(settings = {}) {
       gl.bufferData(gl.ARRAY_BUFFER, this.colorData, gl.DYNAMIC_DRAW);
     };
 
-    this.render = function(camera, baseMatrix, shadowPass = false, opaquePass = true) {
+    this.render = function(camera, baseMatrix, shadowPass = false, opaquePass = true, prevMatrix, settings = {}) {
+      if (settings.downscaledPass != this.drawOnDownscaledFramebuffer) {
+        return;
+      }
+      
       if (!opaquePass) {
         Matrix.getPosition(camera.cameraMatrix, cameraPos); // Bruh
 
@@ -2612,6 +2517,8 @@ function Renderer(settings = {}) {
       gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, targetTextureWidth, targetTextureHeight);
       gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
     }
+
+    this.downscaledFramebuffer = createFramebuffer(targetTextureWidth / 4, targetTextureHeight / 4);
   
     var screenQuad = new ScreenQuad();
 
@@ -2688,6 +2595,11 @@ function Renderer(settings = {}) {
       targetTextureWidth = gl.canvas.width;
       targetTextureHeight = gl.canvas.height;
 
+      // Downscaled framebuffer
+      gl.bindTexture(gl.TEXTURE_2D, this.downscaledFramebuffer.colorBuffer);
+      gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, targetTextureWidth / 4, targetTextureHeight / 4, 0, gl.RGBA, getFloatTextureType(), null);
+
+      // Color buffer
       gl.bindTexture(gl.TEXTURE_2D, this.colorBuffer);
       gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, gl.canvas.width, gl.canvas.height, 0, gl.RGBA, getFloatTextureType(), null);
 
@@ -2785,9 +2697,14 @@ function Renderer(settings = {}) {
         gl.uniform1i(this.programContainer.getUniformLocation("rainTexture"), 17);
       }
 
+      // Downscaled framebuffer
+      gl.activeTexture(gl.TEXTURE18);
+      gl.bindTexture(gl.TEXTURE_2D, this.downscaledFramebuffer.colorBuffer);
+      gl.uniform1i(this.programContainer.getUniformLocation("downscaledTexture"), 18);
+
+      // Set uniforms
       gl.uniform1f(this.programContainer.getUniformLocation("iTime"), (new Date() - renderer.startTime) / 1000);
   
-      // Set uniforms
       if (gl.canvas.width !== _lastWidth || gl.canvas.height !== _lastHeight) {
         _lastWidth = gl.canvas.width;
         _lastHeight = gl.canvas.height;
@@ -3095,23 +3012,28 @@ function Renderer(settings = {}) {
     this.renderShadowmaps = function(cameraPosition) {
       frameCount++;
 
-      for (var i = 0; i < this.levels; i++) {
+      let scene = renderer.scenes[renderer.currentScene];
+
+      scene.root.traverseCondition(obj => {
+        obj.isCulled = false;
+      }, child => child.active && child.visible);
+
+      // for (let i = this.levels - 1; i >= 0; i--) {
+      for (let i = 0; i < this.levels; i++) {
         if (this.refreshRate >= 1 && frameCount % this.refreshRate !== Math.floor(i * this.refreshRate / this.levels)) {
           continue;
         }
 
-        var shadowmap = this.shadowmaps[i];
+        let shadowmap = this.shadowmaps[i];
         shadowmap.updateModelMatrix(cameraPosition);
         shadowmap.bind();
 
-        var camera = {
+        let camera = {
           projectionMatrix: shadowmap.shadowPerspeciveMatrix,
           viewMatrix: shadowmap.shadowViewMatrix,
-          inverseViewMatrix: shadowmap.shadowInverseViewMatrix
+          inverseViewMatrix: shadowmap.shadowInverseViewMatrix,
+          frustum: shadowmap.camera.frustum,
         };
-
-        // bruh
-        var scene = renderer.scenes[renderer.currentScene];
 
         scene.updateUniformBuffers(
           camera.projectionMatrix,
@@ -3119,11 +3041,20 @@ function Renderer(settings = {}) {
           camera.inverseViewMatrix
         );
 
+        scene.root.traverseCondition(obj => {
+          if (!obj.isCulled && obj.meshRenderer && (!camera.frustum || !obj.getAABB() || obj.getAABB().isInsideFrustum(camera.frustum))) {
+            obj.isCulled = false;
+          }
+          else {
+            obj.isCulled = true;
+          }
+        }, child => child.active && child.visible);
+
         scene.render(camera, {
           materialOverride: this.material,
           materialOverrideInstanced: this.materialInstanced,
           materialOverrideSkinned: this.materialSkinned,
-          renderPass: ENUMS.RENDERPASS.SHADOWS
+          renderPass: ENUMS.RENDERPASS.OPAQUE | ENUMS.RENDERPASS.SHADOWS
         });
       }
 
@@ -3145,6 +3076,13 @@ function Renderer(settings = {}) {
   function Shadowmap(res = 512, shadowRange = 20, bias = -0.006, textureNumbers = [gl.TEXTURE31, gl.TEXTURE30]) {
     this.bias = bias;
     this.textureNumbers = textureNumbers;
+
+    this.camera = new Camera({
+      type: Camera.Type.Orthographic,
+      size: shadowRange,
+      near: 1,
+      far: 300,
+    });
 
     this.shadowPerspeciveMatrix = Matrix.orthographic({size: shadowRange, near: 1, far: 300});
     this.shadowModelMatrix = Matrix.identity();
@@ -3226,6 +3164,8 @@ function Renderer(settings = {}) {
           localPos.z + 100
         )]
       ], this.shadowModelMatrix);
+
+      this.camera.transform.matrix = this.shadowModelMatrix;
       
       Matrix.inverse(this.shadowModelMatrix, this.shadowViewMatrix);
       Matrix.copy(this.shadowModelMatrix, this.shadowInverseViewMatrix);
@@ -3927,6 +3867,9 @@ function Renderer(settings = {}) {
     bindMaterialToProgram(material, material.programContainer, settings);
   };
 
+  let _sunDirectionArray = [ 0, 0, 0 ];
+  let _sunIntensityArray = [ 0, 0, 0 ];
+
   let bindMaterialToProgram = (material, programContainer, settings = {}) => {
     let scene = renderer.getActiveScene();
     let pc = programContainer;
@@ -4017,7 +3960,7 @@ function Renderer(settings = {}) {
 
     pc.setUniform("opaque", material.opaque, false);
 
-    var time = (new Date() - renderer.startTime) / 1000; // bruh
+    var time = 0;//(new Date() - renderer.startTime) / 1000; // bruh
     if (getUniformLocation("iTime")) gl.uniform1f(getUniformLocation("iTime"), time); // bruh
 
     // bruh
@@ -4034,8 +3977,8 @@ function Renderer(settings = {}) {
       if (getUniformLocation(`lights[${i}].color`))     gl.uniform3f(getUniformLocation(`lights[${i}].color`), light.color[0], light.color[1], light.color[2]);
     }
 
-    if (getUniformLocation("sunDirection") != null)         gl.uniform3fv(getUniformLocation("sunDirection"), Vector.toArray(scene.sunDirection)); // bruh gc
-    if (getUniformLocation("sunIntensity") != null)         gl.uniform3fv(getUniformLocation("sunIntensity"), Vector.toArray(scene.sunIntensity)); // ^
+    if (getUniformLocation("sunDirection") != null)         gl.uniform3fv(getUniformLocation("sunDirection"), Vector.toArray(scene.sunDirection, _sunDirectionArray));
+    if (getUniformLocation("sunIntensity") != null)         gl.uniform3fv(getUniformLocation("sunIntensity"), Vector.toArray(scene.sunIntensity, _sunIntensityArray));
     if (getUniformLocation("environmentIntensity") != null) gl.uniform1f(getUniformLocation("environmentIntensity"), scene.environmentIntensity);
     if (getUniformLocation("environmentMinLight") != null)  gl.uniform1f(getUniformLocation("environmentMinLight"), scene.environmentMinLight);
     if (getUniformLocation("ambientColor") != null)         gl.uniform3fv(getUniformLocation("ambientColor"), scene.ambientColor);
@@ -4130,6 +4073,26 @@ function Renderer(settings = {}) {
   }
 
   class BaseMeshRenderer {
+    drawOnDownscaledFramebuffer = false;
+
+    constructor() {
+      this.eventHandler = new EventHandler();
+      this.on = this.eventHandler.on.bind(this.eventHandler);
+      this.off = this.eventHandler.off.bind(this.eventHandler);
+    }
+
+    // render(camera, matrix, shadowPass = false, opaquePass = true, prevMatrix, settings = {}) {
+    //   if (settings.downscaledPass != this.drawOnDownscaledFramebuffer) {
+    //     return;
+    //   }
+    // }
+
+    cleanup() {
+      for (let meshData of this.meshData) {
+        meshData.cleanup();
+      }
+    }
+
     setShadowQuality(quality, opaquePass = false) {
       for (var mat of this.materials) {
         if (mat.isOpaque() != opaquePass || mat.programContainer === null) {
@@ -4139,6 +4102,15 @@ function Renderer(settings = {}) {
         useProgram(mat.programContainer.program);
         gl.uniform1i(mat.programContainer.getUniformLocation("shadowQuality"), quality);
       }
+    }
+    
+    isFullyOpaque() {
+      for (let material of this.materials) {
+        if (!material.isOpaque()) {
+          return false;
+        }
+      }
+      return true;
     }
   }
 
@@ -4158,6 +4130,11 @@ function Renderer(settings = {}) {
     }
   
     render(camera, matrix, shadowPass = false, opaquePass = true, prevMatrix, settings = {}) {
+      let downscaledPass = settings.downscaledPass ?? false;
+      if (downscaledPass != this.drawOnDownscaledFramebuffer) {
+        return;
+      }
+
       for (var i = 0; i < this.meshData.length; i++) {
         var md = this.meshData[i];
         var mat = this.materials[i];
@@ -4243,6 +4220,21 @@ function Renderer(settings = {}) {
       this.needsBufferUpdate = false;
       this.matrices = [];
     }
+
+    // bruh bounding box does not take into account the size of each mesh, only its origin
+    getAABB(dst) {
+      dst = dst || new AABB();
+
+      dst.isEmpty = true;
+      Vector.zero(dst.bl);
+      Vector.zero(dst.tr);
+
+      for (let matrix of this.matrices) {
+        dst.extend(Matrix.getPosition(matrix));
+      }
+
+      return dst;
+    }
   
     addInstance(instance/*, update = true*/) {
       var newMat = Matrix.copy(instance);
@@ -4310,6 +4302,11 @@ function Renderer(settings = {}) {
     }
   
     render(camera, baseMatrix, shadowPass = false, opaquePass = true, prevMatrix, settings = {}) {
+      let downscaledPass = settings.downscaledPass ?? false;
+      if (downscaledPass != this.drawOnDownscaledFramebuffer) {
+        return;
+      }
+
       if (this.needsBufferUpdate) {
         this.updateMatrixData();
         this.needsBufferUpdate = false;
@@ -4415,17 +4412,35 @@ function Renderer(settings = {}) {
         console.error(this.meshData);
         throw new Error("Not a valid MeshData!");
       }
+
+      // bruh, Still need to detect when updating this.meshData
+      for (let meshData of this.meshData) {
+        meshData.on("updateAABB", () => {
+          this.eventHandler.fireEvent("updateAABB");
+        });
+      }
     }
 
-    getAABB(padding) {
-      var aabb = new AABB();
+    getAABB(dst) {
+      dst = dst || new AABB();
+
+      dst.isEmpty = true;
+      Vector.zero(dst.bl);
+      Vector.zero(dst.tr);
+
       for (var meshData of this.meshData) {
-        aabb.extend(meshData.getAABB(padding));
+        dst.extend(meshData.aabb);
       }
-      return aabb;
+
+      return dst;
     }
   
     render(camera, matrix, shadowPass = false, opaquePass = true, prevMatrix, settings = {}) {
+      let downscaledPass = settings.downscaledPass ?? false;
+      if (downscaledPass != this.drawOnDownscaledFramebuffer) {
+        return;
+      }
+
       for (var i = 0; i < this.meshData.length; i++) {
         var md = this.meshData[i];
         var mat = this.materials[i];
@@ -4459,8 +4474,13 @@ function Renderer(settings = {}) {
           mat.bindModelMatrixUniform(matrix, prevMatrix, camera.prevViewMatrix);
           mat.bindUniforms(camera);
         }
-        if (!shadowPass && renderer.shadowCascades) {
-          renderer.shadowCascades.setUniforms(mat);
+
+        if (!shadowPass) {
+          gl.uniform1i(mat.programContainer.getUniformLocation("shadowQuality"), settings.shadowQuality ?? 0);
+          
+          if (renderer.shadowCascades) {
+            renderer.shadowCascades.setUniforms(mat);
+          }
         }
 
         if (shadowPass) {
@@ -4516,9 +4536,22 @@ function Renderer(settings = {}) {
 
   this.MeshData = MeshData;
   function MeshData(data) {
+    this.eventHandler = new EventHandler();
+    this.on = this.eventHandler.on.bind(this.eventHandler);
+
     this.data = data;
-    this.indices = this.data?.indices?.bufferData;
-    this.indexType = this.data?.indices?.type ?? gl.UNSIGNED_INT;
+
+    Object.defineProperty(this, "indices", {
+      get: () => {
+        return this.data?.indices?.bufferData;
+      },
+    });
+
+    Object.defineProperty(this, "indexType", {
+      get: () => {
+        return this.data?.indices?.type ?? gl.UNSIGNED_INT;
+      },
+    });
   
     this.buffers = [];
     for (var key of Object.keys(this.data)) {
@@ -4532,38 +4565,38 @@ function Renderer(settings = {}) {
         stride: d.stride ?? 0
       });
     }
+
+    // console.count("create buffer");
+    // console.warn("create buffer");
   
     var allVAOs = []; // bruh (extra memory?)
     this.vaos = new WeakMap();
 
-    // bruh
-    this.getAABB = function(padding) {
-      var aabb = new AABB();
+    this.aabb = new AABB();
+    const _tempVector = new Vector();
 
-      if (this.data.position && this.data.indices) {
+    let updateAABB = () => {
+      this.aabb.isEmpty = true;
+      Vector.zero(this.aabb.bl);
+      Vector.zero(this.aabb.tr);
+
+      if (this.data.position) {
         for (var j = 0; j < this.data.position.bufferData.length; j += 3) {
-          var v = {
-            x: this.data.position.bufferData[j],
-            y: this.data.position.bufferData[j + 1],
-            z: this.data.position.bufferData[j + 2]
-          };
-          aabb.extend(v);
+          _tempVector.x = this.data.position.bufferData[j];
+          _tempVector.y = this.data.position.bufferData[j + 1];
+          _tempVector.z = this.data.position.bufferData[j + 2];
+          this.aabb.extend(_tempVector);
         }
       }
-    
-      if (padding) {
-        aabb.bl.x -= padding;
-        aabb.bl.y -= padding;
-        aabb.bl.z -= padding;
-        aabb.tr.x += padding;
-        aabb.tr.y += padding;
-        aabb.tr.z += padding;
-      }
-    
-      return aabb;
+
+      this.eventHandler.fireEvent("updateAABB");
     };
+
+    updateAABB();
   
     this.updateData = function(data, bufferUsageMode = gl.DYNAMIC_DRAW) {
+      this.data = data;
+
       for (let key of Object.keys(data)) {
         var b = this.buffers.find(b => b.attribute == key);
         if (
@@ -4580,6 +4613,8 @@ function Renderer(settings = {}) {
           console.warn("New attribute or missmatching size, target, type or stride: " + key);
         }
       }
+
+      updateAABB();
     };
 
     this.setAttribute = function(attribute, data, bufferUsageMode = gl.DYNAMIC_DRAW) {
@@ -4592,6 +4627,8 @@ function Renderer(settings = {}) {
         if ("target" in data) b.target = data.target;
         if ("type" in data) b.type = data.type;
         if ("stride" in data) b.stride = data.stride;
+
+        this.data[attribute] = data;
       }
       else {
         this.buffers.push({
@@ -4602,6 +4639,10 @@ function Renderer(settings = {}) {
           type: data.type ?? gl.FLOAT,
           stride: data.stride ?? 0
         });
+      }
+
+      if (attribute === "position") {
+        updateAABB();
       }
     };
 
@@ -4636,6 +4677,299 @@ function Renderer(settings = {}) {
         bufferData: tangentData,
         size: 4
       });
+    };
+
+    this.applyTransform = function(matrix) {
+      if (this.data && this.data.position && this.data.indices) {
+        for (let i = 0; i < this.data.position.bufferData.length; i += 3) {
+          let v = {
+            x: this.data.position.bufferData[i + 0],
+            y: this.data.position.bufferData[i + 1],
+            z: this.data.position.bufferData[i + 2]
+          };
+          v = Matrix.transformVector(matrix, v);
+          this.data.position.bufferData[i + 0] = v.x;
+          this.data.position.bufferData[i + 1] = v.y;
+          this.data.position.bufferData[i + 2] = v.z;
+        }
+
+        this.setAttribute("position", this.data.position);
+      }
+      else {
+        throw new Error("Can't transform MeshData. MeshData is missing 'position' or 'indices' attribute");
+      }
+    };
+
+    this.getSubdivision = function(levels = 1, connected = false) {
+      let vertices = this.data.position.bufferData;
+      let indices = this.data.indices.bufferData;
+
+      function Edge(a, b, v, last) {
+        this.a = a;
+        this.b = b;
+        this.v = v;
+        this.last = last;
+      }
+
+      let getVertex = (index, dst) => {
+        dst = dst || new Vector();
+        dst.x = vertices[index * 3 + 0];
+        dst.y = vertices[index * 3 + 1];
+        dst.z = vertices[index * 3 + 2];
+        return dst;
+      };
+
+      let newVertices = [];
+      let newIndices = [];
+
+      newVertices = [...vertices];
+      // newIndices = Array.from(indices);
+      
+      let allEdges = new Map();
+
+      let edgeHasVertex = (edge) => {
+        return allEdges.get(`${edge[0]}-${edge[1]}`);// || allEdges.get(`${edge[1]}-${edge[0]}`);
+        // return allEdges.find(e => (e.a == edge[0] && e.b == edge[1] || (e.b == edge[0] && e.a == edge[1])));
+      };
+
+      let getConnectedVertices = (vertex) => {
+        let connectedVertices = [];
+
+        for (let i = 0; i < indices.length; i += 3) {
+          let ia = indices[i + 0];
+          let ib = indices[i + 1];
+          let ic = indices[i + 2];
+
+          if (
+            ia == vertex ||
+            ib == vertex ||
+            ic == vertex
+          ) {
+            connectedVertices.push(ia, ib, ic);
+          }
+        }
+
+        connectedVertices = new Set(connectedVertices);
+        connectedVertices.delete(vertex);
+        connectedVertices = Array.from(connectedVertices);
+
+        return connectedVertices;
+      };
+
+      let getConnectedTriangles = (edge) => {
+        let connectedTriangles = [];
+
+        for (let i = 0; i < indices.length; i += 3) {
+          let ia = indices[i + 0];
+          let ib = indices[i + 1];
+          let ic = indices[i + 2];
+
+          let edges = [
+            [ia, ib],
+            [ib, ic],
+            [ic, ia]
+          ];
+          let last = [
+            ic,
+            ia,
+            ib
+          ];
+
+          for (let j = 0; j < edges.length; j++) {
+            let currentEdge = edges[j];
+            if ((currentEdge[0] == edge[0] && currentEdge[1] == edge[1]) || (currentEdge[0] == edge[1] && currentEdge[1] == edge[0])) {
+              connectedTriangles.push({
+                a: edge[0],
+                b: edge[1],
+                last: last[j],
+              });
+            }
+          }
+        }
+
+        return connectedTriangles;
+      };
+
+      let connectedVertices = new Array(vertices.length / 3);
+      for (let i = 0; i < connectedVertices.length; i++) {
+        connectedVertices[i] = [];
+      }
+
+      for (let i = 0; i < indices.length; i += 3) {
+        let ia = indices[i + 0];
+        let ib = indices[i + 1];
+        let ic = indices[i + 2];
+
+        let edges = [
+          [ia, ib],
+          [ib, ic],
+          [ic, ia]
+        ];
+        let last = [
+          ic,
+          ia,
+          ib
+        ];
+
+        for (let j = 0; j < last.length; j++) {
+          connectedVertices[last[j]].push(...edges[j]);
+        }
+      }
+
+      for (let i = 0; i < connectedVertices.length; i++) {
+        connectedVertices[i] = Array.from(new Set(connectedVertices[i]));
+      }
+
+      for (let i = 0; i < vertices.length / 3; i++) {
+        // let connectedVertices = getConnectedVertices(i);
+        let currentConnectedVertices = connectedVertices[i];
+        let n = currentConnectedVertices.length;
+
+        let beta = n == 2 ? 1 / 8 : n == 3 ? 3 / 16 : 3 / 8 / n;
+        let center = n >= 3 ? 1 - n * beta : 3 / 4;
+
+        let newPosition = Vector.zero();
+        for (let vertex of currentConnectedVertices) {
+          Vector.addTo(newPosition, Vector.multiply(getVertex(vertex), beta));
+        }
+        Vector.addTo(newPosition, Vector.multiply(getVertex(i), center));
+
+        newVertices[i * 3 + 0] = newPosition.x;
+        newVertices[i * 3 + 1] = newPosition.y;
+        newVertices[i * 3 + 2] = newPosition.z;
+      }
+
+      for (let i = 0; i < indices.length; i += 3) {
+        let ia = indices[i + 0];
+        let ib = indices[i + 1];
+        let ic = indices[i + 2];
+
+        let edges = [
+          [ia, ib],
+          [ib, ic],
+          [ic, ia]
+        ];
+        let last = [
+          ic,
+          ia,
+          ib
+        ];
+
+        let newTriangleVertices = [];
+
+        for (let j = 0; j < edges.length; j++) {
+          let edge = edges[j];
+
+          if (!connected) {
+            let edgeClass = edgeHasVertex(edge);
+            if (!edgeClass) {
+              let ct = getConnectedTriangles(edge);
+              if (ct.length == 2) {
+                let newPosition = Vector.zero();
+                Vector.addTo(newPosition, Vector.multiply(getVertex(ct[0].a), 3 / 8));
+                Vector.addTo(newPosition, Vector.multiply(getVertex(ct[0].b), 3 / 8));
+                Vector.addTo(newPosition, Vector.multiply(getVertex(ct[0].last), 1 / 8));
+                Vector.addTo(newPosition, Vector.multiply(getVertex(ct[1].last), 1 / 8));
+
+                newVertices.push(newPosition.x, newPosition.y, newPosition.z);
+                newTriangleVertices.push(newVertices.length / 3 - 1);
+              }
+              else if (ct.length == 1) {
+                let newPosition = Vector.zero();
+                Vector.addTo(newPosition, Vector.multiply(getVertex(ct[0].a), 1 / 2));
+                Vector.addTo(newPosition, Vector.multiply(getVertex(ct[0].b), 1 / 2));
+
+                newVertices.push(newPosition.x, newPosition.y, newPosition.z);
+                newTriangleVertices.push(newVertices.length / 3 - 1);
+              }
+              else {
+                console.warn(ct.length);
+              }
+
+              // allEdges.push(new Edge(edge[0], edge[1], newVertices.length / 3 - 1, null));
+              let e = new Edge(edge[0], edge[1], newVertices.length / 3 - 1, null);
+              allEdges.set(`${edge[0]}-${edge[1]}`, e);
+              allEdges.set(`${edge[1]}-${edge[0]}`, e);
+            }
+            else {
+              newTriangleVertices.push(edgeClass.v);
+            }
+          }
+          else {
+            let edgeClass = edgeHasVertex(edge);
+            if (!edgeClass) {
+              let a = getVertex(edge[0]);
+              let b = getVertex(edge[1]);
+              let newVertex = Vector.add(
+                Vector.multiply(a, 3 / 8),
+                Vector.multiply(b, 3 / 8)
+              );
+              Vector.addTo(newVertex, Vector.multiply(getVertex(last[j]), 1 / 8));
+              // let newVertex = Vector.average(a, b);
+
+              newVertices.push(newVertex.x, newVertex.y, newVertex.z);
+              newTriangleVertices.push(newVertices.length / 3 - 1);
+
+              edgeClass = new Edge(edge[0], edge[1], newVertices.length / 3 - 1, last[j]);
+              // allEdges.push(edgeClass);
+              allEdges.set(`${edge[0]}-${edge[1]}`, edgeClass);
+              allEdges.set(`${edge[1]}-${edge[0]}`, edgeClass);
+            }
+            else {
+              let v = Vector.multiply(getVertex(last[j]), 1 / 8);
+              newVertices[edgeClass.v * 3 + 0] += v.x;
+              newVertices[edgeClass.v * 3 + 1] += v.y;
+              newVertices[edgeClass.v * 3 + 2] += v.z;
+
+              newTriangleVertices.push(edgeClass.v);
+            }
+          }
+        }
+
+        newIndices.push(ia, newTriangleVertices[0], newTriangleVertices[2]);
+        newIndices.push(newTriangleVertices[0], ib, newTriangleVertices[1]);
+        newIndices.push(newTriangleVertices[1], ic, newTriangleVertices[2]);
+        newIndices.push(newTriangleVertices[0], newTriangleVertices[1], newTriangleVertices[2]);
+
+        // newIndices.push(ia, ib, ic);
+      }
+
+      // console.log(newIndices, newVertices);
+      // console.log(indices, vertices);
+
+      // for (let i = 0; i < newVertices.length; i += 3) {
+      //   let sphere = scene.add(renderer.CreateShape("sphere"));
+      //   sphere.transform.scale = Vector.fill(0.03);
+      //   sphere.transform.position.x = newVertices[i];
+      //   sphere.transform.position.y = newVertices[i + 1];
+      //   sphere.transform.position.z = newVertices[i + 2];
+
+      //   if (i < vertices.length) {
+      //     sphere.meshRenderer.materials[0].setUniform("albedo", [0, 1, 0, 1]);
+      //   }
+      // }
+
+      return {
+        indices: {
+          bufferData: new Uint32Array(newIndices),
+          type: 5125, // UInt32
+          target: gl.ELEMENT_ARRAY_BUFFER
+        },
+        position: {
+          bufferData: new Float32Array(newVertices),
+          size: 3
+        },
+      };
+    };
+
+    this.subdivide = function(levels = 1) {
+      let data = this.getSubdivision(levels);
+
+      this.setAttribute("indices", data.indices);
+      this.setAttribute("position", data.position);
+
+      this.recalculateNormals();
+      // this.recalculateTangents();
     };
 
     // bruh
@@ -5897,7 +6231,15 @@ function Renderer(settings = {}) {
       let normal = Vector.normalize(Vector.fromArray(vertices.slice(i, i + 3)));
       normals.push(normal.x, normal.y, normal.z);
     }
-      
+
+    let uvs = [];
+    for (let i = 0; i < vertices.length; i += 3) {
+      let p = Vector.normalize(Vector.fromArray(vertices.slice(i, i + 3)));
+      let u = Math.atan2(p.x, p.z) / (2 * Math.PI) + 0.5;
+      let v = Math.asin(p.y) / Math.PI + .5;
+      uvs.push(u, v);
+    }
+
     return new this.MeshData({
       indices: {
         bufferData: new Uint32Array(indices),
@@ -5910,6 +6252,10 @@ function Renderer(settings = {}) {
       normal: {
         bufferData: new Float32Array(normals),
         size: 3
+      },
+      uv: {
+        bufferData: new Float32Array(uvs),
+        size: 2
       }
     });
 
@@ -6489,16 +6835,46 @@ function Renderer(settings = {}) {
       if (currentClearColor[3] == 1) {
         gl.colorMask(true, true, true, false);
       }
-  
+
+      // console.time("Cull");
+      scene.root.traverseCondition(obj => {
+        if (obj.meshRenderer && (!camera.frustum || !obj.getAABB() || obj.getAABB().isInsideFrustum(camera.frustum))) {
+          obj.isCulled = false;
+        }
+        else {
+          obj.isCulled = true;
+        }
+      }, child => child.active && child.visible);
+      // console.timeEnd("Cull");
+
+      // console.time("Opaque pass");
       gl.disable(gl.BLEND);
       scene.render(camera, { renderPass: ENUMS.RENDERPASS.OPAQUE });
       this.renderer.gizmos.gameObject.render(camera);
-  
+      // console.timeEnd("Opaque pass");
+
+      // console.time("Alpha pass");
       gl.enable(gl.BLEND);
       gl.depthMask(false);
       scene.render(camera, { renderPass: ENUMS.RENDERPASS.ALPHA });
       gl.depthMask(true);
+      // console.timeEnd("Alpha pass");
+
+      // // Draw on downscaled framebuffer
+      // gl.bindFramebuffer(gl.FRAMEBUFFER, this.renderer.postprocessing.downscaledFramebuffer.framebuffer);
+      // gl.viewport(0, 0, gl.canvas.width / 4, gl.canvas.height / 4);
+      // gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+      // gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.renderer.postprocessing.downscaledFramebuffer.framebuffer);
+      // gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.renderer.postprocessing.getFramebuffer());
+      // let width = gl.canvas.width;
+      // let height = gl.canvas.height;
+      // gl.blitFramebuffer(0, 0, width, height, 0, 0, width / 4, height / 4, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
   
+      // gl.depthMask(false);
+      // scene.render(camera, { renderPass: ENUMS.RENDERPASS.ALPHA | ENUMS.RENDERPASS.DOWNSCALED });
+      // gl.depthMask(true);
+
       if (renderer.version > 1) {
         gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
       }
@@ -6531,9 +6907,9 @@ function Renderer(settings = {}) {
           // scene.render(cam, { renderPass: ENUMS.RENDERPASS.OPAQUE, materialOverride: new Material(renderer.programContainers.shadow) });
           scene.render(cam, {
             renderPass: ENUMS.RENDERPASS.OPAQUE,
-            materialOverride: new NewMaterial(renderer.programContainers.shadow), // bruh
-            materialOverrideInstanced: this.renderer.shadowCascades.materialInstanced, // bruh
-            materialOverrideSkinned: this.renderer.shadowCascades.materialSkinned, // bruh
+            // materialOverride: new NewMaterial(renderer.programContainers.shadow), // bruh
+            // materialOverrideInstanced: this.renderer.shadowCascades.materialInstanced, // bruh
+            // materialOverrideSkinned: this.renderer.shadowCascades.materialSkinned, // bruh
           });
   
           gl.depthMask(false);
@@ -6563,6 +6939,138 @@ function Renderer(settings = {}) {
       if (this.renderer.postprocessing && _settings.enablePostProcessing) this.renderer.postprocessing.render();
     
       Matrix.copy(camera.viewMatrix, camera.prevViewMatrix);
+
+      // var scene = this.scenes[this.currentScene];
+
+      // // scene.updateUniformBuffers(
+      // //   camera.projectionMatrix,
+      // //   camera.viewMatrix,
+      // //   camera.inverseViewMatrix
+      // // );
+
+      // // Shadows
+      // if (this.shadowCascades && _settings.enableShadows && (scene.sunIntensity.x != 0 || scene.sunIntensity.y != 0 || scene.sunIntensity.z != 0) && settings.shadows !== false) {
+      //   this.shadowCascades.renderShadowmaps(camera.transform.position);
+      // }
+
+      // scene.updateUniformBuffers(
+      //   camera.projectionMatrix,
+      //   camera.viewMatrix,
+      //   camera.inverseViewMatrix
+      // );
+
+      // // Bind post processing framebuffer
+      // if (this.postprocessing && _settings.enablePostProcessing) {
+      //   this.postprocessing.bindFramebuffer();
+      // }
+      // else {
+      //   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      // }
+
+      // // Clear framebuffer/screen
+      // if (renderer.version > 1) {
+      //   gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+      // }
+      // gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+      // gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+      // // Skybox
+      // gl.disable(gl.BLEND);
+      // if (scene.skyboxVisible) {
+      //   this.skybox.render(camera, scene.skyboxCubemap);
+      // }
+      // // gl.enable(gl.BLEND);
+
+      // // bruh lit sometimes has unused sampler2D (ex occlusionTexture)
+      // //      with default location 0 so TEXTURE0 must be TEXTURE_2D
+      // //      (what about unused sampler2D and samplerCube?)
+
+      // // gl.activeTexture(gl.TEXTURE0);
+      // // gl.bindTexture(gl.TEXTURE_2D, this.blankTexture);
+      // // gl.bindTexture(gl.TEXTURE_2D, null);
+      // // gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+
+      // gl.activeTexture(gl.TEXTURE0 + diffuseCubemapUnit);
+      // gl.bindTexture(gl.TEXTURE_CUBE_MAP, scene.diffuseCubemap);
+
+      // gl.activeTexture(gl.TEXTURE0 + specularCubemapUnit);
+      // gl.bindTexture(gl.TEXTURE_CUBE_MAP, scene.specularCubemap);
+
+      // gl.activeTexture(gl.TEXTURE0 + splitsumUnit);
+      // gl.bindTexture(gl.TEXTURE_2D, this.splitsumTexture);
+
+      // // bruh, magic?
+      // if (currentClearColor[3] == 1) {
+      //   gl.colorMask(true, true, true, false);
+      // }
+
+      // gl.disable(gl.BLEND);
+      // scene.render(camera, { renderPass: ENUMS.RENDERPASS.OPAQUE });
+      // this.gizmos.gameObject.render(camera);
+
+      // gl.enable(gl.BLEND);
+      // gl.depthMask(false);
+      // scene.render(camera, { renderPass: ENUMS.RENDERPASS.ALPHA });
+      // gl.depthMask(true);
+
+      // if (renderer.version > 1) {
+      //   gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+      // }
+
+      // if (secondaryCameras) {
+      //   for (var cam of secondaryCameras) {
+      //     scene.updateUniformBuffers(
+      //       cam.projectionMatrix,
+      //       cam.viewMatrix,
+      //       cam.inverseViewMatrix
+      //     );
+
+      //     if (cam.renderTexture) {
+      //       cam.renderTexture.bind();
+      //       gl.viewport(0, 0, cam.renderTexture.width, cam.renderTexture.height);
+      //       gl.clear(cam.renderTexture.clearFlags);
+      //     }
+      //     else {
+      //       // Bind post processing framebuffer
+      //       if (this.postprocessing && _settings.enablePostProcessing) {
+      //         this.postprocessing.bindFramebuffer();
+      //       }
+      //       else {
+      //         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      //       }
+
+      //       gl.clear(gl.DEPTH_BUFFER_BIT);
+      //     }
+
+      //     scene.render(cam, { renderPass: ENUMS.RENDERPASS.OPAQUE, materialOverride: new Material(renderer.programContainers.shadow) });
+
+      //     gl.depthMask(false);
+      //     scene.render(cam, { renderPass: ENUMS.RENDERPASS.ALPHA });
+      //     gl.depthMask(true);
+      //   }
+      // }
+
+      // gl.colorMask(true, true, true, true);
+
+      // // Godrays
+      // if (this.godrays) {
+      //   this.godrays.render(scene, camera);
+      // }
+
+      // bindVertexArray(null);
+
+      // // Blit anti aliasing texture
+      // if (this.postprocessing && _settings.enablePostProcessing) {
+      //   this.postprocessing.blitAA();
+      // }
+
+      // // Bloom
+      // if (this.bloom && _settings.enableBloom) this.bloom.render();
+
+      // // Post processing
+      // if (this.postprocessing && _settings.enablePostProcessing) this.postprocessing.render();
+    
+      // camera.prevViewMatrix = Matrix.copy(camera.viewMatrix);
     };
   }
 
@@ -6695,6 +7203,11 @@ function Renderer(settings = {}) {
 
       scene.root.traverseCondition(gameObject => {
         if (gameObject.meshRenderer) {
+          // Frustum culling
+          if (!(!camera.frustum || !gameObject.getAABB() || gameObject.getAABB().isInsideFrustum(camera.frustum))) { // boolean algebra would help :)
+            return;
+          }
+
           var mr = gameObject.meshRenderer;
 
           if (mr instanceof MeshInstanceRenderer) {
@@ -6852,6 +7365,8 @@ function Renderer(settings = {}) {
               );
             }
           });
+
+          gameObject.updatePrevModelMatrix();
         }
 
         for (var component of gameObject.getComponents()) {
@@ -7054,11 +7569,12 @@ function Renderer(settings = {}) {
       screenQuad.render();
     };
 
+    var _bmds = { modelMatrix: null, shadowPass: false };
+
     var bindMaterialDeferred = (container, material, modelMatrix) => {
-      bindMaterialToProgram(material, container, {
-        modelMatrix,
-        shadowPass: false,
-      });
+      _bmds.modelMatrix = modelMatrix;
+      
+      bindMaterialToProgram(material, container, _bmds);
 
       container.setUniform("enableMotionBlur", material.uniforms["enableMotionBlur"] ?? 1);
 
@@ -7370,14 +7886,18 @@ function Renderer(settings = {}) {
 
 */
 
+let _v0 = new Vector();
+let _v1 = new Vector();
+let _v2 = new Vector();
+
 function calculateNormals(vertices, indices) {
   // bruh fix for stride
-  function getVertex(i) {
-    return {
-      x: vertices[i * 3],
-      y: vertices[i * 3 + 1],
-      z: vertices[i * 3 + 2]
-    };
+  function getVertex(i, dst) {
+    dst = dst || new Vector();
+    dst.x = vertices[i * 3];
+    dst.y = vertices[i * 3 + 1];
+    dst.z = vertices[i * 3 + 2];
+    return dst;
   }
 
   if (indices) {
@@ -7388,11 +7908,11 @@ function calculateNormals(vertices, indices) {
 
     var ib = indices;
     for (let i = 0; i < ib.length; i += 3) {
-      let v0 = getVertex(ib[i]);
-      let v1 = getVertex(ib[i + 1]);
-      let v2 = getVertex(ib[i + 2]);
+      getVertex(ib[i], _v0);
+      getVertex(ib[i + 1], _v1);
+      getVertex(ib[i + 2], _v2);
 
-      let normal = getTriangleNormal([v0, v1, v2]);
+      let normal = getTriangleNormal([_v0, _v1, _v2]);
 
       normalTable[ib[i]].push(normal);
       normalTable[ib[i + 1]].push(normal);
@@ -7413,11 +7933,11 @@ function calculateNormals(vertices, indices) {
   else {
     var normals = new Float32Array(vertices.length);
     for (let i = 0; i < vertices.length / 3; i += 3) {
-      let v0 = getVertex(i);
-      let v1 = getVertex(i + 1);
-      let v2 = getVertex(i + 2);
+      getVertex(i, _v0);
+      getVertex(i + 1, _v1);
+      getVertex(i + 2, _v2);
 
-      let normal = getTriangleNormal([v0, v1, v2]);
+      let normal = getTriangleNormal([_v0, _v1, _v2]);
 
       normals[i * 3] = normal.x;
       normals[i * 3 + 1] = normal.y;

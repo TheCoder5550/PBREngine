@@ -1,9 +1,10 @@
-import { Scene, Transform, GameObject } from "./renderer.mjs";
+import { Scene, Transform, GameObject, LOD } from "./renderer.mjs";
 import Vector from "./vector.mjs";
 import Perlin from "./perlin.mjs";
 import { MeshCollider } from "./physics.mjs";
-import { mapValue, lerp, clamp } from "./helper.mjs";
+import { mapValue, lerp, clamp, smoothstep } from "./helper.mjs";
 import { getTriangleNormal } from "./algebra.mjs";
+import Matrix from "./matrix.mjs";
 
 var perlin = new Perlin();
 
@@ -57,6 +58,162 @@ function Terrain(scene, settings = {}) {
     this.terrainMat.setUniform("normalTextures[0]", [ grassNormal, stoneNormal, snowNormal ]);
   };
 
+  let lastPosition;
+
+  let scatters = [];
+
+  this.addScatter = function(gameObject, radius = 4, chunkSize = 60, density = 100) {
+    let scatter = new Scatter(gameObject, radius, chunkSize, density);
+    scatters.push(scatter);
+    return scatter;
+  };
+
+  function Scatter(gameObject, radius = 4, chunkSize = 60, density = 100) {
+    this.gameObject = gameObject;
+    this.gameObject.children[0].meshRenderer = this.gameObject.children[0].meshRenderer.getInstanceMeshRenderer();
+
+    this.radius = radius;
+    this.chunkSize = chunkSize;
+    this.density = density;
+
+    this.minScale = 0.6;
+    this.maxScale = 1.2;
+
+    this.spawnProbability = () => 1;
+    this.cross = false;
+
+    // let grassPool = [];
+    let chunks = new Map();
+
+    this.update = function(transform) {
+      if (lastPosition) {
+        let centerU = Math.floor(lastPosition.x / this.chunkSize + 0.5);
+        let centerV = Math.floor(lastPosition.z / this.chunkSize + 0.5);
+  
+        for (let u = centerU - this.radius; u <= centerU + this.radius; u++) {
+          for (let v = centerV - this.radius; v <= centerV + this.radius; v++) {
+            let key = `${u}-${v}`;
+            let currentGrassChunk = chunks.get(key);
+            if (currentGrassChunk) {
+              currentGrassChunk.parent.removeChild(currentGrassChunk);
+              // grassPool.push(currentGrassChunk);
+              // grassChunks.delete(key);
+            }
+          }
+        }
+      }
+  
+      let centerU = Math.floor(transform.position.x / this.chunkSize + 0.5);
+      let centerV = Math.floor(transform.position.z / this.chunkSize + 0.5);
+  
+      for (let u = centerU - this.radius; u <= centerU + this.radius; u++) {
+        for (let v = centerV - this.radius; v <= centerV + this.radius; v++) {
+          let key = `${u}-${v}`;
+          let currentGrassChunk = chunks.get(key);
+          if (!currentGrassChunk) {
+            // currentGrassChunk = grassPool.shift();
+            if (!currentGrassChunk) {
+              currentGrassChunk = createChunk(u, v);
+            }
+            if (!currentGrassChunk.parent) {
+              scene.add(currentGrassChunk);
+            }
+            chunks.set(key, currentGrassChunk);
+          }
+          else {
+            scene.add(currentGrassChunk);
+          }
+
+          // Fade in chunk
+          // let fadeStop = (this.radius + 0.5) * this.chunkSize;
+          // let fadeStart = fadeStop - 20;
+          // let distance = Vector.distance(transform.position, new Vector(u * this.chunkSize, 0, v * this.chunkSize));
+          // let oldAlbedo = currentGrassChunk.children[0].meshRenderer.materials[0].getUniform("albedo");
+          // currentGrassChunk.children[0].meshRenderer.materials[0].setUniform("albedo", [oldAlbedo[0], oldAlbedo[1], oldAlbedo[2], 1 - smoothstep(distance, fadeStart, fadeStop)]);
+
+          // if (distance <= fadeStart) {
+          //   currentGrassChunk.children[0].meshRenderer.materials[0].opaque = true;
+          //   currentGrassChunk.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.5);
+          // }
+          // else {
+          //   currentGrassChunk.children[0].meshRenderer.materials[0].opaque = false;
+          //   currentGrassChunk.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.1);
+          // }
+
+          // if (distance >= fadeStop) {
+          //   currentGrassChunk.visible = false;
+          // }
+          // else {
+          //   currentGrassChunk.visible = true;
+          // }
+        }
+      }
+  
+      // console.log(grassPool);
+    };
+
+    let createChunk = (u, v) => {
+      // console.count("createChunk");
+  
+      let x = u * this.chunkSize;
+      let z = v * this.chunkSize;
+  
+      var grassMesh = this.gameObject.copy();
+      var meshRenderer = grassMesh.children[0].meshRenderer;
+      // let r = Math.random();
+      // meshRenderer.materials[0].setUniform("albedo", [15 * r, 15 * r, 15 * r, 1]);
+  
+      // grassMesh.transform.position = new Vector(x, 0, z);
+  
+      for (var i = 0; i < this.density; i++) {
+        var origin = new Vector(
+          x + (Math.random() - 0.5) * this.chunkSize,
+          0,
+          z + (Math.random() - 0.5) * this.chunkSize
+        );
+        origin.y = _terrain.getHeight(origin.x, origin.z);
+  
+        // if (!physicsEngine.Raycast(new Vector(origin.x, 100, origin.z), Vector.down()).firstHit && perlin.noise(origin.x / 30, origin.z / 30) * 0.5 + 0.5 > Math.random() + 0.2) {
+        if (Math.random() < this.spawnProbability(origin)) {
+          let scale =  Vector.fill(this.minScale + Math.random() * (this.maxScale - this.minScale));
+          let ry = Math.random() * 2 * Math.PI;
+
+          // if (this.cross && origin.y > 20)
+          // Vector.compMultiplyTo(scale, new Vector(10, 1, 10));
+          
+          meshRenderer.addInstance(Matrix.transform([
+            ["translate", origin],
+            ["scale", scale],
+            ["ry", ry],
+            ["rx", (Math.random() - 0.5) * 0.09],
+            ["rz", (Math.random() - 0.5) * 0.09],
+          ]));
+
+          if (this.cross) {
+            meshRenderer.addInstance(Matrix.transform([
+              ["translate", origin],
+              ["scale", scale],
+              ["ry", ry + Math.PI / 2],
+              ["rx", (Math.random() - 0.5) * 0.09],
+              ["rz", (Math.random() - 0.5) * 0.09],
+            ]));
+          }
+        }
+      }
+      
+      // var lodGrass = scene.add(new GameObject("LOD Grass " + x + " " + z));
+      // lodGrass.transform.position = new Vector(x, 0, z);
+      // lodGrass.addComponent(new LOD([
+      //   { meshRenderer, upToDistance: 100 },
+      // ]));
+  
+      let lodGrass = grassMesh;
+      scene.add(lodGrass);
+  
+      return lodGrass;
+    };
+  }
+
   var chunkLookup = new Map();
 
   const myWorker = new Worker("../engine/terrainDataWorker.js");
@@ -107,7 +264,14 @@ function Terrain(scene, settings = {}) {
 
   this.update = function(transform) {
     var t = transform || zeroTransform;
+
+    for (let scatter of scatters) {
+      scatter.update(t);
+    }
+
     this.quadtree.placeTransform(t);
+
+    lastPosition = Vector.copy(t.position);
 
     // for (var order of chunkOrders) {
     //   if (!order.chunk) {
@@ -143,6 +307,9 @@ function Terrain(scene, settings = {}) {
           var neighbors = chunk.quadtree.getNeighbors();
           chunk.quadtree.lastNeighborDepths = neighbors.map(n => n?.depth);
 
+
+
+
           var id = Math.floor(Math.random() * 1e7);
 
           myWorker.postMessage({
@@ -160,6 +327,9 @@ function Terrain(scene, settings = {}) {
           });
 
           chunkLookup.set(id, chunk);
+
+
+
 
           // var terrainData = createTerrainData(chunk.quadtree, neighbors, {
           //   w: chunk.chunkSize,
@@ -442,7 +612,7 @@ function Terrain(scene, settings = {}) {
       terrain.name = "Terrain chunk " + x + "," + z;
       terrain.transform.position = new Vector(x, 0, z);
 
-      terrain.meshRenderer = null; // bruh, pooling does nothing when resetting the mesh
+      // terrain.meshRenderer = null; // bruh, pooling does nothing (for perf) when resetting the mesh
       if (_terrain.enableCollision) {
         for (var comp of terrain.getComponents()) {
           if (comp.type == "MeshCollider") {

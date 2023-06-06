@@ -33,7 +33,7 @@ function GLDebugger(scene) {
     this.cubes[i] = c;
   }
 
-  renderer.on("renderloop", (frameTime) => {
+  renderer.on("renderloop", () => {
     this.clear();
   });
 
@@ -46,7 +46,7 @@ function GLDebugger(scene) {
     if (aabbVis) {
       aabbVis.meshRenderer.removeAllInstances();
     }
-  }
+  };
 
   this.Bounds = function(aabb) {
     if (aabbVis) {
@@ -60,7 +60,7 @@ function GLDebugger(scene) {
         ["sz", size.z / 2]
       ]));
     }
-  }
+  };
 
   this.Vector = function(p, normal, size = 1, color) {
     var c = this.cubes[this.index];
@@ -74,7 +74,7 @@ function GLDebugger(scene) {
 
     this.index++;
     this.index = this.index % this.cubes.length;
-  }
+  };
 
   this.Point = function(p, size = 0.2, color) {
     var c = this.cubes[this.index];
@@ -88,7 +88,7 @@ function GLDebugger(scene) {
 
     this.index++;
     this.index = this.index % this.cubes.length;
-  }
+  };
 }
 
 export default GLDebugger;

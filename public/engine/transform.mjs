@@ -1,10 +1,14 @@
 import Vector from "./vector.mjs";
 import Quaternion from "./quaternion.mjs";
 import Matrix from "./matrix.mjs";
+import { EventHandler } from "./eventHandler.mjs";
 
 function Transform(matrix, position, rotation, scale) {
   var _this = this;
   this.gameObject = null;
+
+  this.eventHandler = new EventHandler();
+  this.on = this.eventHandler.on.bind(this.eventHandler);
 
   this._hasChanged = {
     matrix: false,
@@ -241,10 +245,16 @@ function Transform(matrix, position, rotation, scale) {
         o.transform._hasChanged.matrix = true;
         o.transform._hasChanged.worldMatrix = true;
       });
+      _this.gameObject.traverse(o => { // why does this not fix it :(
+        // o.transform.onTransformChange?.();
+        o.transform.eventHandler.fireEvent("transformChange");
+      });
     }
     else {
       _this._hasChanged.matrix = true;
       _this._hasChanged.worldMatrix = true;
+      // _this.onTransformChange?.();
+      _this.eventHandler.fireEvent("transformChange");
     }
   }
 

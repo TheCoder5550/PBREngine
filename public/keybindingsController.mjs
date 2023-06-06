@@ -95,6 +95,26 @@ function Keybindings(renderer, gamepadManager, bindings = {
 
     // throw new Error("Invalid keybinding name: " + name);
   };
+
+  this.getInputUp = function(name) {
+    if (bindings[name]) {
+      var keyboardValue = 0;
+      if (Array.isArray(bindings[name].keyboard)) {
+        var a = renderer.getKeyUp(bindings[name].keyboard[0], name) ? 1 : 0;
+        var b = renderer.getKeyUp(bindings[name].keyboard[1], name) ? 1 : 0;
+        keyboardValue = b - a;
+      }
+      else {
+        keyboardValue = renderer.getKeyUp(bindings[name].keyboard/*, name*/) ? 1 : 0;
+      }
+
+      var controllerValue = this.gamepadManager.getButtonUp(bindings[name].controller, undefined/*, name*/) ?? this.gamepadManager.getAxis(bindings[name].controller) ?? 0;
+
+      return Math.abs(keyboardValue) > Math.abs(controllerValue) ? keyboardValue : controllerValue;
+    }
+
+    // throw new Error("Invalid keybinding name: " + name);
+  };
 }
 
 export default Keybindings;

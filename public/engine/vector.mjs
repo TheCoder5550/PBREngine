@@ -90,8 +90,14 @@ class Vector {
     return dst;
   }
 
-  static toArray(v) {
-    return [v.x, v.y, v.z];
+  static toArray(v, dst) {
+    dst = dst || [ 0, 0, 0 ];
+
+    dst[0] = v.x;
+    dst[1] = v.y;
+    dst[2] = v.z;
+
+    return dst;
   }
 
   static equal(a, b, epsilon = 1e-6) {
@@ -167,6 +173,14 @@ class Vector {
     dst.z = -v.z;
 
     return dst;
+  }
+
+  static negateTo(v) {
+    v.x = -v.x;
+    v.y = -v.y;
+    v.z = -v.z;
+
+    return v;
   }
 
   static compMultiply(a, b, dst) {
@@ -259,19 +273,40 @@ class Vector {
     return dst;
   }
 
-  // !
   static rotateAround(v, axis, angle, dst) {
     dst = dst || new Vector();
 
-    var aIIb = Vector.multiply(axis, Vector.dot(v, axis) / Vector.dot(axis, axis));
-    var aTb = Vector.subtract(v, aIIb);
-    var w = Vector.cross(axis, aTb);
-    var x1 = Math.cos(angle) / Vector.length(aTb);
-    var x2 = Math.sin(angle) / Vector.length(w);
-    var aTb0 = Vector.multiply(Vector.add(Vector.multiply(aTb, x1), Vector.multiply(w, x2)), Vector.length(aTb));
+    Vector.multiply(axis, Vector.dot(v, axis) / Vector.dot(axis, axis), aIIb);
+    Vector.subtract(v, aIIb, aTb);
+    Vector.cross(axis, aTb, w);
 
-    Vector.add(aTb0, aIIb, dst);
+    let aTbLength = Vector.length(aTb);
+    var x1 = Math.cos(angle) / aTbLength;
+    var x2 = Math.sin(angle) / Vector.length(w);
+
+    Vector.multiply(aTb, x1, t1);
+    Vector.multiply(w, x2, t2);
+    Vector.addTo(t1, t2);
+    Vector.multiplyTo(t1, aTbLength);
+    Vector.add(t1, aIIb, dst);
+
+    return dst;
   }
+
+  // static rotateAround(v, axis, angle, dst) {
+  //   dst = dst || new Vector();
+
+  //   var aIIb = Vector.multiply(axis, Vector.dot(v, axis) / Vector.dot(axis, axis));
+  //   var aTb = Vector.subtract(v, aIIb);
+  //   var w = Vector.cross(axis, aTb);
+  //   var x1 = Math.cos(angle) / Vector.length(aTb);
+  //   var x2 = Math.sin(angle) / Vector.length(w);
+  //   var aTb0 = Vector.multiply(Vector.add(Vector.multiply(aTb, x1), Vector.multiply(w, x2)), Vector.length(aTb));
+
+  //   Vector.add(aTb0, aIIb, dst);
+
+  //   return dst;
+  // }
 
   static project(v, normal, dst) {
     dst = dst || new Vector();
@@ -456,6 +491,12 @@ class Vector {
 }
 
 const _tempVector = new Vector();
+
+const aIIb = new Vector();
+const aTb = new Vector();
+const w = new Vector();
+const t1 = new Vector();
+const t2 = new Vector();
 
 // if (typeof module != "undefined")
 //   module.exports = Vector;

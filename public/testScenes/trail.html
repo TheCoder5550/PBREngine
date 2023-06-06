@@ -67,6 +67,7 @@
       scene.sunDirection.z *= -1;
       scene.postprocessing.motionBlurStrength = 0;
       scene.bloom.intensity = 0.01;
+      scene.shadowQuality = 0;
 
       await scene.loadEnvironment({
         hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k_precomputed",
@@ -76,14 +77,36 @@
       camera = new OrbitCamera(renderer, {near: 0.1, far: 300, fov: 30});
       camera.distance = 4;
 
-      var sphere = renderer.CreateShape(ENUMS.SHAPES.SPHERE);
+      // var spheres = [];
+      // for (let i = 0; i < 300; i++) {
+      //   let sphere = renderer.CreateShape(ENUMS.SHAPES.SPHERE);
+      //   sphere.transform.scale = Vector.fill(0.15);
+      //   sphere.transform.position.x = i / 3;
+      //   sphere.transform.position.z = Math.sin(i) * 3;
+      //   scene.add(sphere);
+
+      //   let trail = sphere.addComponent(new renderer.TrailRenderer());
+
+      //   spheres.push(sphere);
+      // }
+
+      let sphere = renderer.CreateShape(ENUMS.SHAPES.SPHERE);
       sphere.transform.scale = Vector.fill(0.15);
       scene.add(sphere);
 
-      var trail = sphere.addComponent(new renderer.TrailRenderer());
+      // (new renderer.TrailRenderer()).render();
+      // setTimeout(function() {
+        let trail = sphere.addComponent(new renderer.TrailRenderer());
+      // }, 2000);
 
       renderer.on("renderloop", function(frameTime, totalTime) {
         sphere.transform.position = new Vector(Math.cos(totalTime * 1.5) * 4, 0, Math.sin(totalTime) * 3);
+        trail.emit = Math.abs(Math.sin(totalTime * 3));
+
+        // for (var i = 0; i < spheres.length; i++) {
+        //   var sphere = spheres[i];
+        //   sphere.transform.position.z = Math.sin(totalTime + i) * 3;
+        // }
 
         renderer.update(frameTime);
         renderer.render(camera.camera);

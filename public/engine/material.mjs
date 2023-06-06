@@ -15,11 +15,12 @@ class NewMaterial {
       console.warn("Program container is null");
     }
     else {
-      for (var uniformName in uniforms) {
-        if (!this.programContainer.activeUniforms[uniformName]) {
-          console.warn("[constructor] Uniform does not exist on current shader-program: " + uniformName);
-        }
-      }
+      // bruh spams console when copying gameobjects
+      // for (var uniformName in uniforms) {
+      //   if (!this.programContainer.activeUniforms[uniformName]) {
+      //     console.warn("[constructor] Uniform does not exist on current shader-program: " + uniformName);
+      //   }
+      // }
     }
 
     this.name = "No name";
@@ -35,6 +36,10 @@ class NewMaterial {
     }
 
     this.uniforms[name] = values;
+  }
+
+  getUniform(name) {
+    return this.uniforms[name];
   }
 
   isOpaque() {
@@ -68,6 +73,7 @@ class NewLitMaterial extends NewMaterial {
     this.uniforms["doNoTiling"] = this.uniforms["doNoTiling"] ?? false;
     this.uniforms["normalStrength"] = this.uniforms["normalStrength"] ?? 1;
   
+    this.uniforms["useVertexColor"] = this.uniforms["useVertexColor"] ?? true;
     this.uniforms["useTexture"] = !!this.uniforms["albedoTexture"];
     this.uniforms["useNormalTexture"] = !!this.uniforms["normalTexture"];
     this.uniforms["useMetallicRoughnessTexture"] = !!this.uniforms["metallicRoughnessTexture"];

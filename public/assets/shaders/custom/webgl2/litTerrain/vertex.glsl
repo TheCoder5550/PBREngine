@@ -37,6 +37,12 @@ uniform sampler2D heightmap;
 uniform float maxHeight;
 uniform float cameraSize;
 
+// Motion blur
+out vec4 clipSpace;
+out vec4 prevClipSpace;
+uniform mat4 prevViewMatrix;
+uniform mat4 prevModelMatrix;
+
 void main() {
   vNormal = normal;
   vTangent = tangent;
@@ -95,4 +101,9 @@ void main() {
   vPosition = vec3(worldPosition);
   
   gl_Position = projectionMatrix * viewMatrix * worldPosition;
+
+  // Motion blur , bruh prev model matrix does not work!
+  vec4 prevCs = projectionMatrix * prevViewMatrix * modelMatrix * vec4(position, 1.0);
+  prevClipSpace = prevCs;
+  clipSpace = gl_Position;
 }

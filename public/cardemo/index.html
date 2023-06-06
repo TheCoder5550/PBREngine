@@ -40,7 +40,7 @@
         <button onclick="openSettings()" class="isSelectable"><span class="material-symbols-outlined">settings</span>Settings</button>
         <button onclick="resetCar()" class="isSelectable"><span class="material-symbols-outlined">restart_alt</span>Reset car</button>
         <button onclick="resume()" class="isSelectable">Resume</button>
-        <button onclick="" class="isSelectable"><span class="material-symbols-outlined">location_on</span>Teleport</button>
+        <button onclick="" class="isSelectable" disabled><span class="material-symbols-outlined">location_on</span>Teleport</button>
       </div>
 
       <div class="Garage hidden">
@@ -74,20 +74,24 @@
       <span>Stats</span>
       <div class="stats">
         <div class="glass">
+          <span class="name">Engine torque</span>
+          <span class="value">-</span>
+        </div>
+        <div class="glass">
+          <span class="name">Weight</span>
+          <span class="value">-</span>
+        </div>
+        <div class="glass">
           <span class="name">Drivetrain</span>
-          <span class="value">RWD</span>
+          <span class="value">-</span>
         </div>
         <div class="glass">
           <span class="name">Differential</span>
-          <span class="value">Limited Slip Differential</span>
-        </div>
-        <div class="glass">
-          <span class="name">Torque</span>
-          <span class="value">800 Nm</span>
+          <span class="value">-</span>
         </div>
         <div class="glass">
           <span class="name">Friction</span>
-          <span class="value">1.2</span>
+          <span class="value">-</span>
         </div>
       </div>
     </div>

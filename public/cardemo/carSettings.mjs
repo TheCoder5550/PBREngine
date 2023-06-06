@@ -1,7 +1,7 @@
 import { Car, Wing } from "../car.js";
 import Vector from "../engine/vector.mjs";
 
-var aventador = {
+const aventador = {
   name: "Lamborghini Aventador",
   model: "../assets/models/aventador.glb",
   settings: {
@@ -37,7 +37,7 @@ var aventador = {
   },
 };
 
-var drift = {
+const drift = {
   name: "Toyota ae86",
   model: "../assets/models/toyota_ae86.glb",//"../assets/models/volvov70.glb",
   settings: {
@@ -67,10 +67,15 @@ var drift = {
   },
 };
 
-var drift2 = JSON.parse(JSON.stringify(drift));
+const drift2 = JSON.parse(JSON.stringify(drift));
+drift2.settings.maxSteerAngle = 85;
 drift2.model = "../assets/models/FocE.glb";
 
-var ranger = {
+const gtr = JSON.parse(JSON.stringify(drift));
+gtr.model = "../assets/models/nissanGTR.glb";
+// gtr.model = "../cargame/nissanGTR2.glb";
+
+const ranger = {
   name: "Ford Ranger",
   model: "../assets/models/ford_ranger_police.glb",
   settings: {
@@ -102,17 +107,18 @@ var ranger = {
   },
 };
 
-var skyline = {
+const skyline = {
   name: "Nissan Skyline R32 GT-R",
   model: "../assets/models/skyline.glb",
   settings: {
     mass: 1400,
+    gearRatios: [2.66, 1.78, 1.3, 1, 0.74, 0.6],
     drivetrain: "RWD",
     friction: 1,
     forwardFriction: 1,
     sidewaysFriction: 1,
     maxSteerAngle: 45,
-    torque: 400,
+    torque: 400 * 1.5,
 
     suspensionForce: 90_000,
     suspensionDamping: 2000,
@@ -132,7 +138,67 @@ var skyline = {
   },
 };
 
-var bus = {
+const M3_E30 = {
+  name: "BMW M3 Coupe (E30) 1986",
+  model: "../assets/models/M3_E30.glb",
+  settings: {
+    mass: 1000,
+    drivetrain: "RWD",
+    friction: 1,
+    forwardFriction: 1,
+    sidewaysFriction: 1,
+    maxSteerAngle: 50,
+    torque: 600,
+
+    suspensionForce: 90_000,
+    suspensionDamping: 4000,
+    suspensionTravel: 0.1,
+    rideHeightOffset: 0.08,
+    antiRoll: 10_000,
+
+    ABS: false,
+    TCS: false,
+    differential: Car.ENUMS.DIFFERENTIAL.LSD,
+
+    camera: {
+      followDistance: 4,
+      followHeight: 0.25,
+      pitch: 0.1,
+    },
+  },
+};
+
+const crownVic = {
+  name: "Police car",
+  model: "../assets/models/crownvic.glb",
+  settings: {
+    mass: 1700,
+    drivetrain: "RWD",
+    friction: 1,
+    forwardFriction: 1,
+    sidewaysFriction: 1,
+    maxSteerAngle: 45,
+    torque: 400 * 1.5,
+
+    suspensionForce: 60_000,
+    suspensionDamping: 4000,
+    suspensionTravel: 0.15,
+    rideHeightOffset: 0.1,
+    antiRoll: 9_000,
+
+    ABS: false,
+    TCS: false,
+    differential: Car.ENUMS.DIFFERENTIAL.LSD,
+
+    camera: {
+      followDistance: 4,
+      followHeight: 0.25,
+      pitch: 0.1,
+    },
+  },
+};
+
+const bus = {
   name: "Nagoya City Bus",
   model: "../assets/models/bus.glb",
   settings: {
@@ -165,7 +231,7 @@ var bus = {
   },
 };
 
-var audiRS6 = {
+const audiRS6 = {
   name: "Audi RS6",
   model: "../assets/models/audi_rs6.glb",
   settings: {
@@ -185,7 +251,7 @@ var audiRS6 = {
 
     ABS: true,
     TCS: false,
-    // differential: Car.ENUMS.DIFFERENTIAL.LSD,
+    differential: Car.ENUMS.DIFFERENTIAL.LSD,
 
     camera: {
       followDistance: 4,
@@ -199,8 +265,11 @@ export {
   aventador,
   drift,
   drift2,
+  gtr,
   skyline,
   ranger,
   bus,
-  audiRS6
+  audiRS6,
+  M3_E30,
+  crownVic
 };

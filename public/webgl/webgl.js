@@ -15,7 +15,6 @@ import {
   clamp,
   lerp,
   inverseLerp,
-  watchGlobal,
   fadeOutElement,
   hideElement,
   showElement,
@@ -25,30 +24,20 @@ import {
   removeChildren
 } from "../engine/helper.mjs";
 import {
-  AABBToAABB,
-  closestPointToTriangle,
-  closestPointOnPlane,
-  closestPointOnTriangle,
-  rayToTriangle,
-  rayToPlane,
-  AABBToTriangle,
   rayToAABB,
   getTriangleNormal,
-  sphereToTriangle,
-  capsuleToTriangle,
-  ClosestPointOnLineSegment,
-  AABBTriangleToAABB
 } from "../engine/algebra.mjs";
 import { WEAPONENUMS, updateBulletTrails, Weapon, Scope, BulletTrail, bulletTrails } from "./weapon.js";
 import OrbitCamera from "../engine/orbitCamera.mjs";
-import FlyCamera from "../engine/flyCamera.mjs";
+// import FlyCamera from "../engine/flyCamera.mjs";
 import PlayerPhysicsBase from "../playerPhysicsBase.mjs";
 import * as brokenPlasterSource from "../assets/shaders/custom/brokenPlaster.glsl.mjs";
 import * as waterSource from "../assets/shaders/custom/water.glsl.mjs";
 import Keybindings from "../keybindingsController.mjs";
-import { Car } from "../car.js";
+// import { Car } from "../car.js";
 import GamepadManager, { deadZone } from "../gamepadManager.js";
 import { NewMaterial } from "../engine/material.mjs";
+import { LerpCurve } from "../engine/curves.mjs";
 
 var perlin = new Perlin();
 
@@ -146,64 +135,64 @@ var renderer;
 
 /* Debug */
 
-if (false) {
-  var counters = {};
-  for (var i in gl) {
-    if (typeof gl[i] == "function") {
-      var functionMaker = function(i) {
-        var oldFn = gl[i].bind(gl);
+// if (false) {
+//   var counters = {};
+//   for (var i in gl) {
+//     if (typeof gl[i] == "function") {
+//       var functionMaker = function(i) {
+//         var oldFn = gl[i].bind(gl);
 
-        return function() {
-          if (!counters[i]) {
-            counters[i] = {
-              nrCalls: 0,
-              lines: {}
-            }
-          }
-          counters[i].nrCalls++;
+//         return function() {
+//           if (!counters[i]) {
+//             counters[i] = {
+//               nrCalls: 0,
+//               lines: {}
+//             }
+//           }
+//           counters[i].nrCalls++;
 
-          // var lineNumber = getLineNumber();
+//           // var lineNumber = getLineNumber();
           
-          // if (!counters[i].lines[lineNumber]) {
-          //   counters[i].lines[lineNumber] = 0;
-          // }
-          // counters[i].lines[lineNumber]++;  
+//           // if (!counters[i].lines[lineNumber]) {
+//           //   counters[i].lines[lineNumber] = 0;
+//           // }
+//           // counters[i].lines[lineNumber]++;  
 
-          return oldFn.apply(gl, arguments);
-        }
-      }
+//           return oldFn.apply(gl, arguments);
+//         }
+//       }
 
-      gl[i] = functionMaker(i);
-    }
-  }
+//       gl[i] = functionMaker(i);
+//     }
+//   }
 
-  window.printCounters = function() {
-    // for (var key in counters) {
-    //   var c = counters[key];
-    //   var output = key + ": " + c.nrCalls + " - ";
-    //   // for (var lineKey in c.lines) {
-    //   //   output += lineKey + ": " + c.lines[lineKey] + " - ";
-    //   // }
-    //   console.log(output, c.lines);
-    // }
+//   window.printCounters = function() {
+//     // for (var key in counters) {
+//     //   var c = counters[key];
+//     //   var output = key + ": " + c.nrCalls + " - ";
+//     //   // for (var lineKey in c.lines) {
+//     //   //   output += lineKey + ": " + c.lines[lineKey] + " - ";
+//     //   // }
+//     //   console.log(output, c.lines);
+//     // }
 
-    console.table(counters);
-  }
+//     console.table(counters);
+//   }
 
-  function getLineNumber() {
-    function getErrorObject(){
-      try { throw Error('') } catch(err) { return err; }
-    }
+//   function getLineNumber() {
+//     function getErrorObject(){
+//       try { throw Error('') } catch(err) { return err; }
+//     }
 
-    var err = getErrorObject();
-    var split = err.stack.split("\n");
-    var caller_line = split[split.length - 1];
-    var index = caller_line.indexOf(".js:");
-    var clean = caller_line.slice(index + 4, caller_line.indexOf(":", index + 5));
+//     var err = getErrorObject();
+//     var split = err.stack.split("\n");
+//     var caller_line = split[split.length - 1];
+//     var index = caller_line.indexOf(".js:");
+//     var clean = caller_line.slice(index + 4, caller_line.indexOf(":", index + 5));
 
-    return clean;
-  }
-}
+//     return clean;
+//   }
+// }
 
 /* ---------------------------------------- */
 
@@ -235,11 +224,7 @@ var swat;
 
 var mouse = { movementX: 0, movementY: 0 };
 
-window.audioContext = new AudioContext();
-window.masterVolume = audioContext.createGain();
-masterVolume.gain.value = 50;
-masterVolume.connect(audioContext.destination);
-
+let audioHandler = new AudioHandler();
 var audioListener = new AudioListener3D();
 var leaderboard = new Leaderboard(document.querySelector(".leaderboard"));
 var killfeed = new Killfeed();
@@ -252,6 +237,7 @@ var keybindings;
 // source.play();
 
 var scene;
+let menuScene;
 
 var orbitCamera;
 var mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 300, layer: 0b1});
@@ -259,16 +245,12 @@ var weaponCamera = new Camera({near: 0.005, far: 20, layer: 0b10, fov: 23});
 var lobbyWeaponCamera;
 
 var defaultFov = 40;//45;//37;
-window.targetFov = defaultFov;
+let targetFov = defaultFov;
 var currentFov = defaultFov;
-
-window.defaultWeaponFov = 32;
-window.targetWeaponFov = defaultWeaponFov;
-var currentWeaponFov = defaultWeaponFov;
 
 var crosshair = new Crosshair();
 window.hitmarker = new Hitmarker();
-window.player = null;
+let player = null;
 var classes;
 var selectedClass;
 window.enemies = [];
@@ -284,6 +266,7 @@ var fpsHistory = new Array(20).fill(0);
 var reddotMaterial;
 var bulletHoles;
 var sparks;
+var rocks;
 var captureZoneManager = new CaptureZoneManager();
 
 setup();
@@ -305,7 +288,7 @@ async function setup() {
     shadowBiases: [-0.0003, -0.001],
     renderScale: 1,
     path: "../",
-    // renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
+    renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
   });
 
   renderer.on("error", function() {
@@ -345,17 +328,17 @@ async function setup() {
   scene.postprocessing.exposure = -0.5;
   scene.postprocessing.motionBlurStrength = 0;
   // await scene.loadEnvironment();
-  // await scene.loadEnvironment({ hdrFolder: "../assets/hdri/sky_only" });
+  await scene.loadEnvironment({ hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k_precomputed" });
   // var oldSkybox = scene.skyboxCubemap;
   // await scene.loadEnvironment({ hdrFolder: "../assets/hdri/wide_street_01_1k_precomputed" });
-  await scene.loadEnvironment({ hdrFolder: "../assets/hdri/fouriesburg_mountain_cloudy_1k" });
+  // await scene.loadEnvironment({ hdrFolder: "../assets/hdri/fouriesburg_mountain_cloudy_1k" });
   // scene.skyboxCubemap = oldSkybox;
 
   console.timeEnd("loadEnvironment");
 
   // window.glDebugger = new GLDebugger();
   
-  var menuScene = new Scene("Menu scene");
+  menuScene = new Scene("Menu scene");
   renderer.add(menuScene);
   menuScene.copyEnvironment(scene);
   menuScene.sunIntensity = Vector.fill(3);
@@ -371,10 +354,10 @@ async function setup() {
   // debugFlyCamera.baseSpeed = 8;
   // debugFlyCamera.sprintSpeed = 50;
   // orbitCamera = new OrbitCamera(renderer, {position: new Vector(0, 0, -3), near: 0.1, far: 300, fov: 23});
-  lobbyWeaponCamera = new OrbitCamera(renderer, {near: 0.01, far: 100, fov: 20}, { translate: false, scale: true, stylePointer: false });
-  lobbyWeaponCamera.distance = 3;
+  lobbyWeaponCamera = new OrbitCamera(renderer, {near: 0.01, far: 100, fov: 15}, { rotate: false, translate: false, scale: false, stylePointer: false });
+  lobbyWeaponCamera.distance = 4;
   // lobbyWeaponCamera.rotation = new Vector(0, -Math.PI / 2, 0);
-  lobbyWeaponCamera.setCenter(new Vector(0, 1.1, 0));
+  lobbyWeaponCamera.setCenter(new Vector(0, 0.9, 0));
 
   var resizeEvent = function() {
     mainCamera.setAspect(renderer.aspect);
@@ -450,20 +433,46 @@ async function setup() {
   }));
 
   // Bullet trails
+  let bulletTrailMaterial = renderer.CreateLitMaterial({opaque: 0, emissiveFactor: [40, 5, 5], emissiveTexture: bulletTrail, albedo: [0, 0, 0, 1], albedoTexture: bulletTrail}, renderer.programContainers.litInstanced);
+  bulletTrailMaterial.doubleSided = true;
+
   scene.add(new GameObject("BulletTrail", {
-    meshRenderer: new renderer.MeshInstanceRenderer([renderer.CreateLitMaterial({opaque: 0, emissiveFactor: [40, 5, 5], emissiveTexture: bulletTrail, albedo: [0, 0, 0, 1], albedoTexture: bulletTrail}, renderer.programContainers.litInstanced)], [await renderer.loadObj("../assets/models/bulletTrail.obj")]),
+    meshRenderer: new renderer.MeshInstanceRenderer([
+      bulletTrailMaterial
+    ], [
+      await renderer.loadObj("../assets/models/bulletTrail.obj")
+    ]),
     castShadows: false
   }));
 
   // Bullet metal hit sparks
   var sparksObject = new GameObject("Spark particles");
 
+  let rockMeshData = (await renderer.loadGLTF("../assets/models/bulletHitRockSmooth.glb")).children[0].meshRenderer.meshData[0];
+  console.log(rockMeshData);
+  rocks = new renderer.ParticleSystem(200, rockMeshData);
+  rocks.orientation = "faceCamera";
+  rocks.emitHealth = 1.5;
+  rocks.startSize = (dst) => Vector.fill(0.035 * Math.random(), dst);
+  rocks.endSize = (dst) => Vector.fill(0, dst);
+
+  var mat = renderer.CreateLitMaterial({ albedo: [0.18, 0.08, 0.05, 1], useVertexColor: false }, renderer.programContainers.litInstanced);
+  // mat.opaque = false;
+  rocks.material = mat;
+
+  sparksObject.addComponent(rocks);
+
   sparks = new renderer.ParticleSystem();
   sparks.orientation = "faceCamera";
-  sparks.gravityScale = -0.1;
-  sparks.drag = 1;
-  sparks.startSize = Vector.fill(0.04);
-  sparks.endSize = Vector.fill(0.15);
+  sparks.gravityScale = 0.05;
+  sparks.drag = 2;
+  sparks.startSize = (dst) => Vector.fill(0.02, dst);
+  sparks.endSize = (dst) => Vector.fill(0.25, dst);
+  let curve = new LerpCurve();
+  curve.addStage(0, 1);
+  curve.addStage(0.5, 0.2);
+  curve.addStage(1, 0);
+  sparks.alphaCurve = curve;
 
   var mat = renderer.CreateLitMaterial({
     albedoTexture: renderer.loadTexture(renderer.path + "assets/textures/smoke.png"),
@@ -480,9 +489,9 @@ async function setup() {
   var muzzleFlashObject = new GameObject("Muzzle flash particles");
   muzzleFlashObject.setLayer(0b10, true);
   var muzzleFlash = new renderer.ParticleSystem(200, await renderer.loadObj("../assets/models/bulletTrail.obj"));
-  muzzleFlash.emitPosition = Vector.zero();
-  muzzleFlash.emitVelocity = () => new Vector(1 * (Math.random() - 0.5), 1 * (Math.random() - 0.5), -3);
-  muzzleFlash.startSize = new Vector(2.5, 0.25, 0.25);
+  muzzleFlash.emitPosition = (dst) => Vector.zero(dst);
+  muzzleFlash.emitVelocity = (dst) => new Vector(1 * (Math.random() - 0.5), 1 * (Math.random() - 0.5), -3, dst);
+  muzzleFlash.startSize = (dst) => new Vector(2.5, 0.25, 0.25, dst);
   muzzleFlash.emitHealth = 0.25;
   muzzleFlash.gravityScale = 0;
   muzzleFlash.wind = (dst) => Vector.zero(dst);
@@ -502,10 +511,14 @@ async function setup() {
   // Menu map
   var menuMap = menuScene.add(await renderer.loadGLTF("../assets/models/maps/menu/model.glb"));
 
-  var hedge = menuScene.add(await renderer.loadGLTF("../assets/models/hedge.glb"));
-  hedge.transform.rotation = Quaternion.euler(0, Math.PI / 2, 0);
-  hedge.transform.position.z = -3;
-  hedge.children[0].meshRenderer.materials[0] = foliageMat;
+  let lobbyCharacter = menuScene.add(await renderer.loadGLTF("lobbyCharacter.glb"));
+  lobbyCharacter.animationController.loop = true;
+  lobbyCharacter.animationController.play();
+
+  // var hedge = menuScene.add(await renderer.loadGLTF("../assets/models/hedge.glb"));
+  // hedge.transform.rotation = Quaternion.euler(0, Math.PI / 2, 0);
+  // hedge.transform.position.z = -3;
+  // hedge.children[0].meshRenderer.materials[0] = foliageMat;
 
   // menuScene.add(await renderer.loadGLTF("../assets/models/DamagedHelmet.glb"));
 
@@ -523,7 +536,7 @@ async function setup() {
   // var map = scene.add(await renderer.loadGLTF("../assets/models/test/playerArea.glb"));
   // var mapCollider = await renderer.loadGLTF("../assets/models/test/playerArea.glb");
   var map = await renderer.loadGLTF(mapPath, { loadMaterials: true, maxTextureSize: 1024 });
-  // scene.add(renderer.BatchGameObject(map));
+  scene.add(renderer.BatchGameObject(map));
   // scene.add(map);
 
   // map.getChild("Plane").meshRenderer.materials[0].setUniform("doNoTiling", 1);
@@ -532,14 +545,14 @@ async function setup() {
     o.meshRenderer.materials[0] = foliageMat;
   });
 
-  var water = renderer.CreateShape("plane", waterMaterial);
-  // water.transform.position.y = -20;
-  // water.transform.scale = Vector.fill(5000);
-  // water.transform.rotation = Quaternion.euler(-Math.PI / 2, 0, 0);
-  scene.add(water);
+  // var water = renderer.CreateShape("plane", waterMaterial);
+  // // water.transform.position.y = -20;
+  // // water.transform.scale = Vector.fill(5000);
+  // // water.transform.rotation = Quaternion.euler(-Math.PI / 2, 0, 0);
+  // scene.add(water);
 
-  var oilrig = await renderer.loadGLTF("../assets/models/maps/oilrig/oilrig.glb");
-  scene.add(oilrig);
+  // var oilrig = await renderer.loadGLTF("../assets/models/maps/oilrig/oilrig.glb");
+  // scene.add(oilrig);
 
   loadingStatus.innerText = "Generating collider";
   var mapCollider = await renderer.loadGLTF(colliderPath, { loadMaterials: false, loadNormals: false, loadTangents: false });
@@ -573,7 +586,7 @@ async function setup() {
   // var hill = await CreateCaptureZone(Vector.zero());
   // captureZoneManager.add(hill);
 
-  var e = new Enemy(scene.add(renderer.CreateShape("cube")));
+  var e = new Enemy(scene.add(new GameObject("Enemy")));
   e.health = Infinity;
   enemies.push(e);
   // enemies.push(new Enemy(map.getChild("Target", true)));
@@ -686,7 +699,7 @@ async function setup() {
     var brickNormal = await renderer.loadTextureAsync("../assets/textures/bricks01/Bricks01_NRM_3K.jpg", {maxTextureSize: 256});
 
     var plasterMat = renderer.CreateLitMaterial({}, brokenPlasterProgram);
-    plasterMat.setUniform("roughness", 1);
+    // plasterMat.setUniform("roughness", 1);
     plasterMat.setUniform("albedoTextures[0]", [ plasterAlbedo, brickAlbedo ]);
     plasterMat.setUniform("normalTextures[0]", [ plasterNormal, brickNormal ]);
 
@@ -809,8 +822,6 @@ async function setup() {
   // // scene.skyboxCubemap = oldSkybox;
   // scene.environmentIntensity = 1;
 
-  await setupWeapons();
-
   /*
     Player setup
   */
@@ -818,38 +829,40 @@ async function setup() {
   player = new Player();
   player.state = player.STATES.IN_LOBBY;
   player.physicsEngine = physicsEngine;
+
+  await setupWeapons();
   player.setWeapons(classes[selectedClass].weapons);
 
-  var car = new Car(scene, physicsEngine, {
-    drivetrain: "RWD",
-    friction: 1,
-    forwardFriction: 1,
-    sidewaysFriction: 1,
-    maxSteerAngle: 35,
-    torque: 350,
-    ABS: false,
+  // var car = new Car(scene, physicsEngine, {
+  //   drivetrain: "RWD",
+  //   friction: 1,
+  //   forwardFriction: 1,
+  //   sidewaysFriction: 1,
+  //   maxSteerAngle: 35,
+  //   torque: 350,
+  //   ABS: false,
 
-    suspensionForce: 70_000,
-    suspensionDamping: 3000,
-    suspensionTravel: 0.125,
+  //   suspensionForce: 70_000,
+  //   suspensionDamping: 3000,
+  //   suspensionTravel: 0.125,
 
-    differential: Car.ENUMS.DIFFERENTIAL.LOCKED,
-  });
-  window.car = car;
-  await car.setup("../cargame/tocus.glb");
-  // car.camera.followDistance = 5;
-  // car.camera.followHeight = 0.3;
-  // car.camera.pitch = 0.1;
-  car.keybindings.setBinding("resetCar", {});
-  car.canMove = false;
+  //   differential: Car.ENUMS.DIFFERENTIAL.LOCKED,
+  // });
+  // window.car = car;
+  // await car.setup("../cargame/tocus.glb");
+  // // car.camera.followDistance = 5;
+  // // car.camera.followHeight = 0.3;
+  // // car.camera.pitch = 0.1;
+  // car.keybindings.setBinding("resetCar", {});
+  // car.canMove = false;
 
   physicsEngine.fixedUpdate = function(dt) {
-    car.fixedUpdate(dt);
+    // car.fixedUpdate(dt);
 
-    if (car.canMove) {
-      player.position = car.rb.position;
-      player.velocity = Vector.zero();
-    }
+    // if (car.canMove) {
+    //   player.position = car.rb.position;
+    //   player.velocity = Vector.zero();
+    // }
 
     player.fixedUpdate(dt);
     player.update(dt);
@@ -870,7 +883,6 @@ async function setup() {
     window.physicsEngine = physicsEngine;
     window.mainCamera = mainCamera;
     window.bulletHoles = bulletHoles;
-    window.sparks = sparks;
     window.defaultFov = defaultFov;
     window.Quaternion = Quaternion;
     window.Vector = Vector;
@@ -900,7 +912,7 @@ async function setup() {
     }
 
     time = timeSinceStart;
-    counters = {};
+    // counters = {};
 
     fpsHistory[frameNumber % 20] = 1 / frameTime;
     // fpsHistory.push(1 / frameTime);
@@ -915,6 +927,10 @@ async function setup() {
         x += i * i;
       }
     }
+
+    // if (renderer.getKeyDown(32)) {
+    //   player.die();
+    // }
 
     // glDebugger.clear();
   
@@ -936,21 +952,21 @@ async function setup() {
     // if (enemies[2].gameObject) enemies[2].gameObject.transform.position.z = -6;
     // if (enemies[0].gameObject) enemies[0].gameObject.transform.position.z = Math.sin(timeSinceStart * 2.5) * 3;
   
-    if (renderer.getKeyDown(70) && Vector.distance(car.rb.position, player.position) < 3.5) {
-      if (car.canMove) {
-        car.canMove = false;
-        player.canMove = true;
-      }
-      else {
-        car.canMove = true;
-        player.canMove = false;
-      }
-    }
+    // if (renderer.getKeyDown(70) && Vector.distance(car.rb.position, player.position) < 3.5) {
+    //   if (car.canMove) {
+    //     car.canMove = false;
+    //     player.canMove = true;
+    //   }
+    //   else {
+    //     car.canMove = true;
+    //     player.canMove = false;
+    //   }
+    // }
 
-    // if (renderer.activeScene() == scene) {
+    // if (renderer.getActiveScene() == scene) {
       physicsEngine.update();
     // }
-    if (car) car.update(frameTime);
+    // if (car) car.update(frameTime);
 
     for (var key in multiplayerCharacters) {
       multiplayerCharacters[key].update(physicsEngine.dt);
@@ -1063,16 +1079,16 @@ function renderUI(dt) {
     killfeed.render();
   }
 
-  if (player.state === player.STATES.PLAYING && !car.canMove && Vector.distance(car.rb.position, player.position) < 3.5) {
-    ui.picture("../assets/textures/keyIcons/F_Key_Dark.png", ui.width / 2 - 200, ui.height / 2, 50, 50);
-    ui.setTextYAlign("middle");
-    ui.text("Drive vehicle", ui.width / 2 - 200 + 60, ui.height / 2 + 25, 30, "white", "black");
-    ui.resetTextYAlign();
-  }
+  // if (player.state === player.STATES.PLAYING && !car.canMove && Vector.distance(car.rb.position, player.position) < 3.5) {
+  //   ui.picture("../assets/textures/keyIcons/F_Key_Dark.png", ui.width / 2 - 200, ui.height / 2, 50, 50);
+  //   ui.setTextYAlign("middle");
+  //   ui.text("Drive vehicle", ui.width / 2 - 200 + 60, ui.height / 2 + 25, 30, "white", "black");
+  //   ui.resetTextYAlign();
+  // }
 
-  if (car.canMove) {
-    car.renderUI(ui);
-  }
+  // if (car.canMove) {
+  //   car.renderUI(ui);
+  // }
 
   // Stats
   ui.setFont("monospace");
@@ -1207,6 +1223,13 @@ function Enemy(gameObject, name = "Enemy") {
         new Collider(new Vector(-0.5, 0, -0.05), new Vector(0.5, 1.4, 0.05), null, Collider.TYPES.BODY),
         new Collider(new Vector(-0.25, 1.4, -0.05), new Vector(0.25, 2, 0.05), null, Collider.TYPES.HEAD)
       ];
+
+      for (let collider of this.colliders) {
+        let cube = renderer.CreateShape("cube");
+        cube.transform.position = collider.aabb.getCenter();
+        cube.transform.scale = Vector.divide(collider.aabb.getSize(), 2);
+        scene.add(cube);
+      }
     }
   }
 
@@ -1221,21 +1244,31 @@ function Enemy(gameObject, name = "Enemy") {
   var createBillboard = () => {
     if (this.gameObject) {
       var meshData = renderer.getParticleMeshData();
+      meshData.setAttribute("uv", {
+        bufferData: new Float32Array([
+          1.0, 0.0,
+          0.0, 0.0,
+          0.0, 1.0,
+          1.0, 1.0
+        ]),
+        size: 2
+      });
+
       var material = renderer.CreateLitMaterial({
         opaque: false,
         albedoTexture: createTextTexture(this.name, 256)
-      }, renderer.programContainers.litBillboard);
-
+      }, renderer.programContainers.billboard);
       material.doubleSided = true;
+
       var meshRenderer = new renderer.MeshRenderer(material, meshData);
       // meshRenderer.addInstance(Matrix.identity());
 
       var billboard = new GameObject("Billboard");
       billboard.meshRenderer = meshRenderer;
       this.gameObject.addChild(billboard);
-      billboard.transform.position.y = 2.4//35;
+      billboard.transform.position.y = 2.4;//35;
     }
-  }
+  };
 
   createBillboard();
 
@@ -1344,7 +1377,8 @@ class Player extends PlayerPhysicsBase {
 
     this.leaderboardEntry = null;
 
-    var _health = this.health;
+    this.maxHealth = 100;
+    var _health = this.maxHealth;
     Object.defineProperty(this, "health", {
       get: function() {
         return _health;
@@ -1354,6 +1388,7 @@ class Player extends PlayerPhysicsBase {
         setHealth(_health / this.maxHealth);
       }
     });
+    this.health = _health; // Update UI
 
     var _state = this.state;
     Object.defineProperty(this, "state", {
@@ -1371,7 +1406,8 @@ class Player extends PlayerPhysicsBase {
           hideElement(gameUI);
           hideElement(deathScreen);
 
-          renderer.currentScene = 1;
+          renderer.setActiveScene(menuScene);
+          // renderer.currentScene = 1;
           // scene.skyboxVisible = false;
 
           var t = this.getCurrentWeapon()?.weaponObject?.transform;
@@ -1385,7 +1421,8 @@ class Player extends PlayerPhysicsBase {
           hideElement(lobbyUI);
           // hideElement(loadoutUI);
 
-          renderer.currentScene = 0;
+          renderer.setActiveScene(scene);
+          // renderer.currentScene = 0;
           // scene.skyboxVisible = true;
 
           ApplySettings();
@@ -1395,7 +1432,7 @@ class Player extends PlayerPhysicsBase {
           showElement(deathScreen);
           hideElement(lobbyUI);
 
-          scene.skyboxVisible = true;
+          // scene.skyboxVisible = true;
         }
       }
     });
@@ -1445,7 +1482,7 @@ class Player extends PlayerPhysicsBase {
   }
 
   setWeapons(weapons) {
-    for (var weapon of this.weapons) {
+    for (let weapon of this.weapons) {
       if (weapon.weaponObject) {
         weapon.weaponObject.visible = false;
       }
@@ -1453,15 +1490,15 @@ class Player extends PlayerPhysicsBase {
 
     this.weapons = weapons;
 
-    for (var weapon of this.weapons) {
+    for (let weapon of this.weapons) {
       weapon.onFire = (data) => {
         sendMessage("playerAction", {
           action: "fireWeapon",
           origin: data.origin,
           direction: data.direction,
-          trailHealth: data.trailHealth
+          Health: data.trailHealth
         });
-      }
+      };
     }
 
     if (this.getCurrentWeapon()) {
@@ -1478,35 +1515,17 @@ class Player extends PlayerPhysicsBase {
       return;
     }
 
-    if (index >= 0 && index < this.weapons.length) {
-      if (index != this.currentWeapon) {
-        var oldWeapon = this.weapons[this.currentWeapon];
+    if (index >= 0 && index < this.weapons.length && index != this.currentWeapon) {
+      window.muzzleFlashEnabled = false;
 
-        window.muzzleFlashEnabled = false;
+      var oldWeapon = this.weapons[this.currentWeapon];
+      this.rotation = Vector.add(this.rotation, oldWeapon.recoilOffset);
+      oldWeapon.unequip();
+      
+      var newWeapon = this.weapons[index];
+      newWeapon.equip();
+      crosshair.type = newWeapon.crosshairType;
 
-        clearTimeout(oldWeapon.fireTimeout);
-        oldWeapon.isFiring = false;
-        oldWeapon.cancelReload();
-        oldWeapon.mode = oldWeapon.GunModes.DEFAULT;
-        targetFov = defaultFov;
-
-        this.rotation = Vector.add(this.rotation, oldWeapon.recoilOffset);
-        oldWeapon.recoilOffset = Vector.zero();
-        oldWeapon.recoilOffsetTarget = Vector.zero();
-
-        if (oldWeapon.weaponObject) {
-          oldWeapon.weaponObject.visible = false;
-        }
-        
-        var newWeapon = this.weapons[index];
-        newWeapon.reloadAnimationTime = 1;
-        newWeapon.fireAnimationTime = 1;
-        if (newWeapon.weaponObject) {
-          newWeapon.weaponObject.visible = true;
-        }
-        crosshair.type = newWeapon.crosshairType;
-      }
-    
       this.currentWeapon = index;
     }
   }
@@ -1534,9 +1553,9 @@ class Player extends PlayerPhysicsBase {
     }
     else if (this.state == this.STATES.DEAD) {
       // mainCamera.setFOV(20);
-      var m = multiplayerCharacters[this.killedBy];
+      let m = multiplayerCharacters[this.killedBy];
       if (m && m.gameObject) {
-        var m = Matrix.lookAt(this.getHeadPos(), Vector.add(m.gameObject.transform.position, new Vector(0, 1.8, 0)), Vector.up());
+        let m = Matrix.lookAt(this.getHeadPos(), Vector.add(m.gameObject.transform.position, new Vector(0, 1.8, 0)), Vector.up());
         this.killcamDir = Vector.slerp(this.killcamDir, Matrix.getForward(m), 0.1);
         mainCamera.transform.matrix = Matrix.lookAt(this.getHeadPos(), Vector.add(this.getHeadPos(), this.killcamDir));
       }
@@ -1551,10 +1570,10 @@ class Player extends PlayerPhysicsBase {
       this.clampRotation();
 
       mainCamera.setFOV(currentFov);
-      weaponCamera.setFOV(currentWeaponFov);
+      weaponCamera.setFOV(this.getCurrentWeapon().getWeaponFov());
 
-      var rot = this.getHeadRotation();
-      var m = Matrix.transform([
+      let rot = this.getHeadRotation();
+      let m = Matrix.transform([
         ["translate", this.getHeadPos()],
         ["ry", -rot.y],
         ["rx", -rot.x],
@@ -1651,9 +1670,11 @@ class Player extends PlayerPhysicsBase {
         this.walkTime += (roundNearest(this.walkTime, Math.PI) - this.walkTime) * 0.1;
       }
 
-      var _adsFov = this.getCurrentWeapon().ADSSpeed;
-      currentFov += (targetFov - currentFov) * _adsFov;
-      currentWeaponFov += (targetWeaponFov - currentWeaponFov) * _adsFov;
+      let currentWeapon = this.getCurrentWeapon();
+      targetFov = currentWeapon.mode === currentWeapon.GunModes.ADS ?
+        currentWeapon.scope.ADSFOV :
+        defaultFov;
+      currentFov += (targetFov - currentFov) * currentWeapon.ADSSpeed;
 
       /*
         Send to server
@@ -2231,7 +2252,7 @@ function MultiplayerCharacter(gameObject) {
     });
   
     var neighbors;
-    for (var i = 0; i < snapshotHistoryCopy.length; i++) {
+    for (let i = 0; i < snapshotHistoryCopy.length; i++) {
       var snapshot = snapshotHistoryCopy[i];
       if (time > snapshot.timestamp) {
         neighbors = [snapshot, snapshotHistoryCopy[i - 1], snapshotHistoryCopy[i + 1], i];
@@ -2240,7 +2261,7 @@ function MultiplayerCharacter(gameObject) {
     }
 
     if (!neighbors) {
-      var i = snapshotHistoryCopy.length - 1;
+      let i = snapshotHistoryCopy.length - 1;
       neighbors = [snapshotHistoryCopy[i], snapshotHistoryCopy[i - 1], snapshotHistoryCopy[i + 1]];
     }
 
@@ -2450,116 +2471,116 @@ async function CreateCaptureZone(position = Vector.zero(), zoneInstance) {
   return z;
 }
 
-function createTerrainData(w = 20, h = 20, res = 5, heightFactor = 2, noiseOffset = Vector.zero(), noiseScale = 0.01, uvScale = 20) {
-  function getHeight(i, j) {
-    return Math.pow(LayeredNoise(i * noiseScale, j * noiseScale, 4), 2) * heightFactor;// * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
-    // return perlin.noise(i * noiseScale, j * noiseScale) * scale * heightFactor * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
-  }
+// function createTerrainData(w = 20, h = 20, res = 5, heightFactor = 2, noiseOffset = Vector.zero(), noiseScale = 0.01, uvScale = 20) {
+//   function getHeight(i, j) {
+//     return Math.pow(LayeredNoise(i * noiseScale, j * noiseScale, 4), 2) * heightFactor;// * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
+//     // return perlin.noise(i * noiseScale, j * noiseScale) * scale * heightFactor * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
+//   }
 
-  var uvs = [];
-  var vertices = [];
-  var triangles = [];
-  var tangents = [];
+//   var uvs = [];
+//   var vertices = [];
+//   var triangles = [];
+//   var tangents = [];
 
-  for (var i = 0; i < res; i++) {
-    for (var j = 0; j < res; j++) {
-      var x = mapValue(i, 0, res - 1, -w / 2, w / 2);
-      var z = mapValue(j, 0, res - 1, -h / 2, h / 2);
+//   for (var i = 0; i < res; i++) {
+//     for (var j = 0; j < res; j++) {
+//       var x = mapValue(i, 0, res - 1, -w / 2, w / 2);
+//       var z = mapValue(j, 0, res - 1, -h / 2, h / 2);
 
-      var vertex = new Vector(
-        x,
-        getHeight(x + noiseOffset.x, z + noiseOffset.y),
-        z
-      );
-      vertices.push(vertex.x, vertex.y, vertex.z);
-      uvs.push(i / (res - 1) * uvScale, j / (res - 1) * uvScale);
-    }
-  }
+//       var vertex = new Vector(
+//         x,
+//         getHeight(x + noiseOffset.x, z + noiseOffset.y),
+//         z
+//       );
+//       vertices.push(vertex.x, vertex.y, vertex.z);
+//       uvs.push(i / (res - 1) * uvScale, j / (res - 1) * uvScale);
+//     }
+//   }
 
-  var normals = new Array(vertices.length / 3);
-  for (var i = 0; i < normals.length; i++) {
-    normals[i] = [];
-  }
+//   var normals = new Array(vertices.length / 3);
+//   for (var i = 0; i < normals.length; i++) {
+//     normals[i] = [];
+//   }
 
-  for (var i = 0; i < res - 1; i++) {
-    for (var j = 0; j < res - 1; j++) {
-      var ind = j + i * res;
-      var indices = [
-        ind,
-        ind + 1,
-        ind + res,
+//   for (var i = 0; i < res - 1; i++) {
+//     for (var j = 0; j < res - 1; j++) {
+//       var ind = j + i * res;
+//       var indices = [
+//         ind,
+//         ind + 1,
+//         ind + res,
 
-        ind + 1,
-        ind + res + 1,
-        ind + res
-      ];
-      triangles.push(...indices);
+//         ind + 1,
+//         ind + res + 1,
+//         ind + res
+//       ];
+//       triangles.push(...indices);
 
-      var t1Normal = getTriangleNormal([Vector.fromArray(vertices, indices[0] * 3), Vector.fromArray(vertices, indices[1] * 3), Vector.fromArray(vertices, indices[2] * 3)]);
-      var t2Normal = getTriangleNormal([Vector.fromArray(vertices, indices[3] * 3), Vector.fromArray(vertices, indices[4] * 3), Vector.fromArray(vertices, indices[5] * 3)]);
+//       var t1Normal = getTriangleNormal([Vector.fromArray(vertices, indices[0] * 3), Vector.fromArray(vertices, indices[1] * 3), Vector.fromArray(vertices, indices[2] * 3)]);
+//       var t2Normal = getTriangleNormal([Vector.fromArray(vertices, indices[3] * 3), Vector.fromArray(vertices, indices[4] * 3), Vector.fromArray(vertices, indices[5] * 3)]);
 
-      normals[indices[0]].push(t1Normal);
-      normals[indices[1]].push(t1Normal);
-      normals[indices[2]].push(t1Normal);
-      normals[indices[3]].push(t2Normal);
-      normals[indices[4]].push(t2Normal);
-      normals[indices[5]].push(t2Normal);
-    }
-  }
+//       normals[indices[0]].push(t1Normal);
+//       normals[indices[1]].push(t1Normal);
+//       normals[indices[2]].push(t1Normal);
+//       normals[indices[3]].push(t2Normal);
+//       normals[indices[4]].push(t2Normal);
+//       normals[indices[5]].push(t2Normal);
+//     }
+//   }
 
-  var outNormals = [];
-  for (var i = 0; i < normals.length; i++) {
-    var normal = Vector.divide(normals[i].reduce((a, b) => {
-      return Vector.add(a, b);
-    }, Vector.zero()), normals[i].length);
+//   var outNormals = [];
+//   for (var i = 0; i < normals.length; i++) {
+//     var normal = Vector.divide(normals[i].reduce((a, b) => {
+//       return Vector.add(a, b);
+//     }, Vector.zero()), normals[i].length);
 
-    outNormals.push(normal.x, normal.y, normal.z);
+//     outNormals.push(normal.x, normal.y, normal.z);
 
-    tangents.push(normal.y, normal.x, normal.z);
-  }
+//     tangents.push(normal.y, normal.x, normal.z);
+//   }
 
-  var meshData = new renderer.MeshData({
-    indices: {
-      bufferData: new Uint32Array(triangles),
-      target: renderer.gl.ELEMENT_ARRAY_BUFFER
-    },
-    position: {
-      bufferData: new Float32Array(vertices),
-      size: 3
-    },
-    normal: {
-      bufferData: new Float32Array(outNormals),
-      size: 3
-    },
-    tangent: {
-      bufferData: new Float32Array(tangents),
-      size: 3
-    },
-    uv: {
-      bufferData: new Float32Array(uvs),
-      size: 2
-    }
-  });
+//   var meshData = new renderer.MeshData({
+//     indices: {
+//       bufferData: new Uint32Array(triangles),
+//       target: renderer.gl.ELEMENT_ARRAY_BUFFER
+//     },
+//     position: {
+//       bufferData: new Float32Array(vertices),
+//       size: 3
+//     },
+//     normal: {
+//       bufferData: new Float32Array(outNormals),
+//       size: 3
+//     },
+//     tangent: {
+//       bufferData: new Float32Array(tangents),
+//       size: 3
+//     },
+//     uv: {
+//       bufferData: new Float32Array(uvs),
+//       size: 2
+//     }
+//   });
   
-  return meshData;
-}
+//   return meshData;
+// }
 
-function LayeredNoise(x, y, octaves = 4) {
-  var noise = 0;
-  var frequency = 1;
-  var factor = 1;
+// function LayeredNoise(x, y, octaves = 4) {
+//   var noise = 0;
+//   var frequency = 1;
+//   var factor = 1;
 
-  var persistance = 0.4;
-  var roughness = 3;
+//   var persistance = 0.4;
+//   var roughness = 3;
 
-  for (var i = 0; i < octaves; i++) {
-    noise += perlin.noise(x * frequency + i * 0.72354, y * frequency + i * 0.72354) * factor;
-    factor *= persistance;
-    frequency *= roughness;
-  }
+//   for (var i = 0; i < octaves; i++) {
+//     noise += perlin.noise(x * frequency + i * 0.72354, y * frequency + i * 0.72354) * factor;
+//     factor *= persistance;
+//     frequency *= roughness;
+//   }
 
-  return noise;
-}
+//   return noise;
+// }
 
 function Settings() {
   var defaultSettings = {
@@ -2569,13 +2590,13 @@ function Settings() {
     // "Master volume": new Slider(0.5, 0, 1),
     // "Colorblindness mode": new Dropdown(0, ["First", "second", "third"]),
     // "Toggle": new Toggle(true)
-  }
+  };
 
   var _settings = copySettings(defaultSettings);
 
   this.getSetting = function(setting) {
     return _settings[setting]?.value;
-  }
+  };
 
   function copySettings(settings) {
     var newSettings = {};
@@ -2644,7 +2665,7 @@ function Settings() {
         resetSettings();
         createSettingsElement();
       }
-    }
+    };
   }
 
   function Toggle(value) {
@@ -2805,8 +2826,8 @@ function Settings() {
 }
 
 function ApplySettings() {
-  defaultFov = window.defaultFov = window.targetFov = currentFov = settings.getSetting("FOV");
-  masterVolume.gain.value = settings.getSetting("Master volume");
+  defaultFov = window.defaultFov = targetFov = currentFov = settings.getSetting("FOV");
+  audioHandler.setMasterVolume(settings.getSetting("Master volume"));
 }
 
 function Leaderboard(element) {
@@ -2934,11 +2955,11 @@ function createTextTexture(text, size = 256) {
 
   ctx.fillStyle = "white";
   ctx.font = "800 50px Arial";
-  var textSize = ctx.measureText(text);
+  let textSize = ctx.measureText(text);
 
   var fontSize = Math.min(50, 0.9 * size / textSize.width * 50);
   ctx.font = "800 " + fontSize + "px Arial";
-  var textSize = ctx.measureText(text);
+  textSize = ctx.measureText(text);
 
   ctx.fillText(text, canvas.width / 2 - textSize.width / 2, canvas.height / 2 + textSize.actualBoundingBoxAscent / 2);
 
@@ -3049,7 +3070,7 @@ async function setupWeapons() {
 
   var weapons = {
     AK12: () => {
-      var w = new Weapon({
+      var w = createWeapon({
         weaponObject: weaponModels.AK12,
         scope: scopes.reddot,
         weaponModelOffset: new Vector(-0.2, 0.12, 0.3),
@@ -3078,12 +3099,12 @@ async function setupWeapons() {
       // w.modelRecoil.fireTorque = Vector.zero();
       // w.modelRecoil.fireTorque.z = 3;
 
-      w.modelRecoil.fireTorque = () => new Vector(4, 0.1, (Math.random() - 0.5) * 20);
+      w.modelRecoil.fireTorque = () => new Vector(2, 0.1 * 10 /* does nothing? */, (Math.random() - 0.5) * 2);
 
       return w;
     },
     pistol: () => {
-      var w = new Weapon({
+      var w = createWeapon({
         weaponObject: weaponModels.pistol,
         reloadTime: 1200,
         weaponModelOffset: new Vector(-0.2, 0.1, 0.25),
@@ -3098,7 +3119,7 @@ async function setupWeapons() {
       return w;
     },
     autoPistol: () => {
-      var w = new Weapon({
+      var w = createWeapon({
         weaponObject: weaponModels.pistol,
         reloadTime: 1200,
         weaponModelOffset: new Vector(-0.2, 0.1, 0.25),
@@ -3116,7 +3137,7 @@ async function setupWeapons() {
       return w;
     },
     "1911": () => {
-      var w = new Weapon({
+      var w = createWeapon({
         scope: scopes.reddot,
         weaponObject: weaponModels["1911"],
         reloadTime: 1000,
@@ -3131,7 +3152,7 @@ async function setupWeapons() {
       return w;
     },
     sniper: () => {
-      var w = new Weapon({
+      var w = createWeapon({
         weaponObject: weaponModels.sniper,
         scope: scopes.sniper,
         roundsPerSecond: 1,
@@ -3156,7 +3177,7 @@ async function setupWeapons() {
       return w;
     },
     shotgun: () => {
-      var w = new Weapon({
+      var w = createWeapon({
         weaponObject: weaponModels.shotgun,
         weaponModelOffset: {x: -0.2, y: 0.1, z: 0.25},
         reloadTime: 400,
@@ -3184,24 +3205,28 @@ async function setupWeapons() {
       return w;
     },
 
-    ak47: () => new Weapon({
-      weaponObject: weaponModels.ak47,
-      scope: scopes.reddot,
-      // ADSFOV: 30,
-      // ADSMouseSensitivity: 0.8,
-      weaponModelOffset: new Vector(-0.2, 0.22, 0.5),
-      weaponModelADSOffset: Vector.zero(),
-      reloadTime: 2700,
-      magSize: 30,
-      fireMode: WEAPONENUMS.FIREMODES.AUTO,
-      roundsPerSecond: 10,
-      recoil: function() {
-        return {x: -1.2, y: (Math.random() - 0.5) * 1, z: 0};
-      }
-    }),
+    ak47: () => {
+      let w = createWeapon({
+        weaponObject: weaponModels.ak47,
+        scope: scopes.reddot,
+        // ADSFOV: 30,
+        // ADSMouseSensitivity: 0.8,
+        weaponModelOffset: new Vector(-0.2, 0.22, 0.5),
+        weaponModelADSOffset: Vector.zero(),
+        reloadTime: 2700,
+        magSize: 30,
+        fireMode: WEAPONENUMS.FIREMODES.AUTO,
+        roundsPerSecond: 10,
+        recoil: function() {
+          return {x: -1.2, y: (Math.random() - 0.5) * 1, z: 0};
+        }
+      });
+      
+      return w;
+    },
 
     LMG: () => {
-      var w = new Weapon({
+      var w = createWeapon({
         weaponObject: weaponModels.LMG,
         scope: scopes.reddot,
         weaponModelOffset: new Vector(-0.2, 0.12, 0.3),
@@ -3273,24 +3298,56 @@ async function setupWeapons() {
         weapons.autoPistol()
       ]
     }
-  }
+  };
 
   selectedClass = getSavedSelectedClass();
 
-  for (var key in classes) {
-    var button = document.createElement("button");
+  for (let key in classes) {
+    let button = document.createElement("button");
     button.setAttribute("data-className", key);
     button.innerText = classes[key].name;
-    button.onclick = (function(button) {
-      return () => {
-        updateClassPreview(button);
-      };
-    })(button);
+    button.onclick = () => {
+      updateClassPreview(button);
+    };
 
     loadoutUI.querySelector(".classSelect").appendChild(button);
   }
 
   updateClassPreview(selectedClass);
+}
+
+function createWeapon(settings) {
+  var w = new Weapon({
+    ...settings,
+    audioHandler
+  });
+  w.player = player;
+  w.emitHitParticles = emitHitEffect;
+
+  return w;
+}
+
+function emitHitEffect(hit) {
+  let [ tangent, bitangent ] = Vector.formOrthogonalBasis(hit.normal);
+  let basis = Matrix.basis(tangent, bitangent, hit.normal);
+
+  sparks.emitVelocity = (dst) => {
+    let v = new Vector((Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, 6 * Math.random());
+    Vector.set(dst, Matrix.transformVector(basis, v));
+  };
+  sparks.emitPosition = (dst) => Vector.set(dst, hit.point);
+  sparks.emit(10);
+
+  rocks.emitVelocity = dst => {
+    let v = new Vector(
+      (Math.random() - 0.5) * 2,
+      (Math.random() - 0.5) * 2,
+      1 + 3 * Math.random(),
+    );
+    Vector.set(dst, Matrix.transformVector(basis, v));
+  };
+  rocks.emitPosition = (dst) => Vector.set(dst, hit.point);
+  rocks.emit(10);
 }
 
 async function renderWeaponIcons() {
@@ -3315,14 +3372,14 @@ async function renderWeaponIcons() {
     LMG: scene.add(await renderer.loadGLTF("../assets/models/weapons/LMG.glb", {gameObjectOptions: {castShadows: false}})),
   };
 
-  for (var key in weaponModels) {
-    var weapon = weaponModels[key];
+  for (let key in weaponModels) {
+    let weapon = weaponModels[key];
     weapon.visible = false;
   }
 
   weaponModels.AK12.transform.scale = Vector.fill(1 / 20);
 
-  for (var key in weaponModels) {
+  for (let key in weaponModels) {
     // var key = Object.keys(weaponModels)[0];
     var weapon = weaponModels[key];
     weapon.setLayer(0b100, true);
@@ -3375,7 +3432,7 @@ function selectClass(name) {
   console.error("Not a valid class!", name);
 }
 
-window.updateClassPreview = function(buttonOrName) {
+function updateClassPreview(buttonOrName) {
   var className = buttonOrName instanceof HTMLElement ? buttonOrName.getAttribute("data-className") : buttonOrName;
   var clss = classes[className];
 
@@ -3723,7 +3780,7 @@ function SetupEvents() {
   // }
 
   window.addEventListener("mousedown", function() {
-    window.audioContext.resume();
+    audioHandler.resume();
     audioListener.audioContext.resume();
   });
 
@@ -3838,10 +3895,6 @@ function SetupEvents() {
   document.onwheel = function(e) {
     if (running) {
       if (player && player.isPlaying && canScroll) {
-        function wrapAround(t, m) {
-          return (m + t) % m;
-        }
-
         var next = wrapAround(player.currentWeapon + Math.sign(e.deltaY), player.weapons.length);
         player.switchWeapon(next);
 
@@ -3852,6 +3905,34 @@ function SetupEvents() {
       }
     }
   }
+}
+
+function AudioHandler() {
+  let audioContext = new AudioContext();
+
+  let masterVolume = audioContext.createGain();
+  masterVolume.gain.value = 1;//50
+  masterVolume.connect(audioContext.destination);
+
+  this.setMasterVolume = function(volume) {
+    masterVolume.gain.value = volume;
+  };
+
+  this.resume = function() {
+    audioContext.resume();
+  };
+
+  this.getAudioContext = function() {
+    return audioContext;
+  };
+
+  this.connect = function(source) {
+    source.connect(masterVolume);
+  };
+}
+
+function wrapAround(t, m) {
+  return (m + t) % m;
 }
 
 // bruh performance intensive

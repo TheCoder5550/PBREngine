@@ -7,7 +7,11 @@ precision mediump int;
 const float PI = 3.141592;
 
 layout (location = 0) out vec4 fragColor;
+
+// Motion blur
 layout (location = 1) out vec2 motionVector;
+in vec4 clipSpace;
+in vec4 prevClipSpace;
 
 // Attributes
 in vec3 vPosition;
@@ -178,28 +182,46 @@ vec4 applyFog(vec4 color) {
 }
 
 void main() {
-  motionVector = vec2(0.5);
-  
-  // fragColor = vec4(vNormal, 1);
-  // return;
+  vec3 NDCPos = (clipSpace / clipSpace.w).xyz;
+  vec3 PrevNDCPos = (prevClipSpace / prevClipSpace.w).xyz;
+  motionVector = (NDCPos - PrevNDCPos).xy * 0.5 + 0.5;
 
+  vec3 up = vec3(0, 1, 0);
   vec4 currentAlbedo = vec4(1);
 
-  vec3 grassAlbedo = sampleTexture(albedoTextures[0], vUV).rgb;
-  vec3 stoneAlbedo = sampleTexture(albedoTextures[1], vUV).rgb;
-  vec3 snowAlbedo = sampleTexture(albedoTextures[2], vUV).rgb;
-
-  // Large scale detail
-  grassAlbedo *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(vUV / 40.), 0., 1.));
-
-  // fragColor = vec4(grassAlbedo, 1.0);
-  // return;
-
+  // Normals
   vec3 grassNormal = sampleTexture(normalTextures[0], vUV).rgb * 2. - 1.;
   vec3 stoneNormal = sampleTexture(normalTextures[1], vUV).rgb * 2. - 1.;
   vec3 snowNormal = sampleTexture(normalTextures[2], vUV).rgb * 2. - 1.;
 
-  vec4 litColor = lit(vec4(grassAlbedo, 1), 0.5, vec3(0), vec3(0, 0, 1), 0., 0.95, 1.);
+  // Colors
+  vec3 grassAlbedo = sampleTexture(albedoTextures[0], vUV).rgb;
+  vec3 stoneAlbedo = sampleTexture(albedoTextures[1], vUV).rgb;
+  vec3 snowAlbedo = sampleTexture(albedoTextures[2], vUV).rgb;
+
+  // Large scale detail (grass color variation)
+  grassAlbedo *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(vUV / 40.), 0., 1.));
+
+  // Steep terrain is rocky
+  currentAlbedo.rgb = mix(stoneAlbedo, grassAlbedo, smoothstep(0.4, 0.75, pow(dot(up, vNormal), 100.)));
+
+  // Top of mountains are snowy
+  currentAlbedo.rgb = mix(currentAlbedo.rgb, snowAlbedo, smoothstep(80., 100., vPosition.y + LayeredNoise(vUV / 20.) * 30.));
+
+  vec3 steepness = normalize(mix(stoneNormal, grassAlbedo, smoothstep(0.8, 1., dot(up, vNormal))));
+  vec3 newNormal = normalize(mix(steepness, snowNormal, smoothstep(20., 35., vPosition.y)));
+
+  // fragColor = vec4(grassAlbedo, 1.0);
+  // return;
+
+  // fragColor = vec4(vNormal, 1);
+  // return;
+
+  vec3 tangentNormal = grassNormal;
+  // vec3 tangentNormal = vec3(0, 0, 1);
+  // tangentNormal = setNormalStrength(tangentNormal, 0.4);
+
+  vec4 litColor = lit(currentAlbedo, 0.5, vec3(0), tangentNormal, 0., 0.95, 1.);
   
   #ifdef USEFOG
     litColor = applyFog(litColor);
@@ -208,52 +230,52 @@ void main() {
   fragColor = litColor;
   return;
 
-  vec3 up = vec3(0, 1, 0);
+  // vec3 up = vec3(0, 1, 0);
 
-  // grassAlbedo = mix(grassAlbedo * vec3(1, 1, 0.3), grassAlbedo, noise(vUV / 50.));
-  // grassAlbedo = mix(vec3(1), vec3(0), noise(vUV / 5.));
-  grassAlbedo *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(vUV / 40.), 0., 1.));
+  // // grassAlbedo = mix(grassAlbedo * vec3(1, 1, 0.3), grassAlbedo, noise(vUV / 50.));
+  // // grassAlbedo = mix(vec3(1), vec3(0), noise(vUV / 5.));
+  // grassAlbedo *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(vUV / 40.), 0., 1.));
 
-  vec3 steepness = mix(stoneAlbedo, grassAlbedo, smoothstep(0.7, 0.75, dot(up, vNormal)));
-  currentAlbedo.xyz = mix(steepness, snowAlbedo, smoothstep(80., 100., vPosition.y + LayeredNoise(vUV / 20.) * 30.));
+  // vec3 steepness = mix(stoneAlbedo, grassAlbedo, smoothstep(0.7, 0.75, dot(up, vNormal)));
+  // currentAlbedo.xyz = mix(steepness, snowAlbedo, smoothstep(80., 100., vPosition.y + LayeredNoise(vUV / 20.) * 30.));
 
-  steepness = normalize(mix(stoneNormal, grassAlbedo, smoothstep(0.8, 1., dot(up, vNormal))));
-  vec3 newNormal = normalize(mix(steepness, snowNormal, smoothstep(20., 35., vPosition.y)));
+  // steepness = normalize(mix(stoneNormal, grassAlbedo, smoothstep(0.8, 1., dot(up, vNormal))));
+  // vec3 newNormal = normalize(mix(steepness, snowNormal, smoothstep(20., 35., vPosition.y)));
 
-  // vec3 _tangentNormal = grassNormal * 2. - 1.;//newNormal * 2. - 1.;
-  vec3 _tangentNormal = grassNormal;
-  // _tangentNormal.g *= -1.;
+  // // vec3 _tangentNormal = grassNormal * 2. - 1.;//newNormal * 2. - 1.;
+  // vec3 _tangentNormal = grassNormal;
+  // // _tangentNormal.g *= -1.;
 
-  // fragColor = vec4(currentAlbedo.rgb * clamp(dot(sunDirection, vNormal), 0., 1.), currentAlbedo.a);
-  // return;
+  // // fragColor = vec4(currentAlbedo.rgb * clamp(dot(sunDirection, vNormal), 0., 1.), currentAlbedo.a);
+  // // return;
 
-  // if (doNoTiling) {
-  //   currentAlbedo.rgb = mix(currentAlbedo.rgb * vec3(1, 1, 0.3), currentAlbedo.rgb, noise(vUV / 50.));
-  // }
+  // // if (doNoTiling) {
+  // //   currentAlbedo.rgb = mix(currentAlbedo.rgb * vec3(1, 1, 0.3), currentAlbedo.rgb, noise(vUV / 50.));
+  // // }
 
-  vec3 _emission = vec3(0);//emissiveFactor;
-  // if (useEmissiveTexture) {
-  //   _emission *= sampleTexture(emissiveTexture, vUV).rgb;
-  // }
+  // vec3 _emission = vec3(0);//emissiveFactor;
+  // // if (useEmissiveTexture) {
+  // //   _emission *= sampleTexture(emissiveTexture, vUV).rgb;
+  // // }
 
-  float _ao = 1.;//ao;
-  // if (useOcclusionTexture) {
-  //   _ao *= sampleTexture(occlusionTexture, vUV).r;
-  // }
+  // float _ao = 1.;//ao;
+  // // if (useOcclusionTexture) {
+  // //   _ao *= sampleTexture(occlusionTexture, vUV).r;
+  // // }
 
-  float _metallic = 0.;//metallic;
-  float _roughness = 0.95;//roughness;
-  // if (useMetallicRoughnessTexture) {
-  //   vec3 ts = sampleTexture(metallicRoughnessTexture, vUV).rgb;
-  //   _metallic *= ts.b;
-  //   _roughness *= ts.g;
-  // }
+  // float _metallic = 0.;//metallic;
+  // float _roughness = 0.95;//roughness;
+  // // if (useMetallicRoughnessTexture) {
+  // //   vec3 ts = sampleTexture(metallicRoughnessTexture, vUV).rgb;
+  // //   _metallic *= ts.b;
+  // //   _roughness *= ts.g;
+  // // }
 
-  _roughness = clamp(_roughness, 0.01, 0.99);
+  // _roughness = clamp(_roughness, 0.01, 0.99);
 
-  float alphaCutoff = 0.5;
+  // float alphaCutoff = 0.5;
 
-  fragColor = lit(currentAlbedo, alphaCutoff, _emission, _tangentNormal, _metallic, _roughness, _ao);
+  // fragColor = lit(currentAlbedo, alphaCutoff, _emission, _tangentNormal, _metallic, _roughness, _ao);
 }
 
 // No tiling

@@ -1,6 +1,315 @@
 import { saturate } from "./helper.mjs";
 import Vector from "./vector.mjs";
 
+function triangleTriangleIntersection(a, b) {
+  let AIntersections = [];
+
+  for (let i = 0; i < 3; i++) {
+    let origin = a[i];
+    let diff = Vector.subtract(a[(i + 1) % 3], a[i]);
+    let direction = Vector.normalize(diff);
+    let len = Vector.length(diff);
+
+    let hit = rayToTriangle(origin, direction, b[0], b[1], b[2]);
+    if (hit && hit.distance >= 0 && hit.distance <= len) {
+      AIntersections.push({
+        hit: hit,
+        from: a[i],
+        to: a[(i + 1) % 3]
+      });
+
+      if (window.gldebug) window.gldebug.Point(hit.point, 0.02);
+    }
+  }
+
+  // if (AIntersections.length == 2) {
+  //   return;
+  //   let prev = [];
+  //   let commonVertex;
+  //   for (let intersection of AIntersections) {
+  //     if (prev.includes(intersection.from)) {
+  //       commonVertex = intersection.from;
+  //       break;
+  //     }
+  //     if (prev.includes(intersection.to)) {
+  //       commonVertex = intersection.to;
+  //       break;
+  //     }
+
+  //     prev.push(intersection.from);
+  //     prev.push(intersection.to);
+  //   }
+
+  //   if (commonVertex) {
+  //     let closestEdge1 = null;
+  //     let closestDistance1 = Infinity;
+  //     for (let i = 0; i < 3; i++) {
+  //       let d = ClosestDistanceToLineSegment(b[i], b[(i + 1) % 3], AIntersections[0].hit.point);
+  //       if (d < closestDistance1) {
+  //         closestDistance1 = d;
+  //         closestEdge1 = [ b[i], b[(i + 1) % 3] ];
+  //       }
+  //     }
+
+  //     let closestEdge2 = null;
+  //     let closestDistance2 = Infinity;
+  //     for (let i = 0; i < 3; i++) {
+  //       let d = ClosestDistanceToLineSegment(b[i], b[(i + 1) % 3], AIntersections[1].hit.point);
+  //       if (d < closestDistance2) {
+  //         closestDistance2 = d;
+  //         closestEdge2 = [ b[i], b[(i + 1) % 3] ];
+  //       }
+  //     }
+
+  //     // let depth = Vector.dot(getTriangleNormal(b), Vector.subtract(commonVertex, b[0]));
+  //     let depth = Vector.distance(commonVertex, closestPointToTriangle(commonVertex, b[0], b[1], b[2])) * Math.sign(Vector.dot(getTriangleNormal(b), Vector.subtract(commonVertex, b[0])));
+
+  //     if (depth < 0) {
+  //       if (Math.abs(depth) > Math.min(closestDistance1, closestDistance2)) {
+  //         let output = [
+  //           {
+  //             depth: -closestDistance1,
+  //             point: AIntersections[0].hit.point,
+  //             normal: Vector.normalize(Vector.subtract(ClosestPointOnLineSegment(closestEdge1[0], closestEdge1[1], AIntersections[0].hit.point), AIntersections[0].hit.point)),
+  //           },
+  //           {
+  //             depth: -closestDistance2,
+  //             point: AIntersections[1].hit.point,
+  //             normal: Vector.normalize(Vector.subtract(ClosestPointOnLineSegment(closestEdge2[0], closestEdge2[1], AIntersections[1].hit.point), AIntersections[1].hit.point)),
+  //           }
+  //         ];
+  //         return output;
+  //       }
+
+  //       return [
+  //         {
+  //           depth,
+  //           point: commonVertex,
+  //           // normal: getTriangleNormal(b),
+  //           normal: Vector.normalize(Vector.subtract(commonVertex, closestPointToTriangle(commonVertex, b[0], b[1], b[2]))),
+  //         }
+  //       ];
+  //     }
+  //     else if (depth > 0) {
+  //       let otherVertices = [...a];
+  //       otherVertices.splice(otherVertices.indexOf(commonVertex), 1);
+
+  //       let output = [
+  //         {
+  //           depth: Vector.dot(getTriangleNormal(b), Vector.subtract(otherVertices[0], b[0])),
+  //           point: otherVertices[0],
+  //           normal: getTriangleNormal(b)
+  //         },
+  //         {
+  //           depth: Vector.dot(getTriangleNormal(b), Vector.subtract(otherVertices[1], b[0])),
+  //           point: otherVertices[1],
+  //           normal: getTriangleNormal(b)
+  //         }
+  //       ];
+
+  //       if (Math.min(Math.abs(output[0].depth), Math.abs(output[1].depth)) > Math.min(closestDistance1, closestDistance2)) {
+  //         let output = [
+  //           {
+  //             depth: -closestDistance1,
+  //             point: AIntersections[0].hit.point,
+  //             normal: Vector.normalize(Vector.subtract(ClosestPointOnLineSegment(closestEdge1[0], closestEdge1[1], AIntersections[0].hit.point), AIntersections[0].hit.point)),
+  //           },
+  //           {
+  //             depth: -closestDistance2,
+  //             point: AIntersections[1].hit.point,
+  //             normal: Vector.normalize(Vector.subtract(ClosestPointOnLineSegment(closestEdge2[0], closestEdge2[1], AIntersections[1].hit.point), AIntersections[1].hit.point)),
+  //           }
+  //         ];
+  //         return output;
+  //       }
+
+  //       return output;
+  //     }
+  //   }
+  // }
+
+  if (AIntersections.length == 2) {
+    let aboveClosestDistance = -Infinity;
+    let aboveClosestData;
+    let belowClosestDistance = -Infinity;
+    let belowClosestData;
+
+    for (let vertex of a) {
+      let distanceToTriangle = Vector.dot(Vector.subtract(vertex, b[0]), getTriangleNormal(b));
+      if (closestPointOnTriangle(vertex, b[0], b[1], b[2])) {
+        // if (distanceToTriangle > 0) {
+        //   if (Math.abs(distanceToTriangle) > aboveClosestDistance) {
+        //     aboveClosestDistance = Math.abs(distanceToTriangle);
+        //     aboveClosestData = {
+        //       point: vertex,
+        //       normal: Vector.negate(getTriangleNormal(b)),
+        //       depth: -Math.abs(distanceToTriangle)
+        //     };
+        //   }
+        // }
+        // else {
+        if (distanceToTriangle <= 0) {
+          if (Math.abs(distanceToTriangle) > belowClosestDistance) {
+            belowClosestDistance = Math.abs(distanceToTriangle);
+            belowClosestData = {
+              point: vertex,
+              normal: getTriangleNormal(b),
+              depth: -Math.abs(distanceToTriangle)
+            };
+          }
+        }
+      }
+    }
+
+    let edgeClosestDistance = Infinity;
+    let edgeClosestData;
+
+    // for (let i = 0; i < 3; i++) {
+    //   let d1 = ClosestDistanceToLineSegment(b[i], b[(i + 1) % 3], AIntersections[0].hit.point);
+    //   let d2 = ClosestDistanceToLineSegment(b[i], b[(i + 1) % 3], AIntersections[1].hit.point);
+
+    //   if (d1 > d2) {
+    //     if (d1 < edgeClosestDistance) {
+    //       let edgePoint = ClosestPointOnLineSegment(b[i], b[(i + 1) % 3], AIntersections[0].hit.point);
+    //       edgeClosestDistance = d1;
+    //       edgeClosestData = {
+    //         depth: -d1,
+    //         point: AIntersections[0].hit.point,
+    //         normal: Vector.normalize(Vector.subtract(edgePoint, AIntersections[0].hit.point))
+    //       };
+    //     }
+    //   }
+    //   else {
+    //     if (d2 < edgeClosestDistance) {
+    //       let edgePoint = ClosestPointOnLineSegment(b[i], b[(i + 1) % 3], AIntersections[1].hit.point);
+    //       edgeClosestDistance = d2;
+    //       edgeClosestData = {
+    //         depth: -d2,
+    //         point: AIntersections[1].hit.point,
+    //         normal: Vector.normalize(Vector.subtract(edgePoint, AIntersections[1].hit.point))
+    //       };
+    //     }
+    //   }
+    // }
+
+    if (aboveClosestData || belowClosestData) {
+      if (Math.min(aboveClosestDistance, belowClosestDistance) < edgeClosestDistance) {
+        if ((aboveClosestDistance < belowClosestDistance && aboveClosestData) || !belowClosestData) {
+          return [ aboveClosestData ];
+        }
+        else {
+          return [ belowClosestData ];
+        }
+      }
+      else {
+        console.log("test1", edgeClosestData)
+        return [ edgeClosestData ];
+      }
+    }
+    // else {
+    //   console.log("test2", edgeClosestData)
+    //   return [ edgeClosestData ];
+    // }
+  }
+
+  let BIntersections = [];
+
+  for (let i = 0; i < 3; i++) {
+    let origin = b[i];
+    let diff = Vector.subtract(b[(i + 1) % 3], b[i]);
+    let direction = Vector.normalize(diff);
+    let len = Vector.length(diff);
+
+    let hit = rayToTriangle(origin, direction, a[0], a[1], a[2]);
+    if (hit && hit.distance >= 0 && hit.distance <= len) {
+      BIntersections.push({
+        hit: hit,
+        from: b[i],
+        to: b[(i + 1) % 3]
+      });
+    }
+  }
+
+  if (AIntersections.length == 1 && BIntersections.length == 1) {
+    let closestData = null;
+    let closestDistance = Infinity;
+    for (let i = 0; i < 3; i++) {
+      let d = ClosestDistanceToLineSegment(a[i], a[(i + 1) % 3], BIntersections[0].hit.point);
+      if (d < closestDistance) {
+        closestDistance = d;
+        let point = ClosestPointOnLineSegment(a[i], a[(i + 1) % 3], BIntersections[0].hit.point);
+        closestData = {
+          edge: [ a[i], a[(i + 1) % 3] ],
+          normal: Vector.normalize(Vector.subtract(BIntersections[0].hit.point, point)),
+          point,
+          depth: -Vector.distance(point, BIntersections[0].hit.point)
+        };
+      }
+    }
+
+    for (let i = 0; i < 3; i++) {
+      let d = ClosestDistanceToLineSegment(b[i], b[(i + 1) % 3], AIntersections[0].hit.point);
+      if (d < closestDistance) {
+        closestDistance = d;
+        let point = ClosestPointOnLineSegment(b[i], b[(i + 1) % 3], AIntersections[0].hit.point);
+        closestData = {
+          edge: [ b[i], b[(i + 1) % 3] ],
+          normal: Vector.negate(Vector.normalize(Vector.subtract(AIntersections[0].hit.point, point))),
+          point: AIntersections[0].hit.point,
+          depth: -Vector.distance(point, AIntersections[0].hit.point)
+        };
+      }
+    }
+
+    return [
+      {
+        depth: closestData.depth,
+        point: closestData.point,
+        normal: closestData.normal
+      }
+    ];
+
+    // let depth1 = -Vector.distance(AIntersections[0].hit.point, BIntersections[0].hit.point);
+    // let depth2 = -Vector.distance(AIntersections[0].hit.point, BIntersections[0].hit.point);
+
+    // let normal = Vector.normalize(Vector.subtract(BIntersections[0].hit.point, AIntersections[0].hit.point));
+    // let point = AIntersections[0].hit.point;
+
+    // console.log({normal, point, depth});
+
+    // return [
+    //   {
+    //     depth: depth1,
+    //     point,
+    //     normal
+    //   }
+    // ];
+  }
+
+  if (BIntersections.length == 2) {
+    console.warn("2 b inters not implemented");
+    return;
+  }
+
+  if (BIntersections.length > 2) {
+    console.log("hhhhm");
+  }
+
+  // for (let vertex of a) {
+  //   let v = Vector.subtract(vertex, b[0]);
+  //   let C = Vector.distance(v, Vector.projectOnPlane(v, getTriangleNormal(b))) * Math.sign(Vector.dot(v, getTriangleNormal(b)));
+  //   if (C <= 0) {
+  //     return {
+  //       depth: C,
+  //       point: vertex,
+  //       normal: getTriangleNormal(b),
+  //     };
+  //   }
+  // }
+
+  return null;
+}
+
 function AABBToAABB(a, b) {
   return a.tr.x >= b.bl.x && a.bl.x <= b.tr.x && 
          a.tr.y >= b.bl.y && a.bl.y <= b.tr.y && 
@@ -75,41 +384,88 @@ function closestPointOnTriangle(p, a, b, c) {
   }
 }
 
-function rayToTriangle(rayOrigin, rayVector, a, b, c) {
-  var EPSILON = 0.0000001;
-  var vertex0 = a;
-  var vertex1 = b;
-  var vertex2 = c;
+{
+  let edge1 = new Vector();
+  let edge2 = new Vector();
+  let h = new Vector();
+  let s = new Vector();
+  let q = new Vector();
+  let point = new Vector();
 
-  var edge1 = Vector.subtract(vertex1, vertex0);
-  var edge2 = Vector.subtract(vertex2, vertex0);
-  var h = Vector.cross(rayVector, edge2);
-  var a = Vector.dot(edge1, h);
+  var rayToTriangle = function(rayOrigin, rayVector, vertex0, vertex1, vertex2) {
+    var EPSILON = 0.0000001;
 
-  if (a > -EPSILON && a < EPSILON)
-    return false;
+    Vector.subtract(vertex1, vertex0, edge1);
+    Vector.subtract(vertex2, vertex0, edge2);
+    Vector.cross(rayVector, edge2, h);
+    var a = Vector.dot(edge1, h);
 
-  var f = 1 / a;
-  var s = Vector.subtract(rayOrigin, vertex0);
-  var u = Vector.dot(s, h) * f;
-  if (u < 0.0 || u > 1.0)
-    return false;
+    if (a > -EPSILON && a < EPSILON)
+      return false;
 
-  var q = Vector.cross(s, edge1);
-  var v = f * Vector.dot(rayVector, q);
-  if (v < 0.0 || u + v > 1.0)
-    return false;
+    var f = 1 / a;
+    Vector.subtract(rayOrigin, vertex0, s);
+    var u = Vector.dot(s, h) * f;
+    if (u < 0.0 || u > 1.0)
+      return false;
 
-  var t = f * Vector.dot(edge2, q);
-  if (t > EPSILON) {
-    return {
-      point: Vector.add(rayOrigin, Vector.multiply(rayVector, t)),
-      distance: t
-    };
+    Vector.cross(s, edge1, q);
+    var v = f * Vector.dot(rayVector, q);
+    if (v < 0.0 || u + v > 1.0)
+      return false;
+
+    var t = f * Vector.dot(edge2, q);
+    if (t > EPSILON) {
+      Vector.set(point, rayVector);
+      Vector.multiplyTo(point, t);
+      Vector.addTo(point, rayOrigin);
+
+      // !
+      return {
+        point: Vector.copy(point),
+        distance: t
+      };
+    }
+    else
+      return false;
   }
-  else
-    return false;
 }
+
+// function rayToTriangle(rayOrigin, rayVector, a, b, c) {
+//   var EPSILON = 0.0000001;
+//   var vertex0 = a;
+//   var vertex1 = b;
+//   var vertex2 = c;
+
+//   var edge1 = Vector.subtract(vertex1, vertex0);
+//   var edge2 = Vector.subtract(vertex2, vertex0);
+//   var h = Vector.cross(rayVector, edge2);
+//   var a = Vector.dot(edge1, h);
+
+//   if (a > -EPSILON && a < EPSILON)
+//     return false;
+
+//   var f = 1 / a;
+//   var s = Vector.subtract(rayOrigin, vertex0);
+//   var u = Vector.dot(s, h) * f;
+//   if (u < 0.0 || u > 1.0)
+//     return false;
+
+//   var q = Vector.cross(s, edge1);
+//   var v = f * Vector.dot(rayVector, q);
+//   if (v < 0.0 || u + v > 1.0)
+//     return false;
+
+//   var t = f * Vector.dot(edge2, q);
+//   if (t > EPSILON) {
+//     return {
+//       point: Vector.add(rayOrigin, Vector.multiply(rayVector, t)),
+//       distance: t
+//     };
+//   }
+//   else
+//     return false;
+// }
 
 function rayToPlane(origin, direction, planePosition, planeNormal, line = false) {
   var denom = Vector.dot(direction, planeNormal);
@@ -197,6 +553,12 @@ function AABBTriangleToAABB(a, b, c, aabb) {
          Math.max(a.z, b.z, c.z) >= aabb.bl.z && Math.min(a.z, b.z, c.z) <= aabb.tr.z;
 }
 
+function AABBTriangleToAABBTriangle(a, b, c, u, v, w) {
+  return Math.max(a.x, b.x, c.x) >= Math.min(u.x, v.x, w.x) && Math.min(a.x, b.x, c.x) <= Math.max(u.x, v.x, w.x) && 
+         Math.max(a.y, b.y, c.y) >= Math.min(u.y, v.y, w.y) && Math.min(a.y, b.y, c.y) <= Math.max(u.y, v.y, w.y) && 
+         Math.max(a.z, b.z, c.z) >= Math.min(u.z, v.z, w.z) && Math.min(a.z, b.z, c.z) <= Math.max(u.z, v.z, w.z);
+}
+
 function pointInsideAABB(aabb, point) {
   return point.x >= aabb.bl.x && point.y >= aabb.bl.y && point.z >= aabb.bl.z &&
          point.x <= aabb.tr.x && point.y <= aabb.tr.y && point.z <= aabb.tr.z;
@@ -276,22 +638,25 @@ var aabbEdges = [
 //   return false;
 // }
 
+const _aabb = {
+  bl: new Vector(),
+  tr: new Vector(),
+};
 function rayToAABBTriangle(origin, direction, p1, p2, p3) {
-  var aabb = {
-    bl: new Vector(
-      Math.min(p1.x, p2.x, p3.x),
-      Math.min(p1.y, p2.y, p3.y),
-      Math.min(p1.z, p2.z, p3.z),
-    ),
-    tr: new Vector(
-      Math.max(p1.x, p2.x, p3.x),
-      Math.max(p1.y, p2.y, p3.y),
-      Math.max(p1.z, p2.z, p3.z),
-    ),
-  };
-  return rayToAABB(origin, direction, aabb);
+  _aabb.bl.x = Math.min(p1.x, p2.x, p3.x);
+  _aabb.bl.y = Math.min(p1.y, p2.y, p3.y);
+  _aabb.bl.z = Math.min(p1.z, p2.z, p3.z);
+  _aabb.tr.x = Math.max(p1.x, p2.x, p3.x);
+  _aabb.tr.y = Math.max(p1.y, p2.y, p3.y);
+  _aabb.tr.z = Math.max(p1.z, p2.z, p3.z);
+
+  return rayToAABB(origin, direction, _aabb);
 }
 
+const rayToAABBResponse = {
+  min: 0,
+  max: 0,
+};
 function rayToAABB(origin, direction, AABB) {
   var t1 = (AABB.bl.x - origin.x) / direction.x;
   var t2 = (AABB.tr.x - origin.x) / direction.x;
@@ -305,10 +670,11 @@ function rayToAABB(origin, direction, AABB) {
 
   if (tmax < 0) return false;
   if (tmin > tmax) return false;
-  return {
-    min: tmin,
-    max: tmax
-  };
+
+  rayToAABBResponse.min = tmin;
+  rayToAABBResponse.max = tmax;
+
+  return rayToAABBResponse;
 }
 
 function getTriangleArea(a, b, c) {
@@ -485,6 +851,10 @@ function capsuleToTriangle(A, B, radius, p0, p1, p2, doubleSided = false) {
   return sphereToTriangle(center, radius, p0, p1, p2, doubleSided);
 }
 
+function ClosestDistanceToLineSegment(a, b, point) {
+  return Vector.distance(ClosestPointOnLineSegment(a, b, point), point);
+}
+
 function ClosestPointOnLineSegment(A, B, Point) {
   var AB = Vector.subtract(B, A);
   var t = Vector.dot(Vector.subtract(Point, A), AB) / Vector.dot(AB, AB);
@@ -498,6 +868,7 @@ function distanceBetweenRayAndPoint(ray, point) {
 }
 
 export {
+  triangleTriangleIntersection,
   AABBToAABB,
   closestPointToTriangle,
   closestPointOnPlane,
@@ -505,6 +876,7 @@ export {
   rayToTriangle,
   rayToPlane,
   AABBTriangleToAABB,
+  AABBTriangleToAABBTriangle,
   AABBToTriangle,
   rayToAABBTriangle,
   rayToAABB,
@@ -514,4 +886,4 @@ export {
   capsuleToTriangle,
   ClosestPointOnLineSegment,
   distanceBetweenRayAndPoint
-}
+};
