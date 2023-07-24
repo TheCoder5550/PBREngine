@@ -88,17 +88,17 @@ function Softbody(physicsEngine, md) {
   this.update = function(dt) {
     time += dt;
 
-    // colliders[0].a = new Vector(10, 2 - Math.sin(time) * 2.2, 0);
-    // colliders[0].b = new Vector(-10, 2 - Math.sin(time) * 2.2, 0);
+    colliders[0].a = new Vector(10, 2 - Math.sin(time) * 2.2, 0);
+    colliders[0].b = new Vector(-10, 2 - Math.sin(time) * 2.2, 0);
 
-    // colliders[1].a = new Vector(0, 2 - Math.sin(time) * 2.2, 10);
-    // colliders[1].b = new Vector(0, 2 - Math.sin(time) * 2.2, -10);
+    colliders[1].a = new Vector(0, 2 - Math.sin(time) * 2.2, 10);
+    colliders[1].b = new Vector(0, 2 - Math.sin(time) * 2.2, -10);
 
-    colliders[0].a = new Vector(10, 2 - Math.min(1, time) * 2, 0);
-    colliders[0].b = new Vector(-10, 2 - Math.min(1, time) * 2, 0);
+    // colliders[0].a = new Vector(10, 2 - Math.min(1, time) * 2, 0);
+    // colliders[0].b = new Vector(-10, 2 - Math.min(1, time) * 2, 0);
 
-    colliders[1].a = new Vector(0, 2 - Math.min(1, time) * 2, 10);
-    colliders[1].b = new Vector(0, 2 - Math.min(1, time) * 2, -10);
+    // colliders[1].a = new Vector(0, 2 - Math.min(1, time) * 2, 10);
+    // colliders[1].b = new Vector(0, 2 - Math.min(1, time) * 2, -10);
 
     // colliders[0].b = new Vector(0, 2 - Math.sin(time) * 2, 0);
     // colliders[0].position.y = 3 + Math.sin(time * 2) * 6.5;

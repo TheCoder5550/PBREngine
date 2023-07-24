@@ -67,6 +67,7 @@ uniform vec3 sunDirection;
 uniform vec3 sunIntensity;
 
 // Environment
+uniform float environmentMinLight;
 uniform float environmentIntensity;
 uniform samplerCube u_diffuseIBL;
 uniform samplerCube u_specularIBL;
@@ -219,7 +220,7 @@ void main() {
 
   vec3 tangentNormal = grassNormal;
   // vec3 tangentNormal = vec3(0, 0, 1);
-  // tangentNormal = setNormalStrength(tangentNormal, 0.4);
+  tangentNormal = setNormalStrength(tangentNormal, 3.);
 
   vec4 litColor = lit(currentAlbedo, 0.5, vec3(0), tangentNormal, 0., 0.95, 1.);
   
@@ -640,11 +641,13 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 
   float f0 = 0.04;
 
+  float shadowAmount = getShadowAmount(dot(sunDirection.xyz, N));
+
   vec3 col = vec3(0);
-  col += IBL(N, V, R, _albedo.rgb, _metallic, _roughness, f0) * _ao * environmentIntensity;
+  col += IBL(N, V, R, _albedo.rgb, _metallic, _roughness, f0) * _ao * environmentIntensity * (environmentMinLight + shadowAmount * (1. - environmentMinLight));
   
   if (sunIntensity.xyz != vec3(0)) {
-    col += DirectionalLight(vPosition, N, V, sunDirection.xyz, sunIntensity.xyz, _albedo.rgb, _metallic, _roughness, f0) * _ao * getShadowAmount(dot(sunDirection.xyz, N));
+    col += DirectionalLight(vPosition, N, V, sunDirection.xyz, sunIntensity.xyz, _albedo.rgb, _metallic, _roughness, f0) * _ao * shadowAmount;
   }
 
   for (int i = 0; i < int(nrLights); i++) {

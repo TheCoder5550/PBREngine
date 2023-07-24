@@ -249,7 +249,7 @@ function Trailer(scene, physicsEngine, settings = {}) {
       Vector.multiplyTo(wheelVelocity, fixedDeltaTime);
 
       let ray = { origin: worldPos, direction: down }; // this is an object !
-      let hit = physicsEngine.Raycast(ray.origin, ray.direction).firstHit;
+      let hit = physicsEngine.Raycast(ray.origin, ray.direction)?.firstHit;
 
       wheel.isGrounded = hit && hit.distance < wheel.suspensionTravel + wheel.radius;
 
@@ -654,6 +654,7 @@ function Car(scene, physicsEngine, settings = {}) {
   this.frozen = false;
   this.simulateFriction = true;
   this.resetPosition = Vector.zero();
+  this.resetRotation = Quaternion.identity();
   this.bottomOffset = Vector.zero();
 
   this.mainCamera = new Camera({position: new Vector(0, 0, -3), near: 0.1, far: 1000, fov: 35});
@@ -909,9 +910,9 @@ function Car(scene, physicsEngine, settings = {}) {
     );
     // this.rb.inertia = Vector.fill(this.rb.mass);
 
-    var colliderVis = renderer.CreateShape("cube");
-    var md = colliderVis.meshRenderer.meshData[0];
-    md.applyTransform(Matrix.scale(Vector.compMultiply(boxSize, new Vector(0.4, 0.5, 0.5))));
+    // var colliderVis = renderer.CreateShape("cube");
+    // var md = colliderVis.meshRenderer.meshData[0];
+    // md.applyTransform(Matrix.scale(Vector.compMultiply(boxSize, new Vector(0.4, 0.5, 0.5))));
 
     // // colliderVis.transform.scale = Vector.divide(boxSize, 2);
     // // this.gameObject.addChild(colliderVis);
@@ -1163,11 +1164,15 @@ function Car(scene, physicsEngine, settings = {}) {
 
   this.resetGame = function() {
     this.reset();
+
     this.rb.position = Vector.copy(this.resetPosition);
+    this.rb.rotation = Quaternion.copy(this.resetRotation);
+    
     this.gameObject.transform.position = this.rb.position;
+    this.gameObject.transform.rotation = this.rb.rotation;
 
     cameraControllers[currentCameraControllerIndex].onReset(this.mainCamera);
-  }
+  };
 
   this.renderUI = function(ui) {
     var rpm = this.engine.getRPM();
@@ -2927,7 +2932,7 @@ class TPPFollowCamera extends CameraController {
   #cameraShakeTarget = Vector.zero();
   #cameraShake = Vector.zero();
 
-  CAMERA_FOLLOW_MODES = { FOLLOW_VELOCITY: 1, FOLLOW_DIRECTION: 2 };
+  CAMERA_FOLLOW_MODES = { FOLLOW_VELOCITY: 1, FOLLOW_DIRECTION: 2, FOLLOW_INVERSE_DIRECTION: 3 };
   followMode = this.CAMERA_FOLLOW_MODES.FOLLOW_VELOCITY;
   followDistance = 5;
   followHeight = 0.4;
@@ -2944,17 +2949,15 @@ class TPPFollowCamera extends CameraController {
   resetForward() {
     this.#cameraCarForward = Matrix.getForward(this.car.gameObject.transform.worldMatrix);
     this.#yVel = 0;
+    this.#y = this.car.rb.position.y + 0.15 + this.followHeight / Math.sqrt(1 + this.followHeight ** 2) * this.followDistance;
   }
 
   onReset() {
     this.resetForward();
-    // this.#y = 6;
-    this.#y = this.car.rb.position.y;
   }
 
   onActivate() {
     this.resetForward();
-    this.#y = this.car.rb.position.y;
   }
 
   update(camera, dt) {
@@ -2986,8 +2989,15 @@ class TPPFollowCamera extends CameraController {
       // targetForward = Vector.slerp(targetForward, Vector.negate(forward), 0.2 * 0);
       // cameraCarForward = Vector.negate(targetForward);
     }
-    else {
+    else if (this.followMode == this.CAMERA_FOLLOW_MODES.FOLLOW_DIRECTION) {
       targetForward = Vector.negate(forward);
+    }
+    else if (this.followMode == this.CAMERA_FOLLOW_MODES.FOLLOW_INVERSE_DIRECTION) {
+      targetForward = Vector.slerp(
+        this.car.gameObject.transform.forward,
+        Vector.normalize(Vector.projectOnPlane(Vector.negate(this.car.rb.velocity), this.car.gameObject.transform.up)),
+        -0.5
+      );
     }
     // targetForward = Quaternion.QxV(Quaternion.angleAxis(cameraTurnAngle, this.car.gameObject.transform.up/*Vector.up()*/), targetForward);
 
@@ -3057,6 +3067,8 @@ class TPPFollowCamera extends CameraController {
     // var euler = Quaternion.toEulerAngles(this.mainCamera.transform.rotation);
     // euler[0] += 0.2;
     // this.mainCamera.transform.rotation = Quaternion.euler(euler[0], euler[1], euler[2]);
+  
+    camera.updateFrustum();
   }
 }
 

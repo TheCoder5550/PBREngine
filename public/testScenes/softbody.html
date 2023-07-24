@@ -68,7 +68,7 @@
       renderer.add(scene);
 
       scene.environmentIntensity = 0.5;
-      scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(5200, 20));
+      scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(5200, 20 * 0));
       scene.sunDirection.z *= -1;
       scene.bloom.intensity = 0.01;
 

@@ -192,6 +192,8 @@ function triangleTriangleIntersection(a, b) {
     //   }
     // }
 
+    console.log(aboveClosestData, belowClosestData);
+
     if (aboveClosestData || belowClosestData) {
       if (Math.min(aboveClosestDistance, belowClosestDistance) < edgeClosestDistance) {
         if ((aboveClosestDistance < belowClosestDistance && aboveClosestData) || !belowClosestData) {
@@ -287,12 +289,35 @@ function triangleTriangleIntersection(a, b) {
   }
 
   if (BIntersections.length == 2) {
-    console.warn("2 b inters not implemented");
-    return;
+    // console.warn("2 b inters not implemented");
+    // return;
+
+    console.info("2 b inters", a, b);
+
+    const reverseCollision = triangleTriangleIntersection(b, a);
+    console.log(reverseCollision)
+    if (!reverseCollision) {
+      return null;
+    }
+    console.log("not null");
+
+    const data = reverseCollision[0];
+
+    const point = Vector.add(data.point, Vector.multiply(data.normal, data.depth));
+    const normal = Vector.negate(data.normal);
+    const depth = data.depth;
+
+    return [
+      {
+        depth,
+        point,
+        normal
+      }
+    ];
   }
 
   if (BIntersections.length > 2) {
-    console.log("hhhhm");
+    console.error("hhhhm");
   }
 
   // for (let vertex of a) {

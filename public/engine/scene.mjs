@@ -148,6 +148,7 @@ function Scene(name) {
   };
 
   this.render = function() {
+    this.renderer.currentBoundLitPrograms = new WeakMap();
     this.root.render(...arguments);
   };
 

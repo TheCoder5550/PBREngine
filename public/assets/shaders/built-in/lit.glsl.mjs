@@ -378,7 +378,7 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
   float f0 = 0.04;
 
   float shadowAmount = getShadowAmount(vPosition, dot(sunDirection.xyz, N));
-  float environmentMinLight = 0.25;
+  // float environmentMinLight = 0.25;
 
   vec3 col = vec3(0);
   col += ambientColor;

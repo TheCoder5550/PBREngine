@@ -449,8 +449,8 @@ function AABB(bl, tr) {
 
   this.copy = function(dst) {
     let aabb = dst || new AABB();
-    aabb.bl = this.bl;
-    aabb.tr = this.tr;
+    aabb.bl = Vector.copy(this.bl); // bruh gc
+    aabb.tr = Vector.copy(this.tr); // ^
     aabb.isEmpty = this.isEmpty;
     return aabb;
   };
@@ -691,10 +691,10 @@ function PhysicsEngine(scene, settings = {}) {
 
   this.Raycast = function(origin, direction) {
     let smallestDistance = Infinity;
-    let normal;
+    let triangle;
     let point;
     let gameObjectIndex;
-    let gameObject;
+    let octree;
   
     var q = this.octree.query(origin, direction);
     if (q) {
@@ -703,10 +703,10 @@ function PhysicsEngine(scene, settings = {}) {
         let hitPoint = rayToTriangle(origin, direction, triangles[k][0], triangles[k][1], triangles[k][2]);
         if (hitPoint && hitPoint.distance < smallestDistance) {
           smallestDistance = hitPoint.distance;
-          normal = getTriangleNormal(triangles[k]);
+          triangle = triangles[k];
           point = hitPoint.point;
           gameObjectIndex = q.gameObjectIndices[k];
-          gameObject = this.octree.getGameObjectFromIndex(gameObjectIndex); // bruh dont run every hit
+          octree = this.octree;
         }
       }
     }
@@ -731,10 +731,10 @@ function PhysicsEngine(scene, settings = {}) {
 
                   if (hitPoint && hitPoint.distance < smallestDistance) {
                     smallestDistance = hitPoint.distance;
-                    normal = getTriangleNormal(triangles[k]);
+                    triangle = triangles[k];
                     point = hitPoint.point;
                     gameObjectIndex = q.gameObjectIndices[k];
-                    gameObject = meshCollider.octree.getGameObjectFromIndex(gameObjectIndex); // bruh dont run every hit
+                    octree = meshCollider.octree;
                   }
                 }
               }
@@ -744,7 +744,10 @@ function PhysicsEngine(scene, settings = {}) {
       }, child => child.active && child.visible);
     }
   
-    if (point && normal) {
+    if (point && triangle) {
+      let normal = getTriangleNormal(triangle);
+      let gameObject = octree.getGameObjectFromIndex(gameObjectIndex);
+
       return {
         firstHit: {
           distance: smallestDistance,

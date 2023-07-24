@@ -1,8 +1,3 @@
-// self.onmessage = function(e) {
-//   self.postMessage("Hello :)");
-// };
-
-
 self.onmessage = function(e) {
   var perlin = new Perlin();
 
@@ -11,18 +6,30 @@ self.onmessage = function(e) {
     data: createTerrainData(e.data)
   });
 
-  function createTerrainData({w = 20, h = 20, res = 5, heightFactor = 2, noiseOffset = Vector.zero(), noiseScale = 0.01, uvOffset = Vector.zero(), uvScale = 20}) {
+  function createTerrainData({
+    w = 20,
+    h = 20,
+    res = 5,
+    // heightFactor = 2,
+    noiseOffset = Vector.zero(),
+    noiseScale = 0.01,
+    uvOffset = Vector.zero(),
+    uvScale = 20,
+    amplitude = 200,
+    noiseLayers = 2,
+    power = 2.5
+  }) {
     function getHeight(i, j) {
       // return Math.pow(LayeredNoise(i * noiseScale, j * noiseScale, 4), 2) * heightFactor;// * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
       // // return perlin.noise(i * noiseScale, j * noiseScale) * scale * heightFactor * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
     
-      var power = 2.5;
-      var noiseLayers = 2;
-      var noiseScale = 0.001;
-      var height = 200;
+      // var power = 2.5;
+      // var noiseLayers = 2;
+      // var noiseScale = 0.001;
+      // var height = 200;
 
       var heightFalloff = 1;//1 - clamp((Vector.length(new Vector(i, j)) - 400) * 0.005, 0, 1);
-      var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * height * heightFalloff;
+      var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * amplitude * heightFalloff;
 
       return elevation;
     }

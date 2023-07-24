@@ -24,6 +24,7 @@ function Terrain(scene, settings = {}) {
   this.position = Vector.zero();
   this.enableCollision = settings.enableCollision ?? true;
   let colliderDepthThreshold = settings.colliderDepthThreshold ?? 0;
+  this.amplitude = 200;
 
   // var chunkOrders = [];
   this.meshPool = [];
@@ -120,7 +121,7 @@ function Terrain(scene, settings = {}) {
             }
             chunks.set(key, currentGrassChunk);
           }
-          else {
+          else if (currentGrassChunk.parent == null) {
             scene.add(currentGrassChunk);
           }
 
@@ -322,6 +323,7 @@ function Terrain(scene, settings = {}) {
 
             heightFactor: 100,
             noiseScale: 0.001,
+            amplitude: this.amplitude,
 
             id,
           });
@@ -636,6 +638,11 @@ function Terrain(scene, settings = {}) {
     }
 
     let terrain = _terrain.scene.add(new GameObject("Terrain chunk " + x + "," + z));
+
+    terrain.customData.bumpiness = 0.02;
+    terrain.customData.friction = 0.5;
+    terrain.customData.offroad = 1;
+
     terrain.transform.position = new Vector(x, 0, z);
     terrain.visible = false;
     if (_terrain.enableCollision && quadtree.depth >= colliderDepthThreshold) {
