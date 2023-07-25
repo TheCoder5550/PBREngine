@@ -1,50 +1,61 @@
+importScripts("../workerjsonfn.min.js");
+
+let getHeight = () => 0;
+
 self.onmessage = function(e) {
-  var perlin = new Perlin();
+  const perlin = new Perlin();
+
+  self.LayeredNoise = (x, y, octaves = 4) => {
+    let noise = 0;
+    let frequency = 1;
+    let factor = 1;
+  
+    let persistance = 0.4;
+    let roughness = 3;
+  
+    for (let i = 0; i < octaves; i++) {
+      noise += perlin.noise(x * frequency + i * 0.72354, y * frequency + i * 0.72354) * factor;
+      factor *= persistance;
+      frequency *= roughness;
+    }
+  
+    return noise;
+  };
+
+  if (e.data.getHeight) {
+    // eslint-disable-next-line no-undef
+    getHeight = JSONfn.parse(e.data.getHeight);
+    return;
+  }
 
   self.postMessage({
     id: e.data.id,
-    data: createTerrainData(e.data)
+    data: createTerrainData({
+      ...e.data,
+      getHeight,
+    })
   });
 
   function createTerrainData({
     w = 20,
     h = 20,
     res = 5,
-    // heightFactor = 2,
     noiseOffset = Vector.zero(),
-    noiseScale = 0.01,
     uvOffset = Vector.zero(),
     uvScale = 20,
-    amplitude = 200,
-    noiseLayers = 2,
-    power = 2.5
+    getHeight = () => 0
   }) {
-    function getHeight(i, j) {
-      // return Math.pow(LayeredNoise(i * noiseScale, j * noiseScale, 4), 2) * heightFactor;// * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
-      // // return perlin.noise(i * noiseScale, j * noiseScale) * scale * heightFactor * clamp((Vector.length(new Vector((i - (w - 1) / 2) * scale, (j - (h - 1) / 2) * scale)) - 10) * 0.05, 0, 1);
-    
-      // var power = 2.5;
-      // var noiseLayers = 2;
-      // var noiseScale = 0.001;
-      // var height = 200;
-
-      var heightFalloff = 1;//1 - clamp((Vector.length(new Vector(i, j)) - 400) * 0.005, 0, 1);
-      var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * amplitude * heightFalloff;
-
-      return elevation;
-    }
+    const uvs = [];
+    const vertices = [];
+    const triangles = [];
+    const tangents = [];
   
-    var uvs = [];
-    var vertices = [];
-    var triangles = [];
-    var tangents = [];
+    for (let i = 0; i < res; i++) {
+      for (let j = 0; j < res; j++) {
+        const x = mapValue(i, 0, res - 1, -w / 2, w / 2);
+        const z = mapValue(j, 0, res - 1, -h / 2, h / 2);
   
-    for (var i = 0; i < res; i++) {
-      for (var j = 0; j < res; j++) {
-        var x = mapValue(i, 0, res - 1, -w / 2, w / 2);
-        var z = mapValue(j, 0, res - 1, -h / 2, h / 2);
-  
-        var vertex = {
+        const vertex = {
           x: x,
           y: getHeight(x + noiseOffset.x, z + noiseOffset.y),
           z: z
@@ -54,15 +65,15 @@ self.onmessage = function(e) {
       }
     }
   
-    var normals = new Array(vertices.length / 3);
-    for (var i = 0; i < normals.length; i++) {
+    const normals = new Array(vertices.length / 3);
+    for (let i = 0; i < normals.length; i++) {
       normals[i] = [];
     }
   
-    for (var i = 0; i < res - 1; i++) {
-      for (var j = 0; j < res - 1; j++) {
-        var ind = j + i * res;
-        var indices = [
+    for (let i = 0; i < res - 1; i++) {
+      for (let j = 0; j < res - 1; j++) {
+        const ind = j + i * res;
+        const indices = [
           ind,
           ind + 1,
           ind + res,
@@ -73,8 +84,8 @@ self.onmessage = function(e) {
         ];
         triangles.push(...indices);
   
-        var t1Normal = getTriangleNormal([Vector.fromArray(vertices, indices[0] * 3), Vector.fromArray(vertices, indices[1] * 3), Vector.fromArray(vertices, indices[2] * 3)]);
-        var t2Normal = getTriangleNormal([Vector.fromArray(vertices, indices[3] * 3), Vector.fromArray(vertices, indices[4] * 3), Vector.fromArray(vertices, indices[5] * 3)]);
+        const t1Normal = getTriangleNormal([Vector.fromArray(vertices, indices[0] * 3), Vector.fromArray(vertices, indices[1] * 3), Vector.fromArray(vertices, indices[2] * 3)]);
+        const t2Normal = getTriangleNormal([Vector.fromArray(vertices, indices[3] * 3), Vector.fromArray(vertices, indices[4] * 3), Vector.fromArray(vertices, indices[5] * 3)]);
   
         normals[indices[0]].push(t1Normal);
         normals[indices[1]].push(t1Normal);
@@ -85,9 +96,9 @@ self.onmessage = function(e) {
       }
     }
   
-    var outNormals = [];
-    for (var i = 0; i < normals.length; i++) {
-      var normal = Vector.divide(normals[i].reduce((a, b) => {
+    const outNormals = [];
+    for (let i = 0; i < normals.length; i++) {
+      const normal = Vector.divide(normals[i].reduce((a, b) => {
         return Vector.add(a, b);
       }, Vector.zero()), normals[i].length);
   
@@ -96,7 +107,7 @@ self.onmessage = function(e) {
       tangents.push(normal.y, normal.x, normal.z);
     }
   
-    var meshData = {
+    const meshData = {
       indices: {
         bufferData: new Uint32Array(triangles),
       },
@@ -120,24 +131,7 @@ self.onmessage = function(e) {
     
     return meshData;
   }
-  
-  function LayeredNoise(x, y, octaves = 4) {
-    var noise = 0;
-    var frequency = 1;
-    var factor = 1;
-  
-    var persistance = 0.4;
-    var roughness = 3;
-  
-    for (var i = 0; i < octaves; i++) {
-      noise += perlin.noise(x * frequency + i * 0.72354, y * frequency + i * 0.72354) * factor;
-      factor *= persistance;
-      frequency *= roughness;
-    }
-  
-    return noise;
-  }
-}
+};
 
 function mapValue(x, in_min, in_max, out_min, out_max) {
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
@@ -147,18 +141,18 @@ function Perlin() {
   this.p = [151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,102,143,54,65,25,63,161,1,216,80,73,209,76,132,187,208,89,18,169,200,196,135,130,116,188,159,86,164,100,109,198,173,186,3,64,52,217,226,250,124,123,5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,223,183,170,213,119,248,152,2,44,154,163,70,221,153,101,155,167,43,172,9,129,22,39,253,19,98,108,110,79,113,224,232,178,185,112,104,218,246,97,228,251,34,242,193,238,210,144,12,191,179,162,241,81,51,145,235,249,14,239,107,49,192,214,31,181,199,106,157,184,84,204,176,115,121,50,45,127,4,150,254,138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180,151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,102,143,54,65,25,63,161,1,216,80,73,209,76,132,187,208,89,18,169,200,196,135,130,116,188,159,86,164,100,109,198,173,186,3,64,52,217,226,250,124,123,5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,223,183,170,213,119,248,152,2,44,154,163,70,221,153,101,155,167,43,172,9,129,22,39,253,19,98,108,110,79,113,224,232,178,185,112,104,218,246,97,228,251,34,242,193,238,210,144,12,191,179,162,241,81,51,145,235,249,14,239,107,49,192,214,31,181,199,106,157,184,84,204,176,115,121,50,45,127,4,150,254,138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180];
   
   this.noise = function(x = 0, y = 0, z = 0) {
-    var xi = Math.floor(x) & 255;
-    var yi = Math.floor(y) & 255;
-    var zi = Math.floor(z) & 255;
-    var xf = x - Math.floor(x);
-    var yf = y - Math.floor(y);
-    var zf = z - Math.floor(z);
+    let xi = Math.floor(x) & 255;
+    let yi = Math.floor(y) & 255;
+    let zi = Math.floor(z) & 255;
+    let xf = x - Math.floor(x);
+    let yf = y - Math.floor(y);
+    let zf = z - Math.floor(z);
     
-    var u = this.fade(xf);
-    var v = this.fade(yf);
-    var w = this.fade(zf);
+    let u = this.fade(xf);
+    let v = this.fade(yf);
+    let w = this.fade(zf);
     
-    var aaa, aba, aab, abb, baa, bba, bab, bbb;
+    let aaa, aba, aab, abb, baa, bba, bab, bbb;
     aaa = this.p[this.p[this.p[xi    ] + yi    ] + zi    ];
     aba = this.p[this.p[this.p[xi    ] + yi + 1] + zi    ];
     aab = this.p[this.p[this.p[xi    ] + yi    ] + zi + 1];
@@ -168,42 +162,50 @@ function Perlin() {
     bab = this.p[this.p[this.p[xi + 1] + yi    ] + zi + 1];
     bbb = this.p[this.p[this.p[xi + 1] + yi + 1] + zi + 1];
     
-    var x1, x2, y1, y2;
-    x1 = this.lerp(this.grad(aaa, xf    , yf, zf),
-                   this.grad(baa, xf - 1, yf, zf),
-                   u);
-    x2 = this.lerp(this.grad(aba, xf    , yf - 1, zf),
-                   this.grad(bba, xf - 1, yf - 1, zf),
-                   u);
+    let x1, x2, y1, y2;
+    x1 = this.lerp(
+      this.grad(aaa, xf    , yf, zf),
+      this.grad(baa, xf - 1, yf, zf),
+      u
+    );
+    x2 = this.lerp(
+      this.grad(aba, xf    , yf - 1, zf),
+      this.grad(bba, xf - 1, yf - 1, zf),
+      u
+    );
     y1 = this.lerp(x1, x2, v);
 
-    x1 = this.lerp(this.grad(aab, xf    , yf, zf - 1),
-                   this.grad(bab, xf - 1, yf, zf - 1),
-                   u);
-    x2 = this.lerp(this.grad(abb, xf    , yf - 1, zf - 1),
-                   this.grad(bbb, xf - 1, yf - 1, zf - 1),
-                   u);
+    x1 = this.lerp(
+      this.grad(aab, xf    , yf, zf - 1),
+      this.grad(bab, xf - 1, yf, zf - 1),
+      u
+    );
+    x2 = this.lerp(
+      this.grad(abb, xf    , yf - 1, zf - 1),
+      this.grad(bbb, xf - 1, yf - 1, zf - 1),
+      u
+    );
     y2 = this.lerp(x1, x2, v);
     
     return this.lerp(y1, y2, w);
-  }
+  };
   
   this.fade = function(t) {
     return t * t * t * (t * (t * 6 - 15) + 10);
-  }
+  };
   
   this.grad = function(hash, x, y, z) {
-		var h = hash & 15;
-		var u = h < 8 ? x : y;
+    let h = hash & 15;
+    let u = h < 8 ? x : y;
 		
-		var v = h < 4 ? y : (h == 12 || h == 14) ? x : z;
+    let v = h < 4 ? y : (h == 12 || h == 14) ? x : z;
 		
-		return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
-	}
+    return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+  };
   
   this.lerp = function(a, b, x) {
     return a + x * (b - a);
-  }
+  };
 }
 
 class Vector {
@@ -390,13 +392,13 @@ class Vector {
   }
 
   static rotateAround(v, axis, angle) {
-    var aIIb = Vector.multiply(axis, Vector.dot(v, axis) / Vector.dot(axis, axis));
-    var aTb = Vector.subtract(v, aIIb);
-    var w = Vector.cross(axis, aTb);
-    var x1 = Math.cos(angle) / Vector.length(aTb);
-    var x2 = Math.sin(angle) / Vector.length(w);
-    var aTb0 = Vector.multiply(Vector.add(Vector.multiply(aTb, x1), Vector.multiply(w, x2)), Vector.length(aTb));
-    var ab0 = Vector.add(aTb0, aIIb);
+    const aIIb = Vector.multiply(axis, Vector.dot(v, axis) / Vector.dot(axis, axis));
+    const aTb = Vector.subtract(v, aIIb);
+    const w = Vector.cross(axis, aTb);
+    const x1 = Math.cos(angle) / Vector.length(aTb);
+    const x2 = Math.sin(angle) / Vector.length(w);
+    const aTb0 = Vector.multiply(Vector.add(Vector.multiply(aTb, x1), Vector.multiply(w, x2)), Vector.length(aTb));
+    const ab0 = Vector.add(aTb0, aIIb);
 
     return ab0;
   }
@@ -406,7 +408,7 @@ class Vector {
   }
 
   static projectOnPlane(v, normal) {
-    var distToPlane = Vector.dot(normal, v);
+    const distToPlane = Vector.dot(normal, v);
     return Vector.subtract(v, Vector.multiply(normal, distToPlane));
   }
 
@@ -418,7 +420,7 @@ class Vector {
   }
 
   static formOrthogonalBasis(v) {
-    var a = Vector.findOrthogonal(v);
+    const a = Vector.findOrthogonal(v);
     return [
       a,
       Vector.cross(a, v)
@@ -426,13 +428,13 @@ class Vector {
   }
 
   static length(v) {
-    var sum = v.x * v.x + v.y * v.y;
+    let sum = v.x * v.x + v.y * v.y;
     if (v.z) sum += v.z * v.z;
     return Math.sqrt(sum);
   }
 
   static lengthSqr(v) {
-    var sum = v.x * v.x + v.y * v.y;
+    let sum = v.x * v.x + v.y * v.y;
     if (v.z) sum += v.z * v.z;
     return sum;
   }
@@ -446,7 +448,7 @@ class Vector {
   }
 
   static normalize(v) {
-    var len = Vector.length(v);
+    const len = Vector.length(v);
     if (len < 1e-6)
       return Vector.copy(v);
     else
@@ -454,7 +456,7 @@ class Vector {
   }
   
   static dot(a, b) {
-    var sum = a.x * b.x + a.y * b.y;
+    let sum = a.x * b.x + a.y * b.y;
     if (a.z && b.z) sum += a.z * b.z;
     return sum;
   }
@@ -465,34 +467,6 @@ class Vector {
       y: a.z * b.x - a.x * b.z,
       z: a.x * b.y - a.y * b.x
     };
-  }
-
-  static lerp(a, b, t) {
-    return {
-      x: lerp(a.x, b.x, t),
-      y: lerp(a.y, b.y, t),
-      z: lerp(a.z, b.z, t)
-    };
-  }
-
-  static slerp(start, end, percent) {
-    var dot = clamp(Vector.dot(start, end), -1, 1);
-    var theta = Math.acos(dot) * percent;
-    var relativeVec = Vector.normalize(Vector.subtract(end, Vector.multiply(start, dot)));
-    var a = Vector.multiply(start, Math.cos(theta));
-    var b = Vector.multiply(relativeVec, Math.sin(theta));
-    return Vector.add(a, b);
-  }
-
-  static clamp(v, min, max) {
-    var minIsVector = Vector.isVectorIsh(min);
-    var maxIsVector = Vector.isVectorIsh(max);
-
-    return new Vector(
-      clamp(v.x, minIsVector ? min.x : min, maxIsVector ? max.x : max),
-      clamp(v.y, minIsVector ? min.y : min, maxIsVector ? max.y : max),
-      clamp(v.z, minIsVector ? min.z : min, maxIsVector ? max.z : max)
-    );
   }
 }
 

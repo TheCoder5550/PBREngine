@@ -24,7 +24,6 @@ function Terrain(scene, settings = {}) {
   this.position = Vector.zero();
   this.enableCollision = settings.enableCollision ?? true;
   let colliderDepthThreshold = settings.colliderDepthThreshold ?? 0;
-  this.amplitude = 200;
 
   // var chunkOrders = [];
   this.meshPool = [];
@@ -217,6 +216,7 @@ function Terrain(scene, settings = {}) {
 
   var chunkLookup = new Map();
 
+  let hasSentHeight = false;
   const myWorker = new Worker("../engine/terrainDataWorker.js");
   myWorker.onmessage = (e) => {
     // console.log(e);
@@ -265,6 +265,15 @@ function Terrain(scene, settings = {}) {
 
   this.update = function(transform) {
     var t = transform || zeroTransform;
+
+    if (!hasSentHeight) {
+      myWorker.postMessage({
+        // eslint-disable-next-line no-undef
+        getHeight: JSONfn.stringify(this.getHeight),
+      });
+
+      hasSentHeight = true;
+    }
 
     for (let scatter of scatters) {
       scatter.update(t);
@@ -320,10 +329,6 @@ function Terrain(scene, settings = {}) {
             noiseOffset: new Vector(chunk.x, chunk.z, 0),
             uvOffset: new Vector((chunk.x - chunk.chunkSize / 2) * this.uvScale, (chunk.z - chunk.chunkSize / 2) * this.uvScale, 0),
             uvScale: chunk.chunkSize * this.uvScale,
-
-            heightFactor: 100,
-            noiseScale: 0.001,
-            amplitude: this.amplitude,
 
             id,
           });
@@ -640,7 +645,7 @@ function Terrain(scene, settings = {}) {
     let terrain = _terrain.scene.add(new GameObject("Terrain chunk " + x + "," + z));
 
     terrain.customData.bumpiness = 0.02;
-    terrain.customData.friction = 0.5;
+    terrain.customData.friction = 1;
     terrain.customData.offroad = 1;
 
     terrain.transform.position = new Vector(x, 0, z);

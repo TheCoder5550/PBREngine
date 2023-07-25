@@ -15,18 +15,40 @@
 
   <script src="../Stats.js"></script>
   <script src="../gameCanvas-5.0.js"></script>
+  <script src="../jsonfn.min.js"></script>
 </head>
 <body>
   <div class="overlay loading">
-    <h1>WebGL - Realistic Car Demo</h1>
-    <h3 class="subheading">by <a href="https://aaserver.net/">Alfons Nilsson</a></h3>
+    <!-- <h1>WebGL - Realistic Car Demo</h1>
+    <h3 class="subheading">by <a href="https://aaserver.net/">Alfons Nilsson</a></h3> -->
     <!-- <img src="garageIcon.png"> -->
 
-    <h3>Loading</h3>
+    <!-- <h3>Loading</h3>
     <div class="progressBar">
       <div class="progress"></div>
     </div>
-    <h3 class="progressStatus"></h3>
+    <h3 class="progressStatus">Waiting for scripts</h3> -->
+
+    <!-- <div class="topBar"></div> -->
+
+    <div class="backgroundImage"></div>
+
+    <div class="bottomBar">
+      <div class="content">
+        <h1>WebGL - Realistic Car Demo</h1>
+        <h3 class="subheading">by <a href="https://aaserver.net/">Alfons Nilsson</a></h3>
+
+        <div class="loaderWrapper">
+          <!-- <div> -->
+            <h3 class="progressStatus">Waiting for scripts (0%)</h3>
+            <!-- <div class="progressBar">
+              <div class="progress"></div>
+            </div> -->
+          <!-- </div> -->
+          <div class="loader"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="overlay pauseOverlay hidden">

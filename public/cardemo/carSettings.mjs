@@ -292,6 +292,38 @@ export const lowpolySportsCar = {
   },
 };
 
+export const lowpolyJeep = {
+  name: "Lowpoly Jeep",
+  model: "../assets/models/cars/lowpolyJeep.glb",
+  settings: {
+    mass: 1700,
+    drivetrain: "RWD",
+    offroadFriction: 1,
+    friction: 0.8,
+    forwardFriction: 1,
+    sidewaysFriction: 1,
+    maxSteerAngle: 45,
+    torque: 400,
+
+    COMOffset: new Vector(0, -0.5, 0),
+    suspensionForce: 60_000,
+    suspensionDamping: 4000,
+    suspensionTravel: 0.15,
+    rideHeightOffset: 0.1,
+    antiRoll: 9_000,
+
+    ABS: false,
+    TCS: false,
+    differential: Car.ENUMS.DIFFERENTIAL.LSD,
+
+    camera: {
+      followDistance: 4,
+      followHeight: 0.25,
+      pitch: 0.1,
+    },
+  },
+};
+
 export {
   aventador,
   drift,

@@ -38,7 +38,9 @@
 
 body {
   background: black;
-  background: url(loadingScreenImage.png);
+  /* background: url(../../infiniteGrassHillsWithTrees6.PNG); */
+  /* background: url(loadingScreenImage.png); */
+  /* background-size: 101%; */
   
   margin: 0;
   overflow: hidden;
@@ -68,6 +70,48 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
+.loader {
+  --width: 7px;
+
+  width: 50px;
+  height: 50px;
+
+  border-radius: 50%;
+  border: var(--width) solid transparent; /*2*/
+  background: conic-gradient(white, transparent, transparent, transparent) border-box; /*3*/
+  -webkit-mask: /*4*/
+     linear-gradient(#fff 0 0) padding-box, 
+     linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; /*5'*/
+          mask-composite: exclude; /*5*/
+
+  animation: 1s infinite spinLoader;
+}
+
+.loader::after {
+  content: "";
+
+  position: absolute;
+  top: calc(-1 * var(--width));
+  left: 50%;
+  transform: translateX(-50%);
+
+  width: var(--width);
+  height: var(--width);
+
+  background: white;
+  border-radius: 50%;
+}
+
+@keyframes spinLoader {
+  from {
+    transform: rotate(0);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
 .ingameUICanvas {
   pointer-events: none;
 }
@@ -93,29 +137,80 @@ canvas {
   align-items: center;
 
   color: white;
-  backdrop-filter: brightness(25%) blur(3px);
+  /* backdrop-filter: brightness(25%) blur(3px); */
 }
 
-.loading > h1 {
-  margin: 0;
-  font-size: 3em;
-  text-align: center;
+.loading .backgroundImage {
+  position: absolute;
+  top: 0;
+  bottom: 200px;
+  left: 0;
+  right: 0;
+
+  background: black;
+  background: url(../../infiniteGrassHillsWithTrees2.PNG);
+  background-size: cover;
+  background-position: center;
 }
 
-.loading > .subheading {
+.loading .topBar,
+.loading .bottomBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 200px;
+
+  background-color: black;
+}
+
+.loading .topBar {
+  top: 0;
+}
+
+.loading .bottomBar {
+  bottom: 0;
+
+  display: flex;
+  justify-content: center;
+}
+
+.bottomBar .content {
+  width: 100%;
+  max-width: 1200px;
+  padding: 1rem 2rem;
+
+  position: relative;
+}
+
+.content .loaderWrapper {
+  position: absolute;
+  right: 1rem;
+  bottom: 30px;
+
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.loading h1 {
+  margin-bottom: 0;
+  font-size: 2.5em;
+  /* text-align: center; */
+}
+
+.loading .subheading {
   margin-top: 0.5em;
-  margin-bottom: 5em;
 
   color: darkgray;
   font-style: italic;
 }
 
-.loading > .subheading > a {
+a {
   color: inherit;
   pointer-events: all;
 }
 
-.loading > h3 {
+.loading h3 {
   color: darkgray;
   font-style: italic;
 }
@@ -128,8 +223,8 @@ canvas {
 .progressBar {
   position: relative;
 
-  width: 300px;
-  height: 10px;
+  width: 175px;
+  height: 5px;
 
   background: rgba(255, 255, 255, 0.3);
   border-radius: 5px;
@@ -144,6 +239,10 @@ canvas {
   background: white;
 
   width: 0%;
+}
+
+.progressStatus {
+  margin: 0;
 }
 
 .pauseOverlay {

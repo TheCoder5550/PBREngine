@@ -2371,6 +2371,8 @@ function Car(scene, physicsEngine, settings = {}) {
           // Friction
           // wheelVelocity = this.rb.GetPointVelocity(wheel.contactPoint);
 
+          const isOffroad = wheel.groundHit.gameObject?.customData?.offroad;
+          const wheelFriction = isOffroad ? wheel.offroadFriction : wheel.friction;
           let roadFriction = wheel.groundHit.gameObject?.customData?.friction ?? 1;
           wheel.roadFriction = roadFriction;
 
@@ -2409,11 +2411,11 @@ function Car(scene, physicsEngine, settings = {}) {
           var rho = Math.sqrt(s * s + a * a);
 
           var Fx = (_slipRatio) => {
-            return magicFormula(_slipRatio, wheel.slipRatioCoeffs) * roadFriction * wheel.friction * wheel.forwardFriction;
+            return magicFormula(_slipRatio, wheel.slipRatioCoeffs) * roadFriction * wheelFriction * wheel.forwardFriction;
           };
           var Fy = ( _slipAngle) => {
-            return advancedFy(_slipAngle * 180 / Math.PI, wheel.normalForce, wheel.camberAngle, wheel.advancedSlipAngleCoeffs) * roadFriction * wheel.friction * wheel.sidewaysFriction;
-            // return magicFormula(_slipAngle * 180 / Math.PI - wheel.camberAngle * wheel.camberAngleCoeff, wheel.slipAngleCoeffs) * roadFriction * wheel.friction * wheel.sidewaysFriction;
+            return advancedFy(_slipAngle * 180 / Math.PI, wheel.normalForce, wheel.camberAngle, wheel.advancedSlipAngleCoeffs) * roadFriction * wheelFriction * wheel.sidewaysFriction;
+            // return magicFormula(_slipAngle * 180 / Math.PI - wheel.camberAngle * wheel.camberAngleCoeff, wheel.slipAngleCoeffs) * roadFriction * wheelFriction * wheel.sidewaysFriction;
           };
 
           // if (count == iters - 1) {
@@ -2703,6 +2705,7 @@ function Wheel(car, position = Vector.zero(), model, settings = {}) {
   this.model = model;
   this.side = 1;
 
+  this.offroadFriction = settings.offroadFriction ?? 0.5;
   this.friction = settings.friction ?? 1;
   this.forwardFriction = settings.forwardFriction ?? 1;
   this.sidewaysFriction = settings.sidewaysFriction ?? 1;
@@ -2984,10 +2987,15 @@ class TPPFollowCamera extends CameraController {
     var planeVelocity = Vector.projectOnPlane(this.car.rb.velocity, Vector.up());
 
     var targetForward;
-    if (this.followMode == this.CAMERA_FOLLOW_MODES.FOLLOW_VELOCITY && Vector.length(planeVelocity) > 1) {
-      targetForward = Vector.negate(Vector.normalize(planeVelocity));
-      // targetForward = Vector.slerp(targetForward, Vector.negate(forward), 0.2 * 0);
-      // cameraCarForward = Vector.negate(targetForward);
+    if (this.followMode == this.CAMERA_FOLLOW_MODES.FOLLOW_VELOCITY) {
+      if (Vector.length(planeVelocity) > 1) {
+        targetForward = Vector.negate(Vector.normalize(planeVelocity));
+        // targetForward = Vector.slerp(targetForward, Vector.negate(forward), 0.2 * 0);
+        // cameraCarForward = Vector.negate(targetForward);
+      }
+      else {
+        targetForward = Vector.negate(forward);
+      }
     }
     else if (this.followMode == this.CAMERA_FOLLOW_MODES.FOLLOW_DIRECTION) {
       targetForward = Vector.negate(forward);

@@ -167,5 +167,3 @@ Stats.Panel = function ( name, fg, bg ) {
 	};
 
 };
-
-// export { Stats as default };
