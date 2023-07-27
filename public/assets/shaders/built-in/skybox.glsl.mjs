@@ -69,20 +69,45 @@ var output = {
         uniform samplerCube skybox;
         uniform mat4 viewDirectionProjectionInverse;
 
-        // #define USEFOG
-        const vec4 fogColor = vec4(0.23, 0.24, 0.26, 1);
+        uniform vec4 fogColor;
+        uniform float fogIntensity;
+
+        float _SkyboxSpeed = 0.01;
+        vec3 _SkyboxDirection = vec3(1, -0.3, 0);
+        uniform float iTime;
+
+        vec4 flowUVW(vec3 dir, vec3 curl, float t, bool flowB) {
+          float phaseOffset = flowB ? 0.5f : 0.0f;
+          float progress = t + phaseOffset - floor(t + phaseOffset);
+          vec3 offset = curl * progress;
+
+          vec4 uvw = vec4(dir, 0.0f);
+          uvw.xz -= offset.xy;
+          uvw.w = 1. - abs(1.0f - 2.0f * progress);
+
+          return uvw;
+        }
         
         void main() {
           motionVector = vec2(0.5);
 
-          vec4 t = viewDirectionProjectionInverse * vPosition;
-          vec3 lookDir = normalize(t.xyz / t.w);
-          vec3 col = texture(skybox, lookDir).rgb * environmentIntensity;
-        
-          #ifdef USEFOG
-            col = mix(fogColor.rgb, col, clamp(lookDir.y * 10., 0., 1.));
-          #endif
-          
+          vec4 proj = viewDirectionProjectionInverse * vPosition;
+          vec3 viewDir = normalize(proj.xyz / proj.w);
+
+          // vec3 col = texture(skybox, viewDir).rgb * environmentIntensity;
+
+          vec3 curl = normalize(_SkyboxDirection);
+          float t = iTime * _SkyboxSpeed;
+          vec4 uvw1 = flowUVW(viewDir, curl, t, false);
+          vec4 uvw2 = flowUVW(viewDir, curl, t, true);
+
+          vec3 sky = texture(skybox, uvw1.xyz).rgb * uvw1.w;
+          vec3 sky2 = texture(skybox, uvw2.xyz).rgb * uvw2.w;
+          vec3 col = (sky + sky2) * environmentIntensity;
+
+          // Fog
+          col = mix(col, fogColor.rgb, fogIntensity * clamp(1. - viewDir.y * 10., 0., 1.));
+
           fragColor = vec4(col, 1);
         }
       `

@@ -5,6 +5,7 @@ import { MeshCollider } from "./physics.mjs";
 import { mapValue, lerp, clamp, smoothstep } from "./helper.mjs";
 import { getTriangleNormal } from "./algebra.mjs";
 import Matrix from "./matrix.mjs";
+import JSONfn from "../jsonfnModule.mjs";
 
 var perlin = new Perlin();
 

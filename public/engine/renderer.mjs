@@ -332,6 +332,7 @@ function Renderer(settings = {}) {
       this.getExtension("MOZ_EXT_texture_filter_anisotropic") ||
       this.getExtension("WEBKIT_EXT_texture_filter_anisotropic")
     );
+    this.MAX_ANISOTROPY = gl.getParameter(this.EXT_texture_filter_anisotropic.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
 
     if (this.version == 2) {
       this.getExtension("OES_texture_float_linear");
@@ -3302,10 +3303,12 @@ function Renderer(settings = {}) {
       Matrix.multiply(camera.projectionMatrix, matrix, matrix);
       Matrix.inverse(matrix, matrix);
 
-      // bruh
-      var scene = renderer.scenes[renderer.currentScene];
+      const scene = renderer.getActiveScene();
       gl.uniform1f(this.uniformLocations.environmentIntensity, scene.environmentIntensity);
       gl.uniformMatrix4fv(this.uniformLocations.viewDirectionProjectionInverse, false, matrix);
+      this.programContainer.setUniform("fogColor", scene.fogColor);
+      this.programContainer.setUniform("fogIntensity", scene.skyboxFogIntensity);
+      this.programContainer.setUniform("iTime", (new Date() - 1690402835811) / 1000);
 
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap);
@@ -4596,11 +4599,11 @@ function Renderer(settings = {}) {
       }
     }
 
-    getInstanceMeshRenderer() {
+    getInstanceMeshRenderer(programContainer = renderer.programContainers.litInstanced) {
       var mats = [];
       for (var mat of this.materials) {
         var newMat = mat.copy();
-        newMat.programContainer = renderer.programContainers.litInstanced;
+        newMat.programContainer = programContainer;
         mats.push(newMat);
       }
 
@@ -5505,8 +5508,8 @@ function Renderer(settings = {}) {
 
     // Anisotropic filtering
     if (settings.anisotropicFiltering && renderer.EXT_texture_filter_anisotropic) {
-      var ext = renderer.EXT_texture_filter_anisotropic;
-      var max = gl.getParameter(ext.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+      const ext = renderer.EXT_texture_filter_anisotropic;
+      const max = renderer.MAX_ANISOTROPY;
       gl.texParameterf(gl.TEXTURE_2D, ext.TEXTURE_MAX_ANISOTROPY_EXT, max);
     }
 

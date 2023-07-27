@@ -82,6 +82,8 @@ var output = {
         in vec3 localPos;
 
         uniform samplerCube environmentMap;
+        const vec3 maxBrightness = vec3(3000000);
+        const float sampleDelta = 0.025 / 3.;
 
         const float PI = 3.14159265359;
 
@@ -98,7 +100,6 @@ var output = {
             // FragColor = vec4(texture(environmentMap, normal).rgb, 1.0);
             // return;
 
-            float sampleDelta = 0.025 / 3.;
             float nrSamples = 0.0; 
             for(float phi = 0.0; phi < 2.0 * PI; phi += sampleDelta) {
                 for(float theta = 0.0; theta < 0.5 * PI; theta += sampleDelta) {
@@ -110,7 +111,7 @@ var output = {
                     vec3 sampleColor = texture(environmentMap, sampleVec).rgb;
                     // sampleColor = pow(sampleColor, vec3(2.2));
 
-                    irradiance += min(sampleColor, vec3(3000000)) * cos(theta) * sin(theta);
+                    irradiance += min(sampleColor, maxBrightness) * cos(theta) * sin(theta);
                     nrSamples++;
                 }
             }

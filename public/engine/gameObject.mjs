@@ -313,7 +313,9 @@ function GameObject(name = "Unnamed", options = {}) {
     if (_aabbNeedsUpdating && this.meshRenderer && this.meshRenderer.getAABB) {
       if (!_aabb) _aabb = new AABB();
       this.meshRenderer.getAABB(_aabb);
-      _aabb.approxTransform(this.transform.worldMatrix);
+      if (!(this.meshRenderer instanceof Renderer.MeshInstanceRenderer)) {
+        _aabb.approxTransform(this.transform.worldMatrix);
+      }
       _aabbNeedsUpdating = false;
     }
 

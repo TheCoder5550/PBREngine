@@ -148,6 +148,7 @@
         renderer = new Renderer({
           renderScale: 1,
           debug: true,
+          renderpipeline: 0
         });
         renderer.canvas.style.position = "fixed";
 
@@ -400,6 +401,7 @@
 
           // terrain.update(mainCamera.transform);
           terrain.update();
+          
 
           physicsEngine.update();
           if (car) {
@@ -660,13 +662,13 @@
 
           snowParticles.emitHealth = 9;
           snowParticles.orientation = "faceCamera";
-          snowParticles.startSize = Vector.fill(0.05 + Math.random() * 0.07);
+          snowParticles.startSize = dst => Vector.fill(0.05 + Math.random() * 0.07, dst);
 
-          snowParticles.emitPosition = () => {
-            return Vector.add(mainCamera.transform.position, new Vector((Math.random() - 0.5) * 50, 10, (Math.random() - 0.5) * 50));
+          snowParticles.emitPosition = dst => {
+            return Vector.add(mainCamera.transform.position, new Vector((Math.random() - 0.5) * 50, 10, (Math.random() - 0.5) * 50), dst);
           }
-          snowParticles.emitVelocity = () => {
-            return new Vector(0, -4, 0);
+          snowParticles.emitVelocity = dst => {
+            return new Vector(0, -4, 0, dst);
           }
 
           snow.addComponent(snowParticles);

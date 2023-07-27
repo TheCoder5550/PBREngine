@@ -7,6 +7,7 @@ import { clamp } from "./engine/helper.mjs";
 import { getTriangleNormal } from "./engine/algebra.mjs";
 import FlyCamera from "./engine/flyCamera.mjs";
 import { NewMaterial } from "./engine/material.mjs";
+import GamepadManager from "./gamepadManager.js";
 
 // window.mobileCheck = function() {
 //   let check = false;
@@ -47,13 +48,18 @@ async function setup() {
     clearColor: [1, 0, 0, 1],
     width: innerWidth,
     height: innerHeight/* - 200*/,
-    version: 2
+    version: 2,
+    renderpipeline: 0
   });
-
-  if (renderer.postprocessing) renderer.postprocessing.exposure = -1.5;
   renderer.add(scene);
 
-  await scene.loadEnvironment("./assets/hdri/snowy_field_1k");
+  scene.postprocessing.exposure = -1.5;
+  scene.skyboxFogIntensity = 1;
+  scene.fogDensity = 0.02;
+  await scene.loadEnvironment();
+
+  // scene.skyboxFogIntensity = 0;
+  // await scene.loadEnvironment({ hdrFolder: "./assets/hdri/snowy_field_1k" });
 
   mainCamera = new FlyCamera(renderer);
   // mainCamera.setAspect(renderer.aspect);

@@ -1,4 +1,4 @@
-importScripts("../workerjsonfn.min.js");
+importScripts("../jsonfnWorker.min.js");
 
 let getHeight = () => 0;
 

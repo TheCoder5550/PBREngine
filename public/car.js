@@ -912,7 +912,9 @@ function Car(scene, physicsEngine, settings = {}) {
 
     // var colliderVis = renderer.CreateShape("cube");
     // var md = colliderVis.meshRenderer.meshData[0];
-    // md.applyTransform(Matrix.scale(Vector.compMultiply(boxSize, new Vector(0.4, 0.5, 0.5))));
+    // md.applyTransform(Matrix.scale(Vector.compMultiply(boxSize, new Vector(0.4, 0.4, 0.4))));
+    // // md.applyTransform(Matrix.scale(Vector.compMultiply(boxSize, new Vector(0.4, 0.5, 0.5))));
+    // // colliderVis.meshRenderer.materials[0].setUniform("albedo", [0, 0, 0, 0]);
 
     // // colliderVis.transform.scale = Vector.divide(boxSize, 2);
     // // this.gameObject.addChild(colliderVis);
@@ -2387,7 +2389,7 @@ function Car(scene, physicsEngine, settings = {}) {
           // if (Math.abs(forwardVelocity) < 0.02) {
           //   slipAngle = clamp(sidewaysVelocity * 0.01, -0.1, 0.1);
           // }
-          slipAngle *= Math.min((sidewaysVelocity ** 2 + forwardVelocity ** 2) * 10, 1);
+          // slipAngle *= Math.min((sidewaysVelocity ** 2 + forwardVelocity ** 2) * 10, 1);
           if (isNaN(slipAngle) || !isFinite(slipAngle)) slipAngle = 0;
           let a = slipAngle / wheel.slipAnglePeak;
           wheel.lastA = a;

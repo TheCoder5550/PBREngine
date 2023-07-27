@@ -17,6 +17,7 @@ function Scene(name) {
   this.environmentIntensity = 1;
   this.environmentMinLight = 0.25;
   this.ambientColor = [0, 0, 0];
+  this.skyboxFogIntensity = 0.8;
   this.fogDensity = 0.0035;
   this.fogColor = [0.23, 0.24, 0.26, 1];
   this.shadowQuality = 2;

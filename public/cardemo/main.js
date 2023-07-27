@@ -19,7 +19,7 @@ import { CatmullRomCurve } from "../engine/curves.mjs";
 
 // import * as roadSource from "../assets/shaders/custom/road.glsl.mjs";
 import * as carPaintShader from "../assets/shaders/custom/carPaint.glsl.mjs";
-// import * as terrainShader from "./terrain.glsl.mjs";
+import * as terrainShader from "./terrain.glsl.mjs";
 import * as simpleFoliage from "../assets/shaders/custom/simpleFoliage.glsl.mjs";
 // import createInspector from "../engine/inspector/inspector.mjs";
 import City from "./city.mjs";
@@ -243,7 +243,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   const spawnPosition = new Vector(0, 2, 0);
   const spawnRotation = Quaternion.identity();
-  const allowedCars = [ "lowpolySportsCar", "lowpolyJeep" ];
+  const allowedCars = [ "lowpolySportsCar", /*"lowpolyJeep"*/ ];
   // var allowedCars = [
   //   "skyline",
   //   "drift",
@@ -389,31 +389,32 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   // Scene
   setProgress(currentTask++, totalTasks, "Loading scene");
-  console.time("Scene");
   const scene = new Scene("Playground");
   renderer.add(scene);
 
   scene.fogColor = [0.4, 0.4, 0.5, 1];
   scene.fogDensity = 0.001;
+  scene.skyboxFogIntensity = 1;
   scene.environmentMinLight = 0.5;
-  // scene.environmentIntensity = 1;//1.5 * 1.2;
-  // scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(5500, 20));
+
   scene.postprocessing.exposure = -1;
   scene.postprocessing.vignette.amount = 0.3;
   scene.postprocessing.vignette.falloff = 0.3;
-  // renderer.postprocessing.saturation.value = 0.4;
-  // renderer.settings.enableShadows = false;
-  // renderer.postprocessing.rainTexture = await renderer.loadTextureAsync("../assets/textures/rain-normal-map.jpg");
-  renderer.shadowCascades.refreshRate = 0;
-  // renderer.settings.enableShadows = false;
+  // scene.postprocessing.saturation = 0.4;
+  // scene.postprocessing.rainTexture = await renderer.loadTextureAsync("../assets/textures/rain-normal-map.jpg");
 
-  await scene.loadEnvironment({
-    // hdr: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr",
-    hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k_precomputed",
-    // hdrFolder: "../assets/hdri/snowy_field_1k",
-    // res: 1024
-  });
-  console.timeEnd("Scene");
+  renderer.shadowCascades.refreshRate = 0;
+
+  isDay(true);
+
+  await scene.loadEnvironment({ hdrFolder: "cubemaps/infiniteForestCapture" });
+
+  // await scene.loadEnvironment({
+  //   // hdr: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr",
+  //   hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k_precomputed",
+  //   // hdrFolder: "../assets/hdri/snowy_field_1k",
+  //   // res: 1024
+  // });
 
   // Garage scene
   setProgress(currentTask++, totalTasks, "Generating garage");
@@ -449,14 +450,13 @@ document.addEventListener("DOMContentLoaded", async function () {
   // Physics engine
   setProgress(currentTask++, totalTasks, "Initializing physics engine");
   const physicsEngine = new PhysicsEngine(scene, {
-    octreeLevels: 5,
+    // octreeLevels: 5,
+    octreeLevels: 7, // Playground needs more levels because of areas with denser triangles (or maybe because of big baseplate area)
     multipleTimestepsPerFrame: false
   });
 
   // Road program
   // var roadProgram = new renderer.ProgramContainer(await renderer.createProgram(roadSource.webgl2.vertex, roadSource.webgl2.fragment));
-  
-  // var terrainProgram = new renderer.CustomProgram(terrainShader);
 
   // Car paint
   setProgress(currentTask++, totalTasks, "Initializing car paint material");
@@ -486,9 +486,11 @@ document.addEventListener("DOMContentLoaded", async function () {
   // Load map
   setProgress(currentTask++, totalTasks, "Loading map");
 
-  const { terrain } = await generateCity();
-  // const { terrain } = await generateForest();
+  // const { terrain } = await generateCity();
+  const { terrain } = await generateForest();
   // const { terrain } = await generateTerrain();
+  // const { terrain } = await generatePlayground();
+  // const { terrain } = await generateTouge();
 
   // const terrain = new Terrain(scene, {
   //   terrainSize: 10_000,
@@ -692,13 +694,14 @@ document.addEventListener("DOMContentLoaded", async function () {
   // setProgress(10, totalTasks, "Planting trees");
   // await loadGrass();
 
-  // Cubemap
-  setProgress(currentTask++, totalTasks, "Generating cubemap");
-  const cubemap = renderer.captureReflectionCubemap(new Vector(0, 2.5, 0));
-  const oldSkybox = scene.skyboxCubemap;
-  await scene.loadEnvironment({ cubemap });
-  scene.skyboxCubemap = oldSkybox;
-  scene.environmentIntensity = 1;
+  // // Cubemap
+  // setProgress(currentTask++, totalTasks, "Generating cubemap");
+  // const cubemap = renderer.captureReflectionCubemap(new Vector(0, 2.5, 0));
+  // const oldSkybox = scene.skyboxCubemap;
+  // setProgress(currentTask++, totalTasks, "Loading cubemap");
+  // await scene.loadEnvironment({ cubemap });
+  // scene.skyboxCubemap = oldSkybox;
+  // scene.environmentIntensity = 1;
 
   // Load all car models
   setProgress(currentTask++, totalTasks, "Loading car models");
@@ -910,15 +913,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   function isDay(day) {
     if (day) {
-      scene.environmentIntensity = 1.25;
-      scene.sunIntensity = {x: 30, y: 24, z: 18};//Vector.fromArray(Light.kelvinToRgb(5500, 27));
-      // grass.children[0].meshRenderer.materials[0].setUniform("albedo", [2, 2, 2, 1]);
+      applyDaytimeEnvironment();
     }
     else {
-      scene.fogDensity = 0.005;
-      scene.environmentIntensity = 0.01;
-      scene.sunIntensity = Vector.fill(0.25);
-      // grass.children[0].meshRenderer.materials[0].setUniform("albedo", [0.1, 0.1, 0.1, 1]);
+      applyNighttimeEnvironment();
     }
   }
 
@@ -1247,7 +1245,92 @@ document.addEventListener("DOMContentLoaded", async function () {
     return car;
   }
 
+  function applyDaytimeEnvironment() {
+    scene.fogDensity = 0.001;
+    scene.environmentIntensity = 1.25;
+    scene.sunIntensity = {x: 30, y: 24, z: 18};
+
+    // grass.children[0].meshRenderer.materials[0].setUniform("albedo", [2, 2, 2, 1]);
+  }
+
+  function applyNighttimeEnvironment() {
+    scene.fogDensity = 0.005;
+    scene.environmentIntensity = 0.01;
+    scene.sunIntensity = Vector.fill(0.25);
+
+    // grass.children[0].meshRenderer.materials[0].setUniform("albedo", [0.1, 0.1, 0.1, 1]);
+  }
+
   // Maps
+  // Touge road map
+  async function generateTouge() {
+    const mapPath = "./touge.glb";
+    const colliderPath = "./tougeCollider.glb";
+
+    const terrainProgram = new renderer.CustomProgram(terrainShader);
+    var grassAlbedo = await renderer.loadTextureAsync("../assets/textures/GroundForest003/GroundForest003_COL_VAR1_3K.jpg", { ...renderer.getSRGBFormats() });
+    var grassNormal = await renderer.loadTextureAsync("../assets/textures/GroundForest003/GroundForest003_NRM_3K.jpg");
+    var stoneAlbedo = await renderer.loadTextureAsync("../assets/textures/rocks_ground_03_2k_jpg/rocks_ground_03_diff_2k.jpg", { ...renderer.getSRGBFormats() });
+    var stoneNormal = await renderer.loadTextureAsync("../assets/textures/rocks_ground_03_2k_jpg/rocks_ground_03_nor_2k.jpg");
+
+    const map = await renderer.loadGLTF(mapPath, { maxTextureSize: 1024 });
+    const mapBatched = scene.add(renderer.BatchGameObject(map));
+
+    var leaves = renderer.loadTexture("../assets/textures/leaves.png");
+    var foliage = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/foliage"));
+    var foliageMat = new NewMaterial(foliage);
+    foliageMat.doubleSided = true;
+    foliageMat.setUniform("useTexture", 1);
+    foliageMat.setUniform("albedoTexture", leaves);
+
+    mapBatched.castShadows = false;
+    mapBatched.meshRenderer.materials[1].programContainer = terrainProgram;
+    mapBatched.meshRenderer.materials[1].setUniform("roughness", 1);
+    mapBatched.meshRenderer.materials[1].setUniform("albedoTextures[0]", [ grassAlbedo, stoneAlbedo ]);
+    mapBatched.meshRenderer.materials[1].setUniform("normalTextures[0]", [ grassNormal, stoneNormal ]);
+    // mapBatched.meshRenderer.materials[1].setUniform("albedo", [0.25, 0.25, 0.25, 1]);
+    mapBatched.meshRenderer.materials[2].setUniform("normalStrength", 2.5);
+    mapBatched.meshRenderer.materials[6].programContainer = renderer.programContainers.unlit;
+
+    if (colliderPath) {
+      var collider = await renderer.loadGLTF(colliderPath, { loadMaterials: false, loadNormals: false, loadTangents: false });
+      collider.transform.set(map.transform);
+      physicsEngine.addMeshCollider(collider);
+    }
+
+    // initSnow();
+    // await initTrees();
+
+    var spawnPoints = map.getChildren("SpawnPoint", true, false);
+    var spawnPoint = spawnPoints[0];//randomFromArray(spawnPoints);
+    Vector.add(spawnPoint.transform.worldPosition, new Vector(0, 2, 0), spawnPosition);
+
+    return { terrain: null };
+  }
+
+  // Flat playground with jumps
+  async function generatePlayground() {
+    const mapPath = "playground.glb";
+    const colliderPath = "playground.glb";
+
+    const map = await renderer.loadGLTF(mapPath, { maxTextureSize: 1024 });
+    const mapBatched = scene.add(renderer.BatchGameObject(map));
+    mapBatched.castShadows = false;
+
+    if (colliderPath) {
+      var collider = await renderer.loadGLTF(colliderPath, { loadMaterials: false, loadNormals: false, loadTangents: false });
+      collider.transform.set(map.transform);
+      physicsEngine.addMeshCollider(collider);
+    }
+
+    new Vector(0, 1, 0, spawnPosition);
+    Quaternion.euler(0, 0, Math.PI * 0.27, spawnRotation);
+
+    // initSnow();
+
+    return { terrain: null }; 
+  }
+
   // Large savanna-like landscape without roads
   async function generateTerrain() {
     const terrain = new Terrain(scene, {
@@ -2006,26 +2089,23 @@ document.addEventListener("DOMContentLoaded", async function () {
   async function createChunks() {
     var chunkSize = 300;
 
-    var leavesMaterial = renderer.CreateLitMaterial({
-      albedoTexture: renderer.loadTexture("leaves5.png", { ...renderer.getSRGBFormats() }),
-    });
-    var leavesBase = renderer.CreateShape("plane", leavesMaterial);
+    // const simpleFoliageProgram = new renderer.CustomProgram(simpleFoliage);
 
-    // const grassMaterial = renderer.CreateLitMaterial({
-    //   albedo: [0.8, 0.8, 1, 1],
-    //   albedoTexture: renderer.loadTexture("../assets/textures/Snow/albedo.jpg", { ...renderer.getSRGBFormats() }),
-    //   normalTexture: renderer.loadTexture("../assets/textures/Snow/normal.jpg"),
-    //   normalStrength: 2,
-    // });
-    const grassMaterial = renderer.CreateLitMaterial({
-      albedoTexture: renderer.loadTexture("../assets/textures/brown_mud_leaves_01_2k_jpg/brown_mud_leaves_01_diff_2k.jpg", { ...renderer.getSRGBFormats() }),
-      normalTexture: renderer.loadTexture("../assets/textures/brown_mud_leaves_01_2k_jpg/brown_mud_leaves_01_Nor_2k.jpg"),
-    });
-    grassMaterial.setUniform("doNoTiling", true);
-
-    var simpleFoliageProgram = new renderer.CustomProgram(simpleFoliage);
-    var billboardTreesBase = await renderer.loadGLTF("../assets/models/trees/stylizedAutumnBillboard.glb");
-    var treesBase = await renderer.loadGLTF("../assets/models/trees/stylizedAutumn.glb");
+    const [
+      leavesAlbedo,
+      grassAlbedo,
+      grassNormal,
+      asphaltAlbedo,
+      asphaltNormal,
+      asphaltMetallicRoughness
+    ] = await Promise.all([
+      loadImage("leaves5.png"),
+      loadImage("../assets/textures/brown_mud_leaves_01_512_jpg/brown_mud_leaves_01_diff_2k.jpg"),
+      loadImage("../assets/textures/brown_mud_leaves_01_512_jpg/brown_mud_leaves_01_Nor_2k.jpg"),
+      loadImage("../assets/textures/road512/albedo.png"),
+      loadImage("../assets/textures/road512/normal.png"),
+      loadImage("../assets/textures/road512/metallicRoughness.png"),
+    ]);
 
     // var dirtRoadMaterial = renderer.CreateLitMaterial({
     //   // albedo: [0.8, 0.8, 0.8, 1],
@@ -2035,19 +2115,36 @@ document.addEventListener("DOMContentLoaded", async function () {
     // });
     // dirtRoadMaterial.setUniform("roughness", 0.9);
     // dirtRoadMaterial.setUniform("normalStrength", 3);
-    var dirtRoadMaterial = null;
+    const dirtRoadMaterial = null;
 
-    var asphaltRoadMaterial = renderer.CreateLitMaterial({
+    const asphaltRoadMaterial = renderer.CreateLitMaterial({
       albedo: [0.3, 0.3, 0.3, 1],
-      albedoTexture: await renderer.loadTextureAsync("../assets/textures/road/albedo.png", { ...renderer.getSRGBFormats(), anisotropicFiltering: true }),
-      normalTexture: await renderer.loadTextureAsync("../assets/textures/road/normal.png", { anisotropicFiltering: true }),
-      metallicRoughnessTexture: await renderer.loadTextureAsync("../assets/textures/road/metallicRoughness.png", { anisotropicFiltering: true }),
+      albedoTexture: renderer.loadTexture(asphaltAlbedo, { ...renderer.getSRGBFormats(), anisotropicFiltering: true }),
+      normalTexture: renderer.loadTexture(asphaltNormal, { anisotropicFiltering: true }),
+      metallicRoughnessTexture: renderer.loadTexture(asphaltMetallicRoughness, { anisotropicFiltering: true }),
       metallic: 0.5,
-      // albedoTexture: renderer.loadTexture("../assets/textures/asphalt_01_1k/asphalt_01_diff_1k.jpg", { ...renderer.getSRGBFormats() }),
-      // normalTexture: renderer.loadTexture("../assets/textures/asphalt_01_1k/asphalt_01_nor_gl_1k.png"),
     });
-    // roadMaterial.setUniform("albedo", [1, 1, 1, 1]);
-    // roadMaterial.setUniform("albedoTexture", renderer.loadTexture("./assets/textures/checkerboard2.png"));
+
+    // const grassMaterial = renderer.CreateLitMaterial({
+    //   albedo: [0.8, 0.8, 1, 1],
+    //   albedoTexture: renderer.loadTexture("../assets/textures/Snow/albedo.jpg", { ...renderer.getSRGBFormats() }),
+    //   normalTexture: renderer.loadTexture("../assets/textures/Snow/normal.jpg"),
+    //   normalStrength: 2,
+    // });
+    const grassMaterial = renderer.CreateLitMaterial({
+      albedoTexture: renderer.loadTexture(grassAlbedo, { ...renderer.getSRGBFormats() }),
+      normalTexture: renderer.loadTexture(grassNormal),
+    });
+    grassMaterial.setUniform("doNoTiling", true);
+
+    const leavesMaterial = renderer.CreateLitMaterial({
+      albedoTexture: renderer.loadTexture(leavesAlbedo, { ...renderer.getSRGBFormats() }),
+    });
+
+    const leavesBase = renderer.CreateShape("plane", leavesMaterial);
+    // var billboardTreesBase = await renderer.loadGLTF("../assets/models/trees/stylizedAutumnBillboard.glb");
+    const billboardTreesBase = await renderer.loadGLTF("../assets/models/trees/wideTreeBillboard.glb");
+    // const treesBase = await renderer.loadGLTF("../assets/models/trees/stylizedAutumn.glb");
 
     var roadSettings = {
       rally: { width: 10 / 2.5, material: dirtRoadMaterial, flipUV: true, uvScale: 0.75 },
@@ -2060,8 +2157,8 @@ document.addEventListener("DOMContentLoaded", async function () {
     var curveXMax = 0.3;
     var flipUV = roadSettings[roadKey].flipUV;
     var uvScale = roadSettings[roadKey].uvScale;
-    // var treeDensity = 5;
-    var treeDensity = 0.1;
+    var treeDensity = 5 * 4;
+    // var treeDensity = 0.1;
 
     var points = [];
     var startY = 0;
@@ -2137,18 +2234,18 @@ document.addEventListener("DOMContentLoaded", async function () {
       //   ]));
       // }
 
-      var instanceTrees = container.add(treesBase.copy());
-      instanceTrees.children[0].meshRenderer = instanceTrees.children[0].meshRenderer.getInstanceMeshRenderer();
-      instanceTrees.children[0].meshRenderer.materials[0].setUniform("albedo", [0.3, 0.3, 0.3, 1]);
-      instanceTrees.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.5);
-      // instanceTrees.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
-      instanceTrees.children[0].meshRenderer.materials[0].doubleSided = false;
-      instanceTrees.children[0].meshRenderer.materials[0].doubleSidedShadows = false;
+      // var instanceTrees = container.add(treesBase.copy());
+      // instanceTrees.children[0].meshRenderer = instanceTrees.children[0].meshRenderer.getInstanceMeshRenderer();
+      // instanceTrees.children[0].meshRenderer.materials[0].setUniform("albedo", [0.3, 0.3, 0.3, 1]);
+      // instanceTrees.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.5);
+      // // instanceTrees.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
+      // instanceTrees.children[0].meshRenderer.materials[0].doubleSided = false;
+      // instanceTrees.children[0].meshRenderer.materials[0].doubleSidedShadows = false;
 
       var instanceBillboardTrees = container.add(billboardTreesBase.copy());
-      instanceBillboardTrees.children[0].meshRenderer = instanceBillboardTrees.children[0].meshRenderer.getInstanceMeshRenderer();
-      instanceBillboardTrees.children[0].meshRenderer.materials[0].setUniform("albedo", [0.1, 0.1, 0.1, 1]);
-      instanceBillboardTrees.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.5);
+      instanceBillboardTrees.children[0].meshRenderer = instanceBillboardTrees.children[0].meshRenderer.getInstanceMeshRenderer(renderer.programContainers.unlitInstanced);
+      // instanceBillboardTrees.children[0].meshRenderer.materials[0].setUniform("albedo", [0.1, 0.1, 0.1, 1]);
+      // instanceBillboardTrees.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.5);
       instanceBillboardTrees.setReceiveShadows(false);
       // instanceBillboardTrees.castShadows = false;
 
@@ -2168,22 +2265,22 @@ document.addEventListener("DOMContentLoaded", async function () {
 
       function addSimpleTree(origin) {
         // return;
-        // trees.push(origin);
+        trees.push(origin);
 
-        let p = Vector.add(chunkCenter, origin);
-        let m = Matrix.transform([
-          ["translate", Vector.add(p, new Vector(0, -Math.random() * 2, 0))],
-          ["scale", Vector.fill(1 + Math.random() * 1)],
-          ["ry", Math.random() * 2 * Math.PI],
-          ["rx", (Math.random() - 0.5) * 0.07],
-          ["rz", (Math.random() - 0.5) * 0.07],
-        ]);
-        let m2 = Matrix.copy(m);
-        Matrix.transform([
-          ["ry", Math.PI / 2]
-        ], m2);
-        instanceBillboardTrees.children[0].meshRenderer.addInstance(m);
-        instanceBillboardTrees.children[0].meshRenderer.addInstance(m2);
+        // let p = Vector.add(chunkCenter, origin);
+        // let m = Matrix.transform([
+        //   ["translate", Vector.add(p, new Vector(0, -Math.random() * 2, 0))],
+        //   ["scale", Vector.fill(1 + Math.random() * 1)],
+        //   ["ry", Math.random() * 2 * Math.PI],
+        //   ["rx", (Math.random() - 0.5) * 0.07],
+        //   ["rz", (Math.random() - 0.5) * 0.07],
+        // ]);
+        // let m2 = Matrix.copy(m);
+        // Matrix.transform([
+        //   ["ry", Math.PI / 2]
+        // ], m2);
+        // instanceBillboardTrees.children[0].meshRenderer.addInstance(m);
+        // instanceBillboardTrees.children[0].meshRenderer.addInstance(m2);
       }
 
       var treesToAdd = [];
@@ -2260,12 +2357,12 @@ document.addEventListener("DOMContentLoaded", async function () {
       // Leaves
       var leaves = container.add(leavesBase.copy());
       leaves.castShadows = false;
-      leaves.meshRenderer = leaves.meshRenderer.getInstanceMeshRenderer();
+      leaves.meshRenderer = leaves.meshRenderer.getInstanceMeshRenderer(renderer.programContainers.unlitInstanced);
       var mrLeaves = leaves.meshRenderer;
       mrLeaves.castShadows = false;
 
       // mr.materials[0].programContainer = renderer.programContainers.unlitInstanced;
-      mrLeaves.materials[0].setUniform("albedo", [0.3, 0.3, 0.3, 1]);
+      // mrLeaves.materials[0].setUniform("albedo", [0.3, 0.3, 0.3, 1]);
       mrLeaves.materials[0].setUniform("alphaCutoff", 0.7);
       // mr.materials[0].programContainer = simpleFoliageProgram;
       // mr.materials[0].doubleSided = false;
@@ -2380,13 +2477,13 @@ document.addEventListener("DOMContentLoaded", async function () {
         distanceAlongPath += Vector.length(diff);
 
         let plant = () => {
-          addTree(
+          addSimpleTree(
             Vector.add(
               Vector.add(center, Vector.multiply(normal, width * 0.6 + Math.random() * 3 * 15 / 0.2)),
               new Vector(0, -width * 0.06 + (Math.random() - 0.5) * width * 0, 0)
             )
           );
-          addTree(
+          addSimpleTree(
             Vector.add(
               Vector.subtract(center, Vector.multiply(normal, width * 0.6 + Math.random() * 3 * 15 / 0.2)),
               new Vector(0, -width * 0.06 + (Math.random() - 0.5) * width * 0, 0)
@@ -2404,20 +2501,20 @@ document.addEventListener("DOMContentLoaded", async function () {
           }
         }
 
-        for (let _i = 0; _i < 1; _i++) {
-          addSimpleTree(
-            Vector.add(
-              Vector.add(center, Vector.multiply(normal, width * 0.6 + Math.random() * 3 * 15)),
-              new Vector(0, -width * 0.06 + (Math.random() - 0.5) * width * 0, 0)
-            )
-          );
-          addSimpleTree(
-            Vector.add(
-              Vector.subtract(center, Vector.multiply(normal, width * 0.6 + Math.random() * 3 * 15)),
-              new Vector(0, -width * 0.06 + (Math.random() - 0.5) * width * 0, 0)
-            )
-          );
-        }
+        // for (let _i = 0; _i < 1; _i++) {
+        //   addSimpleTree(
+        //     Vector.add(
+        //       Vector.add(center, Vector.multiply(normal, width * 0.6 + Math.random() * 3 * 15)),
+        //       new Vector(0, -width * 0.06 + (Math.random() - 0.5) * width * 0, 0)
+        //     )
+        //   );
+        //   addSimpleTree(
+        //     Vector.add(
+        //       Vector.subtract(center, Vector.multiply(normal, width * 0.6 + Math.random() * 3 * 15)),
+        //       new Vector(0, -width * 0.06 + (Math.random() - 0.5) * width * 0, 0)
+        //     )
+        //   );
+        // }
 
         // let treePos = Vector.add(center, Vector.multiply(normal, width * 0.6 + Math.random() * 200));
         // // treePos.y = terrain.getHeight(chunkCenter.x + treePos.x, chunkCenter.z + treePos.z);
@@ -2427,8 +2524,8 @@ document.addEventListener("DOMContentLoaded", async function () {
         // // treePos.y = terrain.getHeight(chunkCenter.x + treePos.x, chunkCenter.z + treePos.z);
         // addSimpleTree(treePos);
 
-        // addLeaves(Vector.add(Vector.add(center, Vector.multiply(normal, width / 2 - Math.random() * 2)), new Vector(0, 0.05 + Math.random() * 0.02, 0)));
-        // addLeaves(Vector.add(Vector.subtract(center, Vector.multiply(normal, width / 2 - Math.random() * 2)), new Vector(0, 0.05 + Math.random() * 0.02, 0)));
+        addLeaves(Vector.add(Vector.add(center, Vector.multiply(normal, width / 2 - Math.random() * 2)), new Vector(0, 0.05 + Math.random() * 0.02, 0)));
+        addLeaves(Vector.add(Vector.subtract(center, Vector.multiply(normal, width / 2 - Math.random() * 2)), new Vector(0, 0.05 + Math.random() * 0.02, 0)));
       }
 
       for (var i = 0; i < (vertices.length / 3 / 6 - 1) * 6; i += 6) {
@@ -2524,7 +2621,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       terrain.transform.position.y = 0;//-0.04;
 
       terrain.customData.bumpiness = 0.08;
-      terrain.customData.friction = 0.5;
+      terrain.customData.friction = 0.9;
       terrain.customData.offroad = 1;
 
       container.addChild(terrain);
@@ -2533,17 +2630,22 @@ document.addEventListener("DOMContentLoaded", async function () {
 
       if (isForest) {
         for (let origin of trees) {
-          let p = Vector.add(chunkCenter, origin);
-          let hit = physicsEngine.Raycast(
-            new Vector(p.x, p.y + 50, p.z),
-            Vector.down()
-          );
+          const p = Vector.add(chunkCenter, origin);
+          // const hit = physicsEngine.Raycast(
+          //   new Vector(p.x, p.y + 50, p.z),
+          //   Vector.down()
+          // );
+          const hit = { firstHit: { point: p } };
+
           if (hit && hit.firstHit) {
             // tree.transform.position.y = hit.firstHit.point.y;
 
+            const minScale = 1 * 3;
+            const maxScale = 2 * 3;
+
             let m = Matrix.transform([
-              ["translate", Vector.add(hit.firstHit.point, new Vector(0, -Math.random() * 2, 0))],
-              ["scale", Vector.fill(1 + Math.random() * 1)],
+              ["translate", Vector.add(hit.firstHit.point, new Vector(0, -Math.random() * 2 * -0.1, 0))],
+              ["scale", Vector.fill(minScale + Math.random() * (maxScale - minScale))],
               ["ry", Math.random() * 2 * Math.PI],
               ["rx", (Math.random() - 0.5) * 0.07],
               ["rz", (Math.random() - 0.5) * 0.07],
@@ -2586,15 +2688,15 @@ document.addEventListener("DOMContentLoaded", async function () {
     // const mapPath = "../assets/models/brickPlane.glb";
     // const colliderPath = "../assets/models/brickPlane.glb";
     const mapPath = "../assets/models/test/staticColliderDetectObject.glb";
-    const colliderPath = "";
+    const colliderPath = "../assets/models/test/staticColliderDetectObject.glb";
 
     // var grassAlbedo = await renderer.loadTextureAsync("../assets/textures/GroundForest003/GroundForest003_COL_VAR1_3K.jpg", { ...renderer.getSRGBFormats() });
     // var grassNormal = await renderer.loadTextureAsync("../assets/textures/GroundForest003/GroundForest003_NRM_3K.jpg");
     // var stoneAlbedo = await renderer.loadTextureAsync("../assets/textures/rocks_ground_03_2k_jpg/rocks_ground_03_diff_2k.jpg", { ...renderer.getSRGBFormats() });
     // var stoneNormal = await renderer.loadTextureAsync("../assets/textures/rocks_ground_03_2k_jpg/rocks_ground_03_nor_2k.jpg");
 
-    // var map = await renderer.loadGLTF(mapPath, { maxTextureSize: 1024 });
-    // var mapBatched = scene.add(renderer.BatchGameObject(map));
+    const map = await renderer.loadGLTF(mapPath, { maxTextureSize: 1024 });
+    const mapBatched = scene.add(renderer.BatchGameObject(map));
 
     // var leaves = renderer.loadTexture("../assets/textures/leaves.png");
     // var foliage = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/foliage"));
@@ -2612,11 +2714,11 @@ document.addEventListener("DOMContentLoaded", async function () {
     // mapBatched.meshRenderer.materials[2].setUniform("normalStrength", 2.5);
     // mapBatched.meshRenderer.materials[6].programContainer = renderer.programContainers.unlit;
 
-    // if (colliderPath) {
-    //   var collider = await renderer.loadGLTF(colliderPath, { loadMaterials: false, loadNormals: false, loadTangents: false });
-    //   collider.transform.set(map.transform);
-    //   physicsEngine.addMeshCollider(collider);
-    // }
+    if (colliderPath) {
+      var collider = await renderer.loadGLTF(colliderPath, { loadMaterials: false, loadNormals: false, loadTangents: false });
+      collider.transform.set(map.transform);
+      physicsEngine.addMeshCollider(collider);
+    }
 
     // initSnow();
     // await initTrees();
@@ -2703,13 +2805,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     snowParticles.emitHealth = 9;
     snowParticles.orientation = "faceCamera";
-    snowParticles.startSize = Vector.fill(0.05 + Math.random() * 0.07);
+    snowParticles.startSize = dst => Vector.fill(0.05 + Math.random() * 0.07, dst);
 
-    snowParticles.emitPosition = () => {
-      return Vector.add(car.mainCamera.transform.position, new Vector((Math.random() - 0.5) * 50, 10, (Math.random() - 0.5) * 50));
+    snowParticles.emitPosition = dst => {
+      return Vector.add(car.mainCamera.transform.position, new Vector((Math.random() - 0.5) * 50, 10, (Math.random() - 0.5) * 50), dst);
     };
-    snowParticles.emitVelocity = () => {
-      return new Vector(0, -4, 0);
+    snowParticles.emitVelocity = dst => {
+      return new Vector(0, -4, 0, dst);
     };
 
     snow.addComponent(snowParticles);
