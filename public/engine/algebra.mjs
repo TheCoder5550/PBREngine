@@ -445,7 +445,7 @@ function closestPointOnTriangle(p, a, b, c) {
       Vector.multiplyTo(point, t);
       Vector.addTo(point, rayOrigin);
 
-      // !
+      // bruh gc !
       return {
         point: Vector.copy(point),
         distance: t
@@ -453,7 +453,7 @@ function closestPointOnTriangle(p, a, b, c) {
     }
     else
       return false;
-  }
+  };
 }
 
 // function rayToTriangle(rayOrigin, rayVector, a, b, c) {
@@ -683,17 +683,17 @@ const rayToAABBResponse = {
   max: 0,
 };
 function rayToAABB(origin, direction, AABB) {
-  var t1 = (AABB.bl.x - origin.x) / direction.x;
-  var t2 = (AABB.tr.x - origin.x) / direction.x;
-  var t3 = (AABB.bl.y - origin.y) / direction.y;
-  var t4 = (AABB.tr.y - origin.y) / direction.y;
-  var t5 = (AABB.bl.z - origin.z) / direction.z;
-  var t6 = (AABB.tr.z - origin.z) / direction.z;
+  const t1 = (AABB.bl.x - origin.x) / direction.x;
+  const t2 = (AABB.tr.x - origin.x) / direction.x;
+  const t3 = (AABB.bl.y - origin.y) / direction.y;
+  const t4 = (AABB.tr.y - origin.y) / direction.y;
+  const t5 = (AABB.bl.z - origin.z) / direction.z;
+  const t6 = (AABB.tr.z - origin.z) / direction.z;
 
-  var tmin = Math.max(Math.max(Math.min(t1, t2), Math.min(t3, t4)), Math.min(t5, t6));
-  var tmax = Math.min(Math.min(Math.max(t1, t2), Math.max(t3, t4)), Math.max(t5, t6));
-
+  const tmax = Math.min(Math.min(Math.max(t1, t2), Math.max(t3, t4)), Math.max(t5, t6));
   if (tmax < 0) return false;
+
+  const tmin = Math.max(Math.max(Math.min(t1, t2), Math.min(t3, t4)), Math.min(t5, t6));
   if (tmin > tmax) return false;
 
   rayToAABBResponse.min = tmin;
@@ -708,8 +708,20 @@ function getTriangleArea(a, b, c) {
   return Vector.length(Vector.cross(ab, ac)) / 2;
 }
 
-function getTriangleNormal(triangle) {
-  return Vector.normalize(Vector.cross(Vector.subtract(triangle[1], triangle[0]), Vector.subtract(triangle[2], triangle[0])));
+const _v1 = new Vector();
+const _v2 = new Vector();
+
+function getTriangleNormal(triangle, dst) {
+  dst = dst || new Vector();
+
+  Vector.subtract(triangle[1], triangle[0], _v1);
+  Vector.subtract(triangle[2], triangle[0], _v2);
+  Vector.cross(_v1, _v2, dst);
+  Vector.normalizeTo(dst);
+
+  return dst;
+
+  // return Vector.normalize(Vector.cross(Vector.subtract(triangle[1], triangle[0]), Vector.subtract(triangle[2], triangle[0])));
 }
 
 function sphereToTriangle(center, radius, p0, p1, p2, doubleSided = false) {

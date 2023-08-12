@@ -106,6 +106,7 @@ function Renderer(settings = {}) {
   this.UBOLocationCounter = 0;
 
   this.currentBoundLitPrograms = new WeakMap();
+  this.currentBoundMaterials = new WeakMap();
 
   var _programContainers = {};
   this.programContainers = {
@@ -468,6 +469,10 @@ function Renderer(settings = {}) {
     return frameTime;
   }
 
+  this.getTime = function() {
+    return time;
+  };
+
   this.setRenderScale = function(rs) {
     renderScale = rs;
     refreshSizes();
@@ -530,6 +535,8 @@ function Renderer(settings = {}) {
     this.postprocessing.contrast.value = scene.postprocessing.contrast;
     this.postprocessing.vignette.amount.value = scene.postprocessing.vignette.amount;
     this.postprocessing.vignette.falloff.value = scene.postprocessing.vignette.falloff;
+    this.postprocessing.whiteBalance.temperature.value = scene.postprocessing.whiteBalance.temperature;
+    this.postprocessing.whiteBalance.tint.value = scene.postprocessing.whiteBalance.tint;
 
     this.bloom.setProperties(scene.bloom);
 
@@ -2030,13 +2037,7 @@ function Renderer(settings = {}) {
     this.drawOnDownscaledFramebuffer = false;
 
     this.drawMode = gl.TRIANGLES;
-    this.material = CreateLitMaterial({
-      albedoTexture: loadTexture(renderer.path + "assets/textures/bulletTrail.png"),
-      albedo: [40, 10, 5, 1],
-    }, renderer.programContainers.particle);
-    this.material.doubleSided = true;
-
-    // this.material = CreateLitMaterial({albedoTexture: loadTexture("./assets/textures/snowParticle.png"), albedoColor: [2, 2, 2, 1]/*[40, 10, 5, 1]*/}, renderer.unlitInstanced);
+    this.material = null;
     this.meshData = md ?? getParticleMeshData();
 
     this.particles = new Array(this.maxParticles);
@@ -2158,6 +2159,14 @@ function Renderer(settings = {}) {
       
       if (!opaquePass) {
         Matrix.getPosition(camera.cameraMatrix, cameraPos); // Bruh
+
+        if (this.material == null) {
+          this.material = CreateLitMaterial({
+            albedoTexture: loadTexture(renderer.path + "assets/textures/bulletTrail.png"),
+            albedo: [40, 10, 5, 1],
+          }, renderer.programContainers.particle);
+          this.material.doubleSided = true;
+        }
 
         useProgram(this.material.programContainer.program);
         this.meshData.bindBuffers(this.material.programContainer);
@@ -2450,6 +2459,14 @@ function Renderer(settings = {}) {
         gl.uniform1f(this.programContainer.getUniformLocation("vignetteFalloff"), value);
       }),
     };
+    this.whiteBalance = {
+      temperature: new Property(0, (value) => {
+        gl.uniform1f(this.programContainer.getUniformLocation("temperature"), value);
+      }),
+      tint: new Property(0, (value) => {
+        gl.uniform1f(this.programContainer.getUniformLocation("tint"), value);
+      }),
+    };
 
     var needRecompile = (value, lastValue) => {
       if ((value > 0 && lastValue == 0) || (value == 0 && lastValue > 0)) {
@@ -2469,7 +2486,18 @@ function Renderer(settings = {}) {
       return false;
     };
 
-    var properties = [ this.exposure, this.gamma, this.tonemapping, this.motionBlurStrength, this.saturation, this.contrast, this.vignette.amount, this.vignette.falloff ];
+    var properties = [
+      this.exposure,
+      this.gamma,
+      this.tonemapping,
+      this.motionBlurStrength,
+      this.saturation,
+      this.contrast,
+      this.vignette.amount,
+      this.vignette.falloff,
+      this.whiteBalance.temperature,
+      this.whiteBalance.tint
+    ];
 
     // this.exposure = 0;
     // this.gamma = 2.2;
@@ -3196,27 +3224,32 @@ function Renderer(settings = {}) {
 
     gl.activeTexture(gl.TEXTURE0);
 
-    this.updateModelMatrix = function(pos) {
-      // Bruh
-      var scene = renderer.scenes[renderer.currentScene];
+    const zeroVector = Vector.zero();
+    const inverseSunDirection = new Vector();
+    const upVector = Vector.up();
+    const inverseShadowModelMatrix = new Matrix();
+    const localPos = new Vector();
+    const roundedPos = new Vector();
 
-      var n = shadowRange / res * 2;
+    this.updateModelMatrix = function(pos) {
+      const scene = renderer.getActiveScene();
 
       // Matrix.lookAt(pos, Vector.subtract(pos, scene.sunDirection), {x: 0, y: 1, z: 0}, this.shadowModelMatrix);
       // Matrix.transform([
       //   ["translate", {z: 100}]
       // ], this.shadowModelMatrix);
 
-      Matrix.lookAt(Vector.zero(), Vector.negate(scene.sunDirection), Vector.up(), this.shadowModelMatrix);
-      var localPos = Matrix.transformVector(Matrix.inverse(this.shadowModelMatrix), pos);
+      Vector.negate(scene.sunDirection, inverseSunDirection);
+      Matrix.lookAt(zeroVector, inverseSunDirection, upVector, this.shadowModelMatrix);
 
-      Matrix.transform([
-        ["translate", new Vector(
-          roundNearest(localPos.x, n),
-          roundNearest(localPos.y, n),
-          localPos.z + 100
-        )]
-      ], this.shadowModelMatrix);
+      Matrix.inverse(this.shadowModelMatrix, inverseShadowModelMatrix);
+      Matrix.transformVector(inverseShadowModelMatrix, pos, localPos);
+
+      const n = shadowRange / res * 2;
+      roundedPos.x = roundNearest(localPos.x, n);
+      roundedPos.y = roundNearest(localPos.y, n);
+      roundedPos.z = localPos.z + 100;
+      Matrix.applyTranslation(roundedPos, this.shadowModelMatrix);
 
       this.camera.transform.matrix = this.shadowModelMatrix;
       
@@ -3308,7 +3341,7 @@ function Renderer(settings = {}) {
       gl.uniformMatrix4fv(this.uniformLocations.viewDirectionProjectionInverse, false, matrix);
       this.programContainer.setUniform("fogColor", scene.fogColor);
       this.programContainer.setUniform("fogIntensity", scene.skyboxFogIntensity);
-      this.programContainer.setUniform("iTime", (new Date() - 1690402835811) / 1000);
+      this.programContainer.setUniform("iTime", renderer.getTime());
 
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap);
@@ -3439,7 +3472,8 @@ function Renderer(settings = {}) {
         return;
       }
 
-      if (u.setType.toLowerCase().indexOf("matrix") !== -1) {
+      if (u.setType.indexOf("Matrix") !== -1) {
+      // if (u.setType.toLowerCase().indexOf("matrix") !== -1) {
         if (!ArrayBuffer.isView(value)) {
           console.error(value);
           throw new Error(`Cannot set matrix uniform: ${uniformName}. Matrix must be Float32Array`);
@@ -4074,18 +4108,22 @@ function Renderer(settings = {}) {
     }
 
     // Material specific uniforms
-    programContainer.setUniform("opaque", material.opaque, false);
+    // if (!this.currentBoundMaterials.has(material)) {
+      programContainer.setUniform("opaque", material.opaque, false);
 
-    for (let uniformKey in material.uniforms) {
-      if (programContainer.activeUniforms[uniformKey]) {
-        if (isTextureUniform(material.uniforms[uniformKey])) {
-          handleTextureBind(material.uniforms[uniformKey], uniformKey);
-        }
-        else {
-          programContainer.setUniform(uniformKey, material.uniforms[uniformKey]);
+      for (let uniformKey in material.uniforms) {
+        if (programContainer.activeUniforms[uniformKey]) {
+          if (isTextureUniform(material.uniforms[uniformKey])) {
+            handleTextureBind(material.uniforms[uniformKey], uniformKey);
+          }
+          else {
+            programContainer.setUniform(uniformKey, material.uniforms[uniformKey]);
+          }
         }
       }
-    }
+
+    //   this.currentBoundMaterials.set(material, 1);
+    // }
   };
 
   /*
@@ -6896,6 +6934,8 @@ function Renderer(settings = {}) {
     var gl = this.renderer.gl;
   
     this.render = function(camera, secondaryCameras, scene, settings) {
+      this.renderer.currentBoundMaterials = new WeakMap();
+
       // Shadows
       if (this.renderer.shadowCascades && _settings.enableShadows && (scene.sunIntensity.x != 0 || scene.sunIntensity.y != 0 || scene.sunIntensity.z != 0) && settings.shadows !== false) {
         this.renderer.shadowCascades.renderShadowmaps(camera.transform.position);
@@ -6949,7 +6989,7 @@ function Renderer(settings = {}) {
 
       // console.time("Cull");
       scene.root.traverseCondition(obj => {
-        if (obj.meshRenderer && (!camera.frustum || !obj.getAABB() || obj.getAABB().isInsideFrustum(camera.frustum))) {
+        if (obj.meshRenderer && (!camera.frustum || !obj.getAABB() || obj.getAABB().isInsideFrustum(camera.frustum)) || obj.disableFrustumCulling) {
           obj.isCulled = false;
         }
         else {

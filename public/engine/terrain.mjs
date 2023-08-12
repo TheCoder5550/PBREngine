@@ -174,7 +174,7 @@ function Terrain(scene, settings = {}) {
         );
         origin.y = _terrain.getHeight(origin.x, origin.z);
   
-        // if (!physicsEngine.Raycast(new Vector(origin.x, 100, origin.z), Vector.down()).firstHit && perlin.noise(origin.x / 30, origin.z / 30) * 0.5 + 0.5 > Math.random() + 0.2) {
+        // if (!physicsEngine.Raycast(new Vector(origin.x, 100, origin.z), Vector.down()) && perlin.noise(origin.x / 30, origin.z / 30) * 0.5 + 0.5 > Math.random() + 0.2) {
         if (Math.random() < this.spawnProbability(origin)) {
           let scale =  Vector.fill(this.minScale + Math.random() * (this.maxScale - this.minScale));
           let ry = Math.random() * 2 * Math.PI;
@@ -361,7 +361,7 @@ function Terrain(scene, settings = {}) {
           // }
 
           // // for (var comp of chunk.terrain.getComponents()) {
-          // //   if (comp.type == "MeshCollider") {
+          // //   if (comp.componentType == "MeshCollider") {
           // //     chunk.terrain.removeComponent(comp);
           // //   }
           // // }
@@ -563,7 +563,7 @@ function Terrain(scene, settings = {}) {
       
       if (this.chunk) {
         for (var comp of this.chunk.getComponents()) {
-          if (comp.type == "MeshCollider") {
+          if (comp.componentType == "MeshCollider") {
             this.chunk.removeComponent(comp);
           }
         }
@@ -623,7 +623,7 @@ function Terrain(scene, settings = {}) {
       // terrain.meshRenderer = null; // bruh, pooling does nothing (for perf) when resetting the mesh
       if (_terrain.enableCollision) {
         for (var comp of terrain.getComponents()) {
-          if (comp.type == "MeshCollider") {
+          if (comp.componentType == "MeshCollider") {
             terrain.removeComponent(comp);
           }
         }

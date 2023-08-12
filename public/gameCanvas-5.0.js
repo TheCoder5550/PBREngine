@@ -95,6 +95,7 @@ class GameCanvas {
     this.ctx = this.canvas.getContext("2d");
 
     this.font = "Arial";
+    this.fontWeight = "normal";
     this.images = [];
     this.imageData = undefined;
     this.imageDataData = undefined;
@@ -555,7 +556,7 @@ class GameCanvas {
 
   text(textString, x, y, fontSize, color, strokeColor, lineWidth) {
     this.ctx.beginPath();
-    this.ctx.font = fontSize + "px " + this.font;
+    this.ctx.font = this.fontWeight + " " + fontSize + "px " + this.font;
     this.ctx.fillStyle = color;
     if (lineWidth) this.ctx.lineWidth = lineWidth;
     this.ctx.fillText(textString, x, y);

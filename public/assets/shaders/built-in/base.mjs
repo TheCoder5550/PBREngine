@@ -95,6 +95,14 @@ vec2 hash( vec2 p ) { // replace this by something better
   return -1.0 + 2.0*fract(sin(p)*43758.5453123);
 }
 
+float getBias(float bias, float cosTheta) {
+  bias = -bias * (cosTheta > 0. ? 1. : 0.);
+  bias = bias * tan(acos(cosTheta));
+  bias = clamp(bias, 0.0, 0.1);
+
+  return bias;
+}
+
 float getShadowAmount(vec3 worldPosition, float cosTheta) {
   // for (int i = 0; i < levels; i++) {
   //   projectedTexcoords[i] = textureMatrices[i] * vec4(worldPosition, 1);
@@ -135,9 +143,7 @@ float getShadowAmount(vec3 worldPosition, float cosTheta) {
     vec4 ShadowCoord = projectedTexcoords[0];
     vec3 proj = ShadowCoord.xyz / ShadowCoord.w;
 
-    float bias = -biases[0] * (cosTheta > 0. ? 1. : 0.);
-    // float bias = -biases[0];//0.00005 * tan(acos(cosTheta));
-    // bias = clamp(bias, 0., 0.01);
+    float bias = -biases[0];//getBias(biases[0], cosTheta);
 
     float currentDepth = proj.z - bias;
     bool inside = inRange(proj);
@@ -180,7 +186,10 @@ float getShadowAmount(vec3 worldPosition, float cosTheta) {
 
       // bruh double calc
       vec3 projNext = projectedTexcoords[1].xyz / projectedTexcoords[1].w;
-      float depthNext = projNext.z + biases[1] * (cosTheta > 0. ? 1. : 0.);
+
+      float bias = getBias(biases[1], cosTheta);
+
+      float depthNext = projNext.z - bias;
       float projectedDepthNext = texture(projectedTextures[1], projNext.xy).r;
       float nextVis = (projectedDepthNext <= depthNext ? shadowDarkness : 1.);
       return fadeToNextShadowMap(outShadow, nextVis, proj);
@@ -190,7 +199,8 @@ float getShadowAmount(vec3 worldPosition, float cosTheta) {
     inside = inRange(proj);
 
     if (inside) {
-      currentDepth = proj.z + biases[1] * (cosTheta > 0. ? 1. : 0.);
+      float bias = getBias(biases[1], cosTheta);
+      currentDepth = proj.z - bias;
       
       if (shadowQuality == 2) {
         float projectedDepth = texture(projectedTextures[1], proj.xy).r;

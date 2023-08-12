@@ -66,15 +66,26 @@ export default class Quaternion {
   static isNaN(q) {
     return isNaN(q.x) || isNaN(q.y) || isNaN(q.z) || isNaN(q.w);
   }
+  
+  static lengthSqr(q) {
+    return q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+  }
 
-  static normalize(q) {
-    var len = Math.sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
-    return {
-      x: q.x / len,
-      y: q.y / len,
-      z: q.z / len,
-      w: q.w / len
-    };
+  static length(q) {
+    return Math.sqrt(Quaternion.lengthSqr(q));
+  }
+
+  static normalize(q, dst) {
+    dst = dst || new Quaternion();
+
+    const len = Math.sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+    
+    dst.x = q.x / len;
+    dst.y = q.y / len;
+    dst.z = q.z / len;
+    dst.w = q.w / len;
+
+    return dst;
   }
 
   static normalizeTo(q) {
@@ -109,13 +120,25 @@ export default class Quaternion {
     };
   }
 
-  static QxQ(a, b) {
-    return new Quaternion(
-      a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,  // i
-      a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,  // j
-      a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,  // k
-      a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,  // 1
-    );
+  static QxQ(a, b, dst) {
+    dst = dst || new Quaternion();
+
+    const ax = a.x;
+    const ay = a.y;
+    const az = a.z;
+    const aw = a.w;
+
+    const bx = b.x;
+    const by = b.y;
+    const bz = b.z;
+    const bw = b.w;
+
+    dst.x = aw * bx + ax * bw + ay * bz - az * by;  // i
+    dst.y = aw * by - ax * bz + ay * bw + az * bx;  // j
+    dst.z = aw * bz + ax * by - ay * bx + az * bw;  // k
+    dst.w = aw * bw - ax * bx - ay * by - az * bz;  // 1
+
+    return dst;
   }
 
   static QxV(q, v, dst) {
@@ -267,6 +290,19 @@ export default class Quaternion {
         dst.w = (Matrix.get(m, 1, 0) + Matrix.get(m, 0, 1)) / s;
       }
     }
+
+    return dst;
+  }
+
+  static inverse(q, dst) {
+    dst = dst || new Quaternion();
+
+    const mag = Quaternion.lengthSqr(q);
+
+    dst.x = -q.x / mag;
+    dst.y = -q.y / mag;
+    dst.z = -q.z / mag;
+    dst.w = q.w / mag;
 
     return dst;
   }

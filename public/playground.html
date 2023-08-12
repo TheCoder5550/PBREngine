@@ -407,8 +407,8 @@
           var v = new Vector(Math.cos(a), 0, Math.sin(a));
 
           var groundHit = physicsEngine.Raycast(this.rb.position, Vector.down());
-          var isGrounded = this.rb.grounded;//groundHit && groundHit.firstHit.distance < this.colliderHeight / 2 + 0.1;
-          var groundNormal = this.rb.groundNormal;//groundHit && groundHit.firstHit.normal;
+          var isGrounded = this.rb.grounded;//groundHit && groundHit.distance < this.colliderHeight / 2 + 0.1;
+          var groundNormal = this.rb.groundNormal;//groundHit && groundHit.normal;
 
           var currentMoveForce = Vector.zero();
 

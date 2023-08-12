@@ -1,6 +1,8 @@
 import { clamp } from "./helper.mjs";
 
 function Light() {
+  this.componentType = "Light";
+
   this.gameObject = null;
   this.angle = Math.PI / 3;
   this.color = [1, 0.5, 0.1];

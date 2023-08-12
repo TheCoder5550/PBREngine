@@ -3,6 +3,10 @@ import Quaternion from "./quaternion.mjs";
 import Matrix from "./matrix.mjs";
 import { EventHandler } from "./eventHandler.mjs";
 
+const _m = Matrix.identity();
+const _tempMatrix = new Matrix();
+const _tempQuaternion = new Quaternion();
+
 function Transform(matrix, position, rotation, scale) {
   var _this = this;
   this.gameObject = null;
@@ -15,10 +19,6 @@ function Transform(matrix, position, rotation, scale) {
     worldMatrix: false
   };
 
-  // Object pool
-  var _m = Matrix.identity();
-  // -----------
-
   var _matrix = Matrix.identity();
   var _worldMatrix = Matrix.identity();
   var _translationMatrix = Matrix.identity();
@@ -30,7 +30,11 @@ function Transform(matrix, position, rotation, scale) {
   var _scale = scale ?? Vector.one();
 
   var _positionProxy = createProxy(_position, everythingHasChanged);
-  var _rotationProxy = createProxy(_rotation, everythingHasChanged);
+  var _rotationProxy = createProxy(_rotation, () => {
+    // bruh this breakes cardemo
+    // Matrix.fromQuaternion(_rotation, _rotationMatrix); // bruh, unnecesairy calculations
+    everythingHasChanged();
+  });
   var _scaleProxy = createProxy(_scale, everythingHasChanged);
 
   var _lastPosition = Vector.copy(_position);
@@ -63,15 +67,11 @@ function Transform(matrix, position, rotation, scale) {
           return;
         }
 
-        // everythingHasChanged();
-        // _position = val;
-
         _positionProxy.x = val.x;
         _positionProxy.y = val.y;
         _positionProxy.z = val.z;
 
         Vector.set(_lastPosition, val);
-        // _lastPosition = Vector.copy(val);
       }
       else {
         console.warn("Position is not vector", val);
@@ -81,15 +81,29 @@ function Transform(matrix, position, rotation, scale) {
 
   Object.defineProperty(this, "worldPosition", {
     get: function() {
-      return Matrix.getPosition(_this.worldMatrix);
+      return Matrix.getPosition(_this.worldMatrix); // bruh gc
     },
-    set: function() {
-      // bruh do this
-      throw new Error("Can't set world position");
+    set: (val) => {
+      if (!Vector.isVectorIsh(val)) {
+        console.warn("World position is not vector", val);
+        return;
+      }
+
+      if (Vector.isNaN(val)) {
+        console.error("Position is NaN: ", val);
+        return;
+      }
+
+      if (!this.gameObject || !this.gameObject.parent) {
+        this.position = val;
+        return;
+      }
+
+      Matrix.inverse(this.gameObject.parent.transform.worldMatrix, _tempMatrix);
+      Matrix.transformVector(_tempMatrix, val, this.position);
     }
   });
 
-  // bruh doesnt detect component change
   Object.defineProperty(this, "rotation", {
     get: function() {
       return _rotationProxy;
@@ -105,23 +119,44 @@ function Transform(matrix, position, rotation, scale) {
           return;
         }
 
-        // everythingHasChanged();
-
         _rotationProxy.x = val.x;
         _rotationProxy.y = val.y;
         _rotationProxy.z = val.z;
         _rotationProxy.w = val.w;
-
-        // _rotation = val;
         Matrix.fromQuaternion(_rotation, _rotationMatrix);
-        // _rotationMatrix = Matrix.fromQuaternion(_rotation);
 
         Quaternion.set(_lastRotation, val);
-        // _lastRotation = Quaternion.copy(val);
       }
       else {
         console.warn("Rotation is not quaternion", val);
       }
+    }
+  });
+
+  Object.defineProperty(this, "worldRotation", {
+    get: function() {
+      return Quaternion.fromMatrix(_worldMatrix); // bruh gc
+    },
+    set: (val) => {
+      if (!Quaternion.isQuaternionIsh(val)) {
+        console.warn("World rotation is not quaternion", val);
+        return;
+      }
+
+      if (Quaternion.isNaN(val)) {
+        console.error("World rotation is NaN: ", val);
+        return;
+      }
+
+      if (!this.gameObject || !this.gameObject.parent) {
+        this.rotation = val;
+        return;
+      }
+
+      Quaternion.fromMatrix(this.gameObject.parent.transform.worldMatrix, _tempQuaternion);
+      Quaternion.inverse(_tempQuaternion, _tempQuaternion);
+      Quaternion.QxQ(_tempQuaternion, val, _tempQuaternion);
+      this.rotation = _tempQuaternion;
     }
   });
 
@@ -140,15 +175,11 @@ function Transform(matrix, position, rotation, scale) {
           return;
         }
 
-        // everythingHasChanged();
-        // _scale = val;
-
         _scaleProxy.x = val.x;
         _scaleProxy.y = val.y;
         _scaleProxy.z = val.z;
 
         Vector.set(_lastScale, val);
-        // _lastScale = Vector.copy(val);
       }
       else {
         console.warn("Scale is not vector", val);
@@ -190,8 +221,8 @@ function Transform(matrix, position, rotation, scale) {
         return;
       }
 
-      const inv = Matrix.inverse(_this.gameObject.parent.transform.worldMatrix);
-      Matrix.multiply(inv, val, _this.matrix);
+      Matrix.inverse(_this.gameObject.parent.transform.worldMatrix, _tempMatrix);
+      Matrix.multiply(_tempMatrix, val, _this.matrix);
 
       // var m = Matrix.multiply(Matrix.inverse(_this.gameObject.parent.transform.worldMatrix), val);
       // _this.matrix = m;
@@ -230,12 +261,12 @@ function Transform(matrix, position, rotation, scale) {
   // bruh optimize (maybe???)
   Object.defineProperty(this, "forward", {
     get: function() {
-      return Matrix.getForward(_this.worldMatrix);
+      return Matrix.getForward(_this.worldMatrix); // bruh gc
     }
   });
   Object.defineProperty(this, "up", {
     get: function() {
-      return Matrix.getUp(_this.worldMatrix);
+      return Matrix.getUp(_this.worldMatrix); // bruh gc
     }
   });
 
@@ -261,9 +292,11 @@ function Transform(matrix, position, rotation, scale) {
   function setMatrixFromTRS() {
     Matrix.translate(_position, _m);
     Matrix.multiply(_m, _rotationMatrix, _m);
-    Matrix.transform([
-      ["scale", _scale]
-    ], _m);
+    Matrix.applyScale(_scale, _m);
+
+    // Matrix.transform([
+    //   ["scale", _scale]
+    // ], _m);
 
     setMatrix(_m, false);
 

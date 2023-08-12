@@ -196,7 +196,7 @@
         var origin = new Vector((Math.random() - 0.5) * treeArea, 0, (Math.random() - 0.5) * treeArea);
         // origin.y = terrain.getHeight(origin.x, origin.z);
 
-        if (!physicsEngine.Raycast(new Vector(origin.x, 100, origin.z), Vector.down())?.firstHit && perlin.noise(origin.x / 30, origin.z / 30) > 0) {
+        if (!physicsEngine.Raycast(new Vector(origin.x, 100, origin.z), Vector.down()) && perlin.noise(origin.x / 30, origin.z / 30) > 0) {
           var lodTree = scene.add(new GameObject("LOD Tree"));
           lodTree.transform.matrix = Matrix.transform([
             ["translate", origin],
@@ -248,7 +248,7 @@
             );
             // origin.y = terrain.getHeight(origin.x, origin.z);
 
-            if (!physicsEngine.Raycast(new Vector(origin.x, 100, origin.z), Vector.down())?.firstHit && perlin.noise(origin.x / 30, origin.z / 30) * 0.5 + 0.5 > Math.random() + 0.2) {
+            if (!physicsEngine.Raycast(new Vector(origin.x, 100, origin.z), Vector.down()) && perlin.noise(origin.x / 30, origin.z / 30) * 0.5 + 0.5 > Math.random() + 0.2) {
               meshRenderer.addInstance(Matrix.transform([
                 ["translate", origin],
                 ["scale", Vector.fill(0.6 + Math.random() * 0.6)],
@@ -273,7 +273,7 @@
         var origin = new Vector((Math.random() - 0.5) * 120, 0.5, (Math.random() - 0.5) * 120);
         // origin.y = terrain.getHeight(origin.x, origin.z);
 
-        if (!physicsEngine.Raycast(new Vector(origin.x, 100, origin.z), Vector.down())?.firstHit) {
+        if (!physicsEngine.Raycast(new Vector(origin.x, 100, origin.z), Vector.down())) {
           var rockCopy = scene.add(rock.copy());
           rockCopy.transform.matrix = Matrix.transform([
             ["translate", origin],

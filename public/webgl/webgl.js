@@ -4,7 +4,8 @@ import {
   AABB,
   PhysicsEngine,
   Rigidbody,
-  GetMeshAABB
+  GetMeshAABB,
+  MeshCollider
 } from "../engine/physics.mjs";
 import Vector from "../engine/vector.mjs";
 import Quaternion from "../engine/quaternion.mjs";
@@ -556,6 +557,7 @@ async function setup() {
 
   loadingStatus.innerText = "Generating collider";
   var mapCollider = await renderer.loadGLTF(colliderPath, { loadMaterials: false, loadNormals: false, loadTangents: false });
+  mapCollider.addComponent(new MeshCollider());
 
   physicsEngine = new PhysicsEngine(scene);
   physicsEngine.addMeshCollider(mapCollider);
@@ -2084,9 +2086,9 @@ class Player extends PlayerPhysicsBase {
 //     // // Extend grounded collision
 //     // if (!this.grounded) {
 //     //   var hit = physicsEngine.Raycast(this.position, Vector.down());
-//     //   if (hit && hit.firstHit && hit.firstHit.distance < this.height / 2 + 0.01) {
+//     //   if (hit && hit.distance < this.height / 2 + 0.01) {
 //     //     this.grounded = true;
-//     //     this.realGroundNormal = hit.firstHit.normal;
+//     //     this.realGroundNormal = hit.normal;
 
 //     //     // bruh copy code
 //     //     var dp = Vector.dot(Vector.up(), this.realGroundNormal);

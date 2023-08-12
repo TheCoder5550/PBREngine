@@ -124,11 +124,11 @@ function GameObject(name = "Unnamed", options = {}) {
   };
 
   this.findComponents = function(type) {
-    return _components.filter((c) => c.constructor.name === type);
+    return _components.filter((c) => c.componentType === type);
   };
 
   this.getComponent = function(type) {
-    return _components.find((c) => c.constructor.name === type);
+    return _components.find((c) => c.componentType === type);
   };
 
   // Bruh
@@ -311,11 +311,15 @@ function GameObject(name = "Unnamed", options = {}) {
     if (!this.runUpdate || !this.active) return;
 
     if (_aabbNeedsUpdating && this.meshRenderer && this.meshRenderer.getAABB) {
-      if (!_aabb) _aabb = new AABB();
+      if (!_aabb) {
+        _aabb = new AABB();
+      }
+
       this.meshRenderer.getAABB(_aabb);
       if (!(this.meshRenderer instanceof Renderer.MeshInstanceRenderer)) {
         _aabb.approxTransform(this.transform.worldMatrix);
       }
+
       _aabbNeedsUpdating = false;
     }
 
@@ -419,7 +423,7 @@ function GameObject(name = "Unnamed", options = {}) {
         this.children[i].render(camera, settings);
       }
 
-      if (!shadowPass) {
+      if (!shadowPass && !this.isCulled) {
         this.updatePrevModelMatrix();
       }
     }
@@ -456,7 +460,7 @@ function GameObject(name = "Unnamed", options = {}) {
       }
       spacing += isLast ? "└──" : "├──";
 
-      let entry = spacing + "(COMPONENT) " + component.constructor.name;
+      let entry = spacing + "(COMPONENT) " + component.componentType ?? `No type: ${component.constructor.name}`;
       list.push(entry);
     }
 

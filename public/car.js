@@ -3,11 +3,12 @@ import Matrix from "./engine/matrix.mjs";
 import Quaternion from "./engine/quaternion.mjs";
 import { GameObject, FindMaterials, flyCamera, Scene } from "./engine/renderer.mjs";
 import { Rigidbody, BoxCollider, AABB, GetMeshAABB, SphereCollider, PhysicsEngine, MeshCollider } from "./engine/physics.mjs";
-import { clamp,  lerp, smoothstep } from "./engine/helper.mjs";
+import { clamp,  lerp, mapValue, smoothstep } from "./engine/helper.mjs";
 import Keybindings from "./keybindingsController.mjs";
 import { Camera } from "./engine/renderer.mjs";
 import GamepadManager, { deadZone, quadraticCurve } from "./gamepadManager.js";
 import Perlin from "./engine/perlin.mjs";
+import GameCanvas from "./gameCanvas-5.0-module.mjs";
 
 const radPerSecToRPM = 30 / Math.PI;
 
@@ -249,7 +250,7 @@ function Trailer(scene, physicsEngine, settings = {}) {
       Vector.multiplyTo(wheelVelocity, fixedDeltaTime);
 
       let ray = { origin: worldPos, direction: down }; // this is an object !
-      let hit = physicsEngine.Raycast(ray.origin, ray.direction)?.firstHit;
+      let hit = physicsEngine.Raycast(ray.origin, ray.direction);
 
       wheel.isGrounded = hit && hit.distance < wheel.suspensionTravel + wheel.radius;
 
@@ -649,6 +650,7 @@ function Car(scene, physicsEngine, settings = {}) {
       controller: "RSHorizontal"
     },
   });
+  this.haptics = settings.haptics ?? true;
 
   this.canMove = true;
   this.frozen = false;
@@ -695,6 +697,7 @@ function Car(scene, physicsEngine, settings = {}) {
   this.drivetrain = settings.drivetrain ?? "RWD";
 
   var isChangingGear = false;
+  this.limitReverseSpeed = settings.limitReverseSpeed ?? true;
   this.canDriveWhenChangingGear = settings.canDriveWhenChangingGear ?? false;
   this.gearChangeTime = settings.gearChangeTime ?? 0.35;
   this.currentGear = 1;
@@ -729,16 +732,19 @@ function Car(scene, physicsEngine, settings = {}) {
   var rideHeightOffset = settings.rideHeightOffset ?? 0;
 
   this.controlScheme = settings.controlScheme ?? Car.ControlScheme.Keyboard;
-  var steerInput = 0;
-  var driveInput = 0;
-  var brakeInput = 1;
-  var ebrakeInput = 0;
-  var clutchInput = 1;
-  var targetClutchInput = 1;
+  let rawSteerInput = 0;
+  let driveInput = 0;
+  let brakeInput = 1;
+  let ebrakeInput = 0;
+  let clutchInput = 1;
+
+  let steerInput = 0;
+  let targetClutchInput = 1;
 
   let highestSkidFreq = 1;
   let highestSkidVolume = 0;
   let activateTCS = false;
+  let throttleLimit = 1;
 
   // Object pool
   var carWorldMatrix = Matrix.identity();
@@ -755,10 +761,14 @@ function Car(scene, physicsEngine, settings = {}) {
   let _tempVector = new Vector();
 
   // Paths
+  this.ebrakeIconPath = this.path + "assets/textures/parkingBrakeIcon.png";
   this.smokeTexture = this.path + "assets/textures/smoke.png";
   this.skidAudioSource = this.path + "cargame/skid.wav";
   this.offroadAudioSource = this.path + "assets/sound/gravelRoad.wav";
   this.bottomOutAudioSource = this.path + "assets/sound/bottomOut.wav";
+
+  // Images
+  this.ebrakeImage = new Image(this.ebrakeIconPath);
 
   // Audio
   var hasPlayedBottomOutSound = false;
@@ -1101,6 +1111,22 @@ function Car(scene, physicsEngine, settings = {}) {
     smoke.localParticles = false;
     this.smoke = smoke;
 
+    // Grass particles
+    const grassParticlesObject = new GameObject("Grass particles");
+    this.gameObject.addChild(grassParticlesObject);
+    const grassParticles = grassParticlesObject.addComponent(new renderer.ParticleSystem(300));
+
+    const grassMat = renderer.CreateLitMaterial({
+      // albedo: [0.1, 0.5, 0, 1]
+      albedoTexture: await renderer.loadTexture("leaves5.png")
+    }, renderer.programContainers.particle);
+    grassParticles.material = grassMat;
+
+    grassParticles.startSize = (dst) => Vector.fill(Math.random() * 0.23, dst);
+    grassParticles.orientation = "faceCamera";
+    grassParticles.localParticles = false;
+    this.grassParticles = grassParticles;
+
     // Steering wheel
     this.steeringWheelModel = this.gameObject.getChild("SteeringWheel", true);
     if (this.steeringWheelModel) {
@@ -1177,48 +1203,97 @@ function Car(scene, physicsEngine, settings = {}) {
   };
 
   this.renderUI = function(ui) {
-    var rpm = this.engine.getRPM();
+    const rpm = this.engine.getRPM();
+    const center = {x: ui.width - 140, y: ui.height - 120};
+    const radius = 100;
+    const inactiveColor = "rgba(255, 255, 255, 0.3)";
 
-    var center = {x: ui.width - 140, y: ui.height - 120};
-    DrawGuage(ui, rpm, 0, this.engine.maxRPM, center.x, center.y, 100);
+    ui.font = "Oswald";
+
+    const backgroundRadius = radius * 1.04;
+    const gradient = ui.ctx.createLinearGradient(center.x, center.y - backgroundRadius, center.x, center.y + backgroundRadius);
+    gradient.addColorStop(0.4, "rgba(10, 10, 10, 0.4)");
+    gradient.addColorStop(0.9, "transparent");
+
+    ui.circle(center.x, center.y, backgroundRadius, gradient);
+    DrawGuage(ui, rpm, 0, this.engine.maxRPM, center.x, center.y, radius);
 
     ui.setTextXAlign("center");
     ui.setTextYAlign("middle");
 
     // RPM
-    ui.text(Math.floor(rpm), center.x, center.y - 60, 20, "white");
+    ui.font = "monospace";
+    let rpmText = Math.floor(rpm).toString();
+    // rpmText = rpmText.padStart(4, "0");
+    ui.text(rpmText.padStart(4, "0"), center.x, center.y - 60, 20, inactiveColor);
+    ui.text(rpmText.padStart(4, " "), center.x, center.y - 60, 20, "white");
+    ui.font = "Oswald";
 
     // Gear
     ui.roundedRectangle(center.x - 25, center.y - 10 - 30, 50, 55, "rgba(0, 0, 0, 0.25)", 10);
     var redStart = this.engine.maxRPM * 0.9;
-    ui.text(isChangingGear ? "N" : this.currentGear == 0 ? "R" : this.currentGear, center.x, center.y - 10, 50, rpm > redStart ? "red" : "white");
+    ui.text(isChangingGear ? "N" : this.currentGear == 0 ? "R" : this.currentGear, center.x, center.y - 10, 50, rpm > redStart ? "red" : isChangingGear ? inactiveColor : "white");
 
     // Speed
-    ui.text(Math.abs(Math.floor(this.forwardVelocity * 3.6)), center.x, center.y + 40, 35, "white");
-    ui.text("km/h", center.x, center.y + 65, 15, "white");
+    let speed = Math.abs(Math.floor(this.forwardVelocity * 3.6)).toString();
+    // speed = speed.padStart(3, "0");
+    ui.text(speed, center.x, center.y + 40, 35, "white");
+    ui.text("km/h", center.x, center.y + 65, 15, inactiveColor);
 
     // ABS + TCS
-    if (this.ABS) ui.text("ABS", center.x - 50, center.y - 22, 15, "red");
-    if (this.TCS) ui.text("TCS", center.x - 50, center.y + 2, 15, "blue");
+    ui.fontWeight = "bold";
+
+    const blink = Math.floor(performance.now() / 100) % 2 === 0 ? 1 : 0;
+    if (this.ABS) {
+      const active = `rgba(255, 0, 0, ${blink})`;
+      const color = brakeInput > Math.min(...this.wheels.map(w => w.brakeLimit)) ? active : inactiveColor;
+      ui.text("ABS", center.x - 50, center.y - 12 - 10, 15, color);
+
+      if (this.haptics) {
+        const inputData = keybindings.getInputAndInputMethod("brake");
+        if (color === active && inputData.method == "controller") {
+          const force = Math.abs(brakeInput - Math.min(...this.wheels.map(w => w.brakeLimit)));
+          keybindings.gamepadManager.vibrate(50, 0.2 * force, 0.3 * force);
+          // keybindings.gamepadManager.vibrate(20, 0.5, 0.1);
+        }
+      }
+    }
+    if (this.TCS) {
+      const active = `rgba(40, 40, 255, ${blink})`;
+      const color = driveInput > throttleLimit ? active : inactiveColor;
+      ui.text("TCS", center.x - 50, center.y - 12 + 14, 15, color);
+    }
+    ui.fontWeight = "normal";
 
     ui.resetTextXAlign();
     ui.resetTextYAlign();
 
-    // Inputs
-    var inputsWidth = 15;
-    var inputsSpacing = 25;
-    var inputsX = 50;
-    ui.rectangle(inputsX, center.y - 30, inputsWidth, 100, "rgba(0, 0, 0, 0.5)");
-    ui.rectangle(inputsX, center.y - 30 + 100 * (1 - driveInput), inputsWidth, 100 * driveInput, "white");
+    // E brake
+    if (ebrakeInput > 0.05) {
+      ui.picture(this.ebrakeIconPath, center.x + 50 - 14, center.y - 12.5 - 14, 28, 28);
+    }
 
-    ui.rectangle(inputsX + inputsSpacing, center.y - 30, inputsWidth, 100, "rgba(0, 0, 0, 0.5)");
-    ui.rectangle(inputsX + inputsSpacing, center.y - 30 + 100 * (1 - brakeInput), inputsWidth, 100 * brakeInput, "red");
+    // // Inputs
+    // var inputsWidth = 15;
+    // var inputsSpacing = 25;
+    // var inputsX = 50;
+    // ui.rectangle(inputsX, center.y - 30, inputsWidth, 100, "rgba(0, 0, 0, 0.5)");
+    // ui.rectangle(inputsX, center.y - 30 + 100 * (1 - driveInput), inputsWidth, 100 * driveInput, "rgba(255, 255, 255, 0.5)");
 
-    ui.rectangle(inputsX + inputsSpacing * 2, center.y - 30, inputsWidth, 100, "rgba(0, 0, 0, 0.5)");
-    ui.rectangle(inputsX + inputsSpacing * 2, center.y - 30 + 100 * (1 - ebrakeInput), inputsWidth, 100 * ebrakeInput, "orange");
+    // const limitedThrottleInput = Math.min(throttleLimit, driveInput);
+    // ui.rectangle(inputsX, center.y - 30 + 100 * (1 - limitedThrottleInput), inputsWidth, 100 * limitedThrottleInput, "white");
 
-    ui.rectangle(inputsX + inputsSpacing * 3, center.y - 30, inputsWidth, 100, "rgba(0, 0, 0, 0.5)");
-    ui.rectangle(inputsX + inputsSpacing * 3, center.y - 30 + 100 * (1 - clutchInput), inputsWidth, 100 * clutchInput, "lime");
+    // ui.rectangle(inputsX + inputsSpacing, center.y - 30, inputsWidth, 100, "rgba(0, 0, 0, 0.5)");
+    // ui.rectangle(inputsX + inputsSpacing, center.y - 30 + 100 * (1 - brakeInput), inputsWidth, 100 * brakeInput, "rgba(255, 255, 255, 0.5)");
+
+    // const limitedBrakeInput = Math.min(...this.wheels.map(w => w.brakeLimit), brakeInput);
+    // ui.rectangle(inputsX + inputsSpacing, center.y - 30 + 100 * (1 - limitedBrakeInput), inputsWidth, 100 * limitedBrakeInput, "red");
+
+    // ui.rectangle(inputsX + inputsSpacing * 2, center.y - 30, inputsWidth, 100, "rgba(0, 0, 0, 0.5)");
+    // ui.rectangle(inputsX + inputsSpacing * 2, center.y - 30 + 100 * (1 - clutchInput), inputsWidth, 100 * clutchInput, "lime");
+
+    // // ui.rectangle(inputsX + inputsSpacing * 3, center.y - 30, inputsWidth, 100, "rgba(0, 0, 0, 0.5)");
+    // // ui.rectangle(inputsX + inputsSpacing * 3, center.y - 30 + 100 * (1 - ebrakeInput), inputsWidth, 100 * ebrakeInput, "orange");
 
     // var x = ui.width / 2;
     // var y = ui.height / 2;
@@ -1262,10 +1337,6 @@ function Car(scene, physicsEngine, settings = {}) {
       this.resetGame();
     }
 
-    if (this.rb.position.y < -100) {
-      this.resetGame();
-    }
-
     // if (this.frozen) {
     //   return;
     // }
@@ -1273,6 +1344,9 @@ function Car(scene, physicsEngine, settings = {}) {
     if (this.canMove) {
       var forward = Vector.negate(Matrix.getForward(carWorldMatrix)); // bruh optimize
       var forwardVelocity = Vector.dot(this.rb.velocity, forward);
+
+      // Steering
+      rawSteerInput = -deadZone(keybindings.getInput("steer"), 0.1);
 
       // Drive and brake
       if (this.controlScheme == Car.ControlScheme.Controller) {
@@ -1286,7 +1360,8 @@ function Car(scene, physicsEngine, settings = {}) {
           driveInput = targetDriveInput;
         }
 
-        if (Vector.lengthSqr(this.rb.velocity) < 0.1 && brakeInput > 0.1 && driveInput < 0.01) {
+        if (Vector.lengthSqr(this.rb.velocity) < 0.1 && (brakeInput > 0.1 || ebrakeInput > 0.1) && driveInput < 0.01) {
+          ebrakeInput = 1;
           brakeInput = 1;
         }
         else {
@@ -1299,6 +1374,9 @@ function Car(scene, physicsEngine, settings = {}) {
           else if (brakeInputData.method == "controller") {
             brakeInput = targetBrakeInput;
           }
+
+          // E-brake
+          ebrakeInput += (keybindings.getInput("ebrake") - ebrakeInput) * 0.2;
         }
       }
       else if (this.controlScheme == Car.ControlScheme.Keyboard) {
@@ -1319,10 +1397,10 @@ function Car(scene, physicsEngine, settings = {}) {
         if (d < -0.1 && forwardVelocity < 1.1) {
           this.currentGear = 0;
         }
-      }
 
-      // E-brake
-      ebrakeInput += (keybindings.getInput("ebrake") - ebrakeInput) * 0.2;
+        // E-brake
+        ebrakeInput += (keybindings.getInput("ebrake") - ebrakeInput) * 0.2;
+      }
 
       // Change gear
       var incGear = (inc = 1) => {
@@ -1425,7 +1503,7 @@ function Car(scene, physicsEngine, settings = {}) {
     if (isNaN(carSlipAngle) || !isFinite(carSlipAngle)) carSlipAngle = 0;
 
     // Controller steer input
-    var userInput = -deadZone(this.canMove ? keybindings.getInput("steer") : 0, 0.1);
+    var userInput = rawSteerInput;
     userInput = Math.pow(Math.abs(userInput), this.steerGamma) * Math.sign(userInput);
     userInput = clamp(userInput, -1, 1);
 
@@ -1491,7 +1569,7 @@ function Car(scene, physicsEngine, settings = {}) {
       Vector.multiplyTo(wheelVelocity, fixedDeltaTime);
 
       let ray = { origin: worldPos, direction: down }; // this is an object !
-      let hit = physicsEngine.Raycast(ray.origin, ray.direction)?.firstHit;
+      let hit = physicsEngine.Raycast(ray.origin, ray.direction);
 
       // Simulate bumpy road
       if (hit && hit.gameObject?.customData.bumpiness) {
@@ -1543,6 +1621,7 @@ function Car(scene, physicsEngine, settings = {}) {
         }
         else {
           wheel.skidmarks.emitPosition = Vector.add(Vector.add(worldPos, Vector.multiply(up, -wheel.radius)), wheelVelocity);
+          wheel.skidmarks.emit = 0;
         }
       }
 
@@ -1643,10 +1722,11 @@ function Car(scene, physicsEngine, settings = {}) {
       }
     }
 
-    // Emit smoke
     for (let wheel of this.wheels) {
+      // Integrate angle
       wheel.angle += wheel.angularVelocity * fixedDeltaTime;
 
+      // Emit smoke
       if (wheel.isGrounded && !wheel.groundHit.gameObject?.customData.offroad) {
         let wheelWorldMatrix = wheel.model.transform.worldMatrix;
         let forward = Vector.negate(Matrix.getForward(wheelWorldMatrix));
@@ -1677,6 +1757,66 @@ function Car(scene, physicsEngine, settings = {}) {
           // gamepadManager.vibrate(20, 0.5, 0.1);
         }
       }
+    }
+
+    // Emit grass particles
+    for (let wheel of this.wheels) {
+      if (wheel.isGrounded && wheel.groundHit.gameObject?.customData.offroad) {
+        const wheelVelocity = this.rb.GetPointVelocity(wheel.groundHit.point);
+        
+        const wheelWorldMatrix = wheel.model.transform.worldMatrix;
+        const forward = Matrix.getForward(wheelWorldMatrix);
+        const sideways = Matrix.getRight(wheelWorldMatrix);
+
+        const forwardVelocity = -Vector.dot(wheelVelocity, forward);
+        const sidewaysVelocity = Vector.dot(wheelVelocity, sideways);
+
+        const contactForwardVelocity = wheel.angularVelocity * wheel.radius - forwardVelocity;
+
+        // console.log(forwardVelocity);
+
+        if (
+          Math.abs(contactForwardVelocity) > 1 ||
+          Math.abs(sidewaysVelocity) > 5
+        ) {
+          this.grassParticles.emitPosition = (dst) => Vector.set(dst, wheel.groundHit.point);
+
+          // const forward = Vector.negate(Vector.normalize(this.rb.velocity));
+          const basis = Matrix.basis(Vector.cross(forward, Vector.up()), Vector.up(), forward);
+
+          const intensity = clamp(Math.abs(contactForwardVelocity) / 10, 0, 1);
+
+          this.grassParticles.emitVelocity = (dst) => {
+            new Vector(
+              (Math.random() - 0.5) * 3,
+              Math.random() * 0.5 * 20,
+              3.5 * 3 * Math.sign(contactForwardVelocity),
+              dst
+            );
+            Vector.multiplyTo(dst, intensity);
+            Matrix.transformVector(basis, dst, dst);
+            Vector.addTo(dst, this.rb.velocity);
+          };
+          
+          this.grassParticles.emit(1);
+        }
+      }
+
+      // if (wheel.isGrounded && wheel.groundHit.gameObject?.customData.offroad && Vector.length(this.rb.velocity) > 1) {
+      //   this.grassParticles.emitPosition = (dst) => Vector.set(dst, wheel.groundHit.point);
+
+      //   const forward = Vector.negate(Vector.normalize(this.rb.velocity));
+      //   let basis = Matrix.basis(Vector.cross(forward, Vector.up()), Vector.up(), forward);
+
+      //   this.grassParticles.emitVelocity = (dst) => {
+      //     new Vector((Math.random() - 0.5) * 3, Math.random() * 0.5 * 20, 3.5 * 3, dst);
+      //     Matrix.transformVector(basis, dst, dst);
+      //     Vector.addTo(dst, this.rb.velocity);
+      //     // v.y += 0.5;
+      //   };
+        
+      //   this.grassParticles.emit(1);
+      // }
     }
 
     // Downforce
@@ -1730,6 +1870,26 @@ function Car(scene, physicsEngine, settings = {}) {
     }
 
     // updateEngineRPM();
+  };
+
+  this.setRawSteerInput = function(input) {
+    rawSteerInput = clamp(input, -1, 1);
+  };
+
+  this.setDriveInput = function(input) {
+    driveInput = clamp(input, 0, 1);
+  };
+
+  this.setBrakeInput = function(input) {
+    brakeInput = clamp(input, 0, 1);
+  };
+
+  this.setClutchInput = function(input) {
+    clutchInput = clamp(input, 0, 1);
+  };
+
+  this.setEbrakeInput = function(input) {
+    ebrakeInput = clamp(input, 0, 1);
   };
 
   this.setLightEmission = function(lightName, value = [0, 0, 0]) {
@@ -1873,18 +2033,23 @@ function Car(scene, physicsEngine, settings = {}) {
     };
 
     this.fixedUpdate = function(dt, activateTCS = false) {
-      var currentTorque = this.torqueLookup(this.getRPM()) * this.torque;
+      let currentTorque = this.torqueLookup(this.getRPM()) * this.torque;
 
       if (this.canThrottle) {
         var virtualDriveInput = driveInput;
+        virtualDriveInput = clamp(virtualDriveInput, 0, throttleLimit);
 
         if (this.getRPM() < this.minRPM) {
           virtualDriveInput = clamp(clamp((this.minRPM - this.getRPM()) / 100, 0, 0.4) + virtualDriveInput, 0, 1);
         }
 
         // bruh works surprisingly well... (on friction approx. eq. to 1)
-        if (activateTCS) {
-          virtualDriveInput *= 0.2;
+        // if (activateTCS) {
+        //   virtualDriveInput *= 0.2;
+        // }
+
+        if (_this.limitReverseSpeed && _this.currentGear === 0 && this.getRPM() >= this.minRPM) {
+          virtualDriveInput *= 0.3;
         }
 
         // var targetRPM = driveInput * this.maxRPM;
@@ -2085,7 +2250,7 @@ function Car(scene, physicsEngine, settings = {}) {
         // var wheelVelocity = this.rb.GetPointVelocity(worldPos);
 
         // var ray = {origin: worldPos, direction: Vector.negate(up)};
-        // var hit = physicsEngine.Raycast(ray.origin, ray.direction).firstHit;
+        // var hit = physicsEngine.Raycast(ray.origin, ray.direction);
 
         wheel.bottomOutStrength = 0;
 
@@ -2351,22 +2516,28 @@ function Car(scene, physicsEngine, settings = {}) {
           wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(ebrakeInput * ebrakeTorque, Math.abs(wheel.angularVelocity) / dt) * dt;
         }
 
+        // Brake
+        if (brakeInput != 0) {
+          const limitedBrakeInput = clamp(brakeInput, 0, wheel.brakeLimit);
+          wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(limitedBrakeInput * this.brakeTorque / wheel.inertia, Math.abs(wheel.angularVelocity) / dt) * dt;
+        }
+
         if (wheel.isGrounded) {
           forwardVelocity = Vector.dot(wheelVelocity, forward);
           let sidewaysVelocity = Vector.dot(wheelVelocity, sideways);
 
           if (brakeInput != 0) {
-            if (this.ABS) { // bruh, ABS ignores max brake torque
-              let a = wheel.lastA ?? 0;
-              let targetSlip = wheel.slipRatioPeak * Math.sqrt(Math.max(0.01, 1 - a * a)) * Math.sign(forwardVelocity);
-              let w = lerp(-forwardVelocity / wheel.radius, (targetSlip * Math.abs(forwardVelocity) - forwardVelocity) / wheel.radius, brakeInput);
+            // if (this.ABS) { // bruh, ABS ignores max brake torque
+            //   let a = wheel.lastA ?? 0;
+            //   let targetSlip = wheel.slipRatioPeak * Math.sqrt(Math.max(0.01, 1 - a * a)) * Math.sign(forwardVelocity);
+            //   let w = lerp(-forwardVelocity / wheel.radius, (targetSlip * Math.abs(forwardVelocity) - forwardVelocity) / wheel.radius, brakeInput);
 
-              wheel.angularVelocity = Math.abs(forwardVelocity) < 1 ? 0 : w;
-            }
-            else {
-              wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(brakeInput * this.brakeTorque / wheel.inertia, Math.abs(wheel.angularVelocity) / dt) * dt;
-              // wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - brakeInput);
-            }
+            //   wheel.angularVelocity = Math.abs(forwardVelocity) < 1 ? 0 : w;
+            // }
+            // else {
+            //   wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(brakeInput * this.brakeTorque / wheel.inertia, Math.abs(wheel.angularVelocity) / dt) * dt;
+            //   // wheel.angularVelocity = -forwardVelocity / wheel.radius * (1 - brakeInput);
+            // }
           }
 
 
@@ -2406,9 +2577,31 @@ function Car(scene, physicsEngine, settings = {}) {
           if (!isFinite(slipRatio)) slipRatio = Math.sign(slipRatio);
           var s = slipRatio / wheel.slipRatioPeak;
 
-          if (this.TCS && Math.abs(wheel.angularVelocity * wheel.radius + forwardVelocity) > 1) {
-            activateTCS = true;
+          if (this.ABS && Vector.lengthSqr(wheelVelocity) > 0.2) {
+            const targetSlip = wheel.slipRatioPeak * Math.sqrt(Math.max(0.01, 1 - a * a)) * Math.sign(forwardVelocity);
+            const targetAngularVelocity = (targetSlip * Math.abs(forwardVelocity) - forwardVelocity) / wheel.radius;
+            
+            const angularAcceleration = wheel.angularVelocity - (wheel.lastAngularVelocity ?? 0);
+            wheel.brakeLimit -= (targetAngularVelocity - wheel.angularVelocity) * Math.sign(wheel.angularVelocity) * 0.15 - angularAcceleration * 0.05;
+
+            // wheel.brakeLimit -= Math.abs(wheel.angularVelocity * wheel.radius + forwardVelocity) - 1;
+            wheel.brakeLimit = clamp(wheel.brakeLimit, 0, 1);
           }
+          else {
+            wheel.brakeLimit = 1;
+          }
+
+          if (this.TCS) {
+            wheel.throttleLimit -= Math.abs(wheel.angularVelocity * wheel.radius + forwardVelocity) - 1;
+            wheel.throttleLimit = clamp(wheel.throttleLimit, 0, 1);
+          }
+          else {
+            wheel.throttleLimit = 1;
+          }
+
+          // if (this.TCS && Math.abs(wheel.angularVelocity * wheel.radius + forwardVelocity) > 1) {
+          //   activateTCS = true;
+          // }
 
           var rho = Math.sqrt(s * s + a * a);
 
@@ -2572,11 +2765,12 @@ function Car(scene, physicsEngine, settings = {}) {
           // }
         }
         else {
-          // Allows for braking mid-air
-          if (brakeInput != 0 && !this.ABS) {
-            wheel.angularVelocity += -Math.sign(wheel.angularVelocity) * Math.min(brakeInput * this.brakeTorque, Math.abs(wheel.angularVelocity) / dt) * dt;
-          }
+          wheel.brakeLimit = 1;
+          wheel.throttleLimit = 1;
         }
+
+        // Global throttle limit
+        throttleLimit = Math.min(...this.wheels.map(w => w.throttleLimit));
 
         // Skid audio frequency
         var skidFreq = 0.8 + clamp((Math.abs(slipRatio) - 0.2) * 0.7, 0, 0.8);
@@ -2613,61 +2807,85 @@ function Car(scene, physicsEngine, settings = {}) {
         }
 
         wheel.slipRatio = slipRatio;
+        wheel.lastAngularVelocity = wheel.angularVelocity;
       }
     };
   }
 
   function DrawGuage(ui, t, min, max, x, y, size = 100) {
-    t = clamp(t, min - 100, max + 100);
+    t = clamp(t, min, max);
 
-    var redStart = Math.PI * 2.1;
+    // var redStart = Math.PI * 2.1;
+    const redStart = (270 / max * 1000 * 7 + 135) * Math.PI / 180;
+    const red = "rgba(255, 0, 0, 0.25)";
 
-    ui.beginPath();
-    ui.arc(x, y, size - size * 0.125 / 2, Math.PI * 0.75, redStart);
-    ui.lineWidth(size * 0.125);
-    ui.strokeStyle("rgba(0, 0, 0, 0.25)");
-    ui.stroke();
+    // // Background
+    // ui.beginPath();
+    // ui.arc(x, y, size - size * 0.125 / 2, Math.PI * 0.75, redStart);
+    // ui.lineWidth(size * 0.125);
+    // ui.strokeStyle("rgba(0, 0, 0, 0.25)");
+    // ui.stroke();
 
-    ui.beginPath();
-    ui.arc(x, y, size - size * 0.125 / 2, redStart, Math.PI * 2.25);
-    ui.lineWidth(size * 0.125);
-    ui.strokeStyle("rgba(255, 0, 0, 0.25)");
-    ui.stroke();
-
+    // Guage
     ui.beginPath();
     ui.arc(x, y, size - size * 0.125 / 2, Math.PI * 0.75, ui.mapValue(t, min, max, Math.PI * 0.75, Math.PI * 2.25));
     ui.lineWidth(size * 0.125);
     ui.strokeStyle("white");
     ui.stroke();
+
+    // Red line
+    ui.beginPath();
+    ui.arc(x, y, size - size * 0.125 / 2, redStart, Math.PI * 2.25);
+    ui.lineWidth(size * 0.125);
+    ui.strokeStyle(red);
+    ui.stroke();
   
-    // var tickColor = "#333";
-    // var meterColor = "rgb(255, 40, 40)";
+    var tickColor = "lightgray";
   
-    // ui.setTextXAlign("center");
-    // ui.setTextYAlign("center");
+    ui.setTextXAlign("center");
+    ui.setTextYAlign("center");
   
-    // var steps = max / 1000;
-    // var tickSize = 0.9;
-    // var number = 0;
-    // for (var i = 0; i <= 270; i += 270 / steps) {
-    //   var angle = (i + 135) * Math.PI / 180;
-    //   ui.line(x + Math.cos(angle) * size, y + Math.sin(angle) * size, x + Math.cos(angle) * (size * tickSize), y + Math.sin(angle) * (size * tickSize), tickColor, 2);
-    //   ui.text(number, x + Math.cos(angle) * (size * tickSize * 0.9), y + Math.sin(angle) * (size * tickSize * 0.9), size / 8, tickColor);
+    var steps = max / 1000;
+    var tickSize = 0.9;
+    var number = 0;
+    for (let i = 0; i <= 270; i += 270 / steps) {
+      let angle = (i + 135) * Math.PI / 180;
+      const currentColor = angle >= redStart ? red : tickColor;
+
+      ui.line(
+        x + Math.cos(angle) * size * 0.99,
+        y + Math.sin(angle) * size * 0.99,
+        x + Math.cos(angle) * (size * tickSize),
+        y + Math.sin(angle) * (size * tickSize),
+        currentColor, 1
+      );
+      // ui.text(number, x + Math.cos(angle) * (size * tickSize * 0.9), y + Math.sin(angle) * (size * tickSize * 0.9), size / 8, tickColor);
   
-    //   number++;
-    // }
+      number++;
+    }
   
-    // ui.resetTextXAlign();
-    // ui.resetTextYAlign();
+    ui.resetTextXAlign();
+    ui.resetTextYAlign();
   
-    // var tickSize = 0.95;
-    // for (var i = 0; i <= 270; i += 270 / steps / 5) {
-    //   var angle = (i + 135) * Math.PI / 180;
-    //   ui.line(x + Math.cos(angle) * size, y + Math.sin(angle) * size, x + Math.cos(angle) * (size * tickSize), y + Math.sin(angle) * (size * tickSize), tickColor, 1);
-    // }
+    tickSize = 0.94;
+    for (let i = 0; i <= 270; i += 270 / steps / 5) {
+      let angle = (i + 135) * Math.PI / 180;
+      const currentColor = angle >= redStart ? red : tickColor;
+
+      if (i % (270 / steps) === 0) continue;
+
+      ui.line(
+        x + Math.cos(angle) * size * 0.96,
+        y + Math.sin(angle) * size * 0.96,
+        x + Math.cos(angle) * (size * tickSize),
+        y + Math.sin(angle) * (size * tickSize),
+        currentColor, 1
+      );
+    }
   
     // var angle = (ui.mapValue(t, min, max, 0, 270) + 135) * Math.PI / 180;
-  
+    // var meterColor = "rgb(255, 40, 40)";
+
     // ui.beginPath();
     // ui.lineTo(x + Math.cos(angle + Math.PI / 2) * size * 0.03, y + Math.sin(angle + Math.PI / 2) * size * 0.02);
     // ui.lineTo(x - Math.cos(angle + Math.PI / 2) * size * 0.03, y - Math.sin(angle + Math.PI / 2) * size * 0.02);
@@ -2761,6 +2979,8 @@ function Wheel(car, position = Vector.zero(), model, settings = {}) {
   this.turn = true;
   this.ebrake = true;
 
+  this.brakeLimit = 1;
+  this.throttleLimit = 1;
   this.isGrounded = false;
   this.normalForce = 0;
   
@@ -3024,15 +3244,15 @@ class TPPFollowCamera extends CameraController {
     var dirNorm = Vector.normalize(Vector.add(currentForward, new Vector(0, followHeight, 0)));
 
     var hit = this.car.physicsEngine.Raycast(origin, dirNorm);
-    if (hit && hit.firstHit && hit.firstHit.distance < followDistance) {
-      var d = hit.firstHit.distance;
+    if (hit && hit.distance < followDistance) {
+      var d = hit.distance;
       // currentFollowDist = clamp(d - 0.2, 0.5, followDistance);
       var h = Math.sqrt(followDistance * followDistance - d * d + (followHeight * d) ** 2) / d;
 
       var newDir = Vector.normalize(Vector.add(currentForward, new Vector(0, h, 0)));
       hit = this.car.physicsEngine.Raycast(origin, newDir);
-      if (hit && hit.firstHit && hit.firstHit.distance < followDistance) {
-        finalCameraDir = Vector.multiply(newDir, hit.firstHit.distance - 0.5);
+      if (hit && hit.distance < followDistance) {
+        finalCameraDir = Vector.multiply(newDir, hit.distance - 0.5);
       }
       else {
         finalCameraDir = Vector.multiply(newDir, followDistance);
@@ -3083,7 +3303,9 @@ class TPPFollowCamera extends CameraController {
 }
 
 class HoodFollowCamera extends CameraController {
+  #hoodCamera = null;
   #vdt = new Vector();
+  #oldFOV = 45;
 
   constructor(car) {
     super();
@@ -3091,17 +3313,24 @@ class HoodFollowCamera extends CameraController {
   }
 
   onActivate(camera) {
+    this.#oldFOV = this.car.mainCamera.getFOV();
     camera.setFOV(30);
   }
 
+  onDeactivate() {
+    this.car.mainCamera.setFOV(this.#oldFOV);
+  }
+
   update(camera, dt) {
-    var hoodCamera = this.car.gameObject.getChild("HoodCamera", true);
-    if (hoodCamera) {
-      camera.transform.matrix = hoodCamera.transform.worldMatrix;
+    if (this.#hoodCamera) {
+      camera.transform.matrix = this.#hoodCamera.transform.worldMatrix;
 
       Vector.set(this.#vdt, this.car.rb.velocity);
       Vector.multiplyTo(this.#vdt, dt);
       Vector.addTo(camera.transform.position, this.#vdt);
+    }
+    else {
+      this.#hoodCamera = this.car.gameObject.getChild("HoodCamera", true);
     }
   }
 }

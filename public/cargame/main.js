@@ -227,9 +227,9 @@ async function setup() {
   // for (var i = 0; i < 1000; i++) {
   //   var origin = new Vector((Math.random() - 0.5) * 50, 100, (Math.random() - 0.5) * 50);
   //   var hit = physicsEngine.Raycast(origin, Vector.down());
-  //   if (hit && hit.firstHit) {
+  //   if (hit) {
   //     grass.children[0].meshRenderer.addInstance(Matrix.transform([
-  //       ["translate", hit.firstHit.point],
+  //       ["translate", hit.point],
   //       ["scale", Vector.fill(1 + Math.random() * 3)],
   //     ]));
   //   }
@@ -524,15 +524,15 @@ function cameraControls(dt) {
       var dirNorm = Vector.normalize(Vector.add(cameraCarForward, new Vector(0, followHeight, 0)));
 
       var hit = physicsEngine.Raycast(origin, dirNorm);
-      if (hit && hit.firstHit && hit.firstHit.distance < followDistance) {
-        var d = hit.firstHit.distance;
+      if (hit && hit.distance < followDistance) {
+        var d = hit.distance;
         // currentFollowDist = clamp(d - 0.2, 0.5, followDistance);
         var h = Math.sqrt(followDistance * followDistance - d * d + (followHeight * d) ** 2) / d;
 
         var newDir = Vector.normalize(Vector.add(cameraCarForward, new Vector(0, h, 0)));
         hit = physicsEngine.Raycast(origin, newDir);
-        if (hit && hit.firstHit && hit.firstHit.distance < followDistance) {
-          finalCameraDir = Vector.multiply(newDir, hit.firstHit.distance - 0.5);
+        if (hit && hit.distance < followDistance) {
+          finalCameraDir = Vector.multiply(newDir, hit.distance - 0.5);
         }
         else {
           finalCameraDir = Vector.multiply(newDir, followDistance);
@@ -908,7 +908,7 @@ function Car(settings = {}) {
         var wheelVelocity = this.rb.GetPointVelocity(worldPos);
 
         var ray = {origin: worldPos, direction: Vector.negate(up)};
-        var hit = physicsEngine.Raycast(ray.origin, ray.direction).firstHit;
+        var hit = physicsEngine.Raycast(ray.origin, ray.direction);
 
         // Bottom out
         if (hit && hit.distance < wheel.suspensionTravel + wheel.radius) {
@@ -997,7 +997,7 @@ function Car(settings = {}) {
       var wheelVelocity = this.rb.GetPointVelocity(worldPos);
 
       var ray = {origin: worldPos, direction: Vector.negate(up)};
-      var hit = physicsEngine.Raycast(ray.origin, ray.direction).firstHit;
+      var hit = physicsEngine.Raycast(ray.origin, ray.direction);
       wheel.isGrounded = hit && hit.distance < wheel.suspensionTravel + wheel.radius;
 
       // Change model transform

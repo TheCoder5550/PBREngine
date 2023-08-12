@@ -6,6 +6,10 @@ import Quaternion from "./quaternion.mjs";
 import Vector from "./vector.mjs";
 import { lerp } from "./helper.mjs";
 
+const inverseTempMatrix = new Float32Array(16);
+const tempQuat = new Quaternion();
+const tempMatrix = new Float32Array(16);
+
 function _fillFloat32Array(array, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) {
   array[0] = a;
   array[1] = b;
@@ -190,9 +194,9 @@ export default class Matrix {
 
   static inverse(m, dst) {
     // dst = dst || new Float32Array(16);
-    var c = new Float32Array(16);
+    // var c = new Float32Array(16);
 
-    _fillFloat32Array(c,
+    _fillFloat32Array(inverseTempMatrix,
       m[5]*m[10]*m[15] - m[5]*m[11]*m[14] - m[9]*m[6]*m[15] + m[9]*m[7]*m[14] + m[13]*m[6]*m[11] - m[13]*m[7]*m[10],
       -m[1]*m[10]*m[15] + m[1]*m[11]*m[14] + m[9]*m[2]*m[15] - m[9]*m[3]*m[14] - m[13]*m[2]*m[11] + m[13]*m[3]*m[10],
       m[1]*m[6]*m[15]  - m[1]*m[7]*m[14]  - m[5]*m[2]*m[15] + m[5]*m[3]*m[14] + m[13]*m[2]*m[7]  - m[13]*m[3]*m[6],
@@ -211,17 +215,17 @@ export default class Matrix {
       m[0]*m[5]*m[10]  - m[0]*m[6]*m[9]   - m[4]*m[1]*m[10] + m[4]*m[2]*m[9]  + m[8]*m[1]*m[6]   - m[8]*m[2]*m[5]
     );
 
-    var det = m[0] * c[0] + m[1] * c[4] + m[2] * c[8] + m[3] * c[12];
+    let det = m[0] * inverseTempMatrix[0] + m[1] * inverseTempMatrix[4] + m[2] * inverseTempMatrix[8] + m[3] * inverseTempMatrix[12];
     if (!det) return m;
     det = 1 / det;
-    for (var i = 0; i < 16; i++) {
-      c[i] *= det;
+    for (let i = 0; i < 16; i++) {
+      inverseTempMatrix[i] *= det;
     }
 
     if (!dst) {
       dst = new Float32Array(16);
     }
-    Matrix.copy(c, dst);
+    Matrix.copy(inverseTempMatrix, dst);
 
     return dst;
   }
@@ -544,6 +548,108 @@ export default class Matrix {
 
   // Transform
 
+  static applyTranslation(translation, dst) {
+    dst = dst || Matrix.identity();
+
+    const x = translation.x || 0;
+    const y = translation.y || 0;
+    const z = translation.z || 0;
+
+    dst[12] += dst[0] * x + dst[4] * y + dst[8]  * z;
+    dst[13] += dst[1] * x + dst[5] * y + dst[9]  * z;
+    dst[14] += dst[2] * x + dst[6] * y + dst[10] * z;
+    dst[15] += dst[3] * x + dst[7] * y + dst[11] * z;
+
+    return dst;
+  }
+
+  static applyRotationX(rx = 0, dst) {
+    dst = dst || Matrix.identity();
+
+    Matrix.set(
+      tempMatrix,
+      1, 0, 0, 0,
+      0, Math.cos(rx), Math.sin(rx), 0,
+      0, -Math.sin(rx), Math.cos(rx), 0,
+      0, 0, 0, 1
+    );
+    Matrix.multiply(dst, tempMatrix, dst);
+
+    return dst;
+  }
+
+  static applyRotationY(ry = 0, dst) {
+    dst = dst || Matrix.identity();
+
+    Matrix.set(
+      tempMatrix,
+      Math.cos(ry), 0, -Math.sin(ry), 0,
+      0, 1, 0, 0,
+      Math.sin(ry), 0, Math.cos(ry), 0,
+      0, 0, 0, 1
+    );
+    Matrix.multiply(dst, tempMatrix, dst);
+
+    return dst;
+  }
+
+  static applyRotationZ(rz = 0, dst) {
+    dst = dst || Matrix.identity();
+
+    Matrix.set(
+      tempMatrix,
+      Math.cos(rz), Math.sin(rz), 0, 0,
+      -Math.sin(rz), Math.cos(rz), 0, 0,
+      0, 0, 1, 0,
+      0, 0, 0, 1
+    );
+    Matrix.multiply(dst, tempMatrix, dst);
+
+    return dst;
+  }
+
+  static applyScaleX(sx, dst) {
+    dst[0] *= sx;  
+    dst[1] *= sx;
+    dst[2] *= sx;
+    dst[3] *= sx;
+  }
+
+  static applyScaleY(sy, dst) {
+    dst[4] *= sy;
+    dst[5] *= sy;
+    dst[6] *= sy;
+    dst[7] *= sy;
+  }
+
+  static applyScaleZ(sz, dst) {
+    dst[8] *= sz;
+    dst[9] *= sz;
+    dst[10] *= sz;
+    dst[11] *= sz;
+  }
+  
+  static applyScale(scale, dst) {
+    const sx = scale.x ?? 1;
+    const sy = scale.y ?? 1;
+    const sz = scale.z ?? 1;
+
+    dst[0] *= sx;  
+    dst[1] *= sx;
+    dst[2] *= sx;
+    dst[3] *= sx;
+
+    dst[4] *= sy;
+    dst[5] *= sy;
+    dst[6] *= sy;
+    dst[7] *= sy;
+    
+    dst[8] *= sz;
+    dst[9] *= sz;
+    dst[10] *= sz;
+    dst[11] *= sz;
+  }
+
   static transform(options = [], dst) {
     dst = dst || Matrix.identity();
 
@@ -551,68 +657,33 @@ export default class Matrix {
       var option = options[i];
       switch (option[0]) {
         case "translate":
-          var x = option[1].x || 0;
-          var y = option[1].y || 0;
-          var z = option[1].z || 0;
+          Matrix.applyTranslation(option[1], dst);
+          break;
 
-          dst[12] += dst[0] * x + dst[4] * y + dst[8]  * z;
-          dst[13] += dst[1] * x + dst[5] * y + dst[9]  * z;
-          dst[14] += dst[2] * x + dst[6] * y + dst[10] * z;
-          dst[15] += dst[3] * x + dst[7] * y + dst[11] * z;
-          break;
         case "rx":
-          var rx = option[1];
-          Matrix.multiply(dst, new Float32Array([1, 0, 0, 0, 0, Math.cos(rx), Math.sin(rx), 0, 0, -Math.sin(rx), Math.cos(rx), 0, 0, 0, 0, 1]), dst);
+          Matrix.applyRotationX(option[1], dst);
           break;
+
         case "ry":
-          var ry = option[1];
-          Matrix.multiply(dst, new Float32Array([Math.cos(ry), 0, -Math.sin(ry), 0, 0, 1, 0, 0, Math.sin(ry), 0, Math.cos(ry), 0, 0, 0, 0, 1]), dst); 
+          Matrix.applyRotationY(option[1], dst);
           break;
+
         case "rz":
-          var rz = option[1];
-          Matrix.multiply(dst, new Float32Array([Math.cos(rz), Math.sin(rz), 0, 0, -Math.sin(rz), Math.cos(rz), 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]), dst);
+          Matrix.applyRotationZ(option[1], dst);
           break;
+
         case "sx":
-          var sx = option[1];
-          dst[0] *= sx;  
-          dst[1] *= sx;
-          dst[2] *= sx;
-          dst[3] *= sx;
+          Matrix.applyScaleX(option[1], dst);
           break;
         case "sy":
-          var sy = option[1];
-          dst[4] *= sy;
-          dst[5] *= sy;
-          dst[6] *= sy;
-          dst[7] *= sy;
+          Matrix.applyScaleY(option[1], dst);
           break;
         case "sz":
-          var sz = option[1];
-          dst[8] *= sz;
-          dst[9] *= sz;
-          dst[10] *= sz;
-          dst[11] *= sz;
+          Matrix.applyScaleZ(option[1], dst);
           break;
-        case "scale":
-          var sx = option[1].x ?? 1;
-          var sy = option[1].y ?? 1;
-          var sz = option[1].z ?? 1;
-
-          dst[0] *= sx;  
-          dst[1] *= sx;
-          dst[2] *= sx;
-          dst[3] *= sx;
-
-          dst[4] *= sy;
-          dst[5] *= sy;
-          dst[6] *= sy;
-          dst[7] *= sy;
           
-          dst[8] *= sz;
-          dst[9] *= sz;
-          dst[10] *= sz;
-          dst[11] *= sz;
-
+        case "scale":
+          Matrix.applyScale(option[1], dst);
           break;
       }
     }
@@ -738,10 +809,12 @@ export default class Matrix {
 
   // Quaternion
 
-  static fromQuaternion(q, dst) {
+  static fromQuaternion(quaternion, dst) {
     dst = dst || new Float32Array(16);
 
-    Quaternion.normalizeTo(q); // bruh modifies q
+    Quaternion.normalize(quaternion, tempQuat);
+    const q = tempQuat;
+
     _fillFloat32Array(dst,
       1 - 2*q.y*q.y - 2*q.z*q.z, 2*q.x*q.y - 2*q.z*q.w, 2*q.x*q.z + 2*q.y*q.w, 0,
       2*q.x*q.y + 2*q.z*q.w, 1 - 2*q.x*q.x - 2*q.z*q.z, 2*q.y*q.z - 2*q.x*q.w, 0,

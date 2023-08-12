@@ -213,10 +213,8 @@ export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
 
   function setRotationMatrix() {
     Matrix.identity(rotationMatrix);
-    Matrix.transform([
-      ["ry", rotation.y],
-      ["rx", rotation.x]
-    ], rotationMatrix);
+    Matrix.applyRotationY(rotation.y, rotationMatrix);
+    Matrix.applyRotationX(rotation.x, rotationMatrix);
   }
 
   // renderer.on("renderloop", function() {

@@ -163,7 +163,7 @@ function Scene(name) {
     this.root.traverseCondition(g => {
       let comps = g.getComponents();
       for (var light of comps) {
-        if (light.constructor.name == "Light") {
+        if (light.componentType == "Light") {
           lights.push({
             type: light.type,
             position: Matrix.getPosition(g.transform.worldMatrix),

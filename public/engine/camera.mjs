@@ -229,7 +229,7 @@ function Plane() {
   this.position = new Vector();
 
   this.getSignedDistanceToPlane = function(point) {
-    return Vector.dot(this.normal, Vector.subtract(point, this.position));
+    return Vector.dot(this.normal, Vector.subtract(point, this.position, _tempVector));
   };
 }
 

@@ -292,6 +292,37 @@ export const lowpolySportsCar = {
   },
 };
 
+export const myLowpolySportsCar = {
+  name: "Lowpoly Sports Car",
+  model: "myLowpolyCar.glb",
+  settings: {
+    mass: 1400,
+    gearRatios: [2.66, 1.78, 1.3, 1, 0.74, 0.6],
+    drivetrain: "RWD",
+    friction: 1,
+    forwardFriction: 1,
+    sidewaysFriction: 1,
+    maxSteerAngle: 40,
+    torque: 350,
+
+    suspensionForce: 120_000,
+    suspensionDamping: 4000,
+    suspensionTravel: 0.1,
+    rideHeightOffset: 0.08,
+    antiRoll: 10_000,
+
+    ABS: false,
+    TCS: false,
+    differential: Car.ENUMS.DIFFERENTIAL.LSD,
+
+    camera: {
+      followDistance: 4,
+      followHeight: 0.25,
+      pitch: 0.1,
+    },
+  },
+};
+
 export const lowpolyJeep = {
   name: "Lowpoly Jeep",
   model: "../assets/models/cars/lowpolyJeep.glb",
@@ -319,6 +350,37 @@ export const lowpolyJeep = {
     camera: {
       followDistance: 4,
       followHeight: 0.25,
+      pitch: 0.1,
+    },
+  },
+};
+
+export const porscheCarreraGTConcept2000 = {
+  name: "Porsche Carrera GT Concept 2000",
+  model: "../assets/models/cars/PorscheCarreraGTConcept2000.glb",
+  settings: {
+    mass: 1400,
+    gearRatios: [2.66, 1.78, 1.3, 1, 0.74, 0.6],
+    drivetrain: "RWD",
+    friction: 1.3,
+    forwardFriction: 1,
+    sidewaysFriction: 1,
+    maxSteerAngle: 40,
+    torque: 700,
+
+    suspensionForce: 120_000,
+    suspensionDamping: 4000,
+    suspensionTravel: 0.1,
+    rideHeightOffset: 0.08,
+    antiRoll: 10_000,
+
+    ABS: false,
+    TCS: false,
+    differential: Car.ENUMS.DIFFERENTIAL.LSD,
+
+    camera: {
+      followDistance: 4.4,
+      followHeight: 0.29,
       pitch: 0.1,
     },
   },

@@ -59,7 +59,7 @@
         path: "../",
         renderScale: 1,
         shadowResolution: 2048,
-        // renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
+        renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
         // version: 1,
       });
 
@@ -72,8 +72,8 @@
       scene.bloom.intensity = 0.01;
       scene.postprocessing.motionBlurStrength = 0;
 
-      scene.loadEnvironment({
-        hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k_precomputed",
+      await scene.loadEnvironment({
+        hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k_precomputed",
         // res: 512
       });
 
@@ -84,7 +84,7 @@
       var physicsEngine = new PhysicsEngine(scene);
 
       var car = new Car(scene, physicsEngine);
-      await car.setup("../assets/models/skyline.glb");
+      await car.setup("../assets/models/cars/lowpolySportscar.glb");
 
       var plane = scene.add(renderer.CreateShape("plane"));
       plane.transform.position.y = -1;

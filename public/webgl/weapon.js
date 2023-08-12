@@ -252,7 +252,8 @@ function Weapon(settings = {}) {
           bulletTrails.push(trail);
 
           // Get scene hit
-          let hit = physicsEngine.Raycast(origin, direction).firstHit;
+          let hit = physicsEngine.Raycast(origin, direction);
+          console.log(hit);
 
           // Detect enemy hits
           var maxDistance = (hit && hit.point) ? hit.distance : Infinity;

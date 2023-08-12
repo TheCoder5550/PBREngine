@@ -1,5 +1,6 @@
 import Vector from "./vector.mjs";
 import { clamp, inverseLerp, lerp, mod, wrap } from "./helper.mjs";
+import { ClosestPointOnLineSegment } from "./algebra.mjs";
 
 function LerpCurve() {
   this.wrapMode = LerpCurve.WrapModes.Clamp;
@@ -105,29 +106,39 @@ export function CatmullRomCurve(points, alpha = 0.5, loop = false) {
     ));
   }
 
+  this.getTangent = function(t) {
+    const a = this.getPoint(t);
+    const b = this.getPoint(t + 0.01);
+    return Vector.normalize(Vector.subtract(b, a));
+  };
+
   this.distanceToPoint = function(p) {
     var d = this.distanceSqrToPoint(p);
     return {
       distance: Math.sqrt(d.distance),
       point: d.point,
+      t: d.t
     };
   };
 
   this.distanceSqrToPoint = function(p) {
-    var closestDistance = Infinity;
-    var closestPoint;
+    let closestDistance = Infinity;
+    let closestPoint;
+    let closestT;
 
-    for (var segment of segments) {
-      var d = segment.distanceSqrToPoint(p);
+    for (let segment of segments) {
+      let d = segment.distanceSqrToPoint(p);
       if (d.distance < closestDistance) {
         closestDistance = d.distance;
         closestPoint = d.point;
+        closestT = this.localToGlobalT(segment, d.t);
       }
     }
 
     return {
       distance: closestDistance,
       point: closestPoint,
+      t: closestT
     };
   };
 
@@ -148,6 +159,15 @@ export function CatmullRomCurve(points, alpha = 0.5, loop = false) {
     var segment = Math.floor(t * segments.length);
     return segments[segment].getPoint((t * segments.length) % 1);
   };
+
+  this.localToGlobalT = function(segment, localT) {
+    const index = segments.indexOf(segment);
+    if (index === -1) {
+      return null;
+    }
+
+    return (index + localT) / segments.length;
+  };
 }
 
 function CatmullRomSegment(p0, p1, p2, p3, alpha = 0.5) {
@@ -157,83 +177,132 @@ function CatmullRomSegment(p0, p1, p2, p3, alpha = 0.5) {
   this.p3 = p3;
   this.alpha = alpha;
 
+  this.startStepSize = 0.5;
+  this.endStepSize = 0.03125;
+
   this.distanceToPoint = function(p) {
     var d = this.distanceSqrToPoint(p);
     return {
       distance: Math.sqrt(d.distance),
-      point: d.point
+      point: d.point,
+      t: d.t
     };
   };
 
-  this.distanceSqrToPoint = function(p) {
-    // var closestDistance = Infinity;
-    // var closestPoint;
+  // this.distanceSqrToPoint = function(point) {
+  //   const segments = 10;
 
-    var projP = Vector.copy(p);
-    projP.y = 0;
+  //   let closestDistance = Infinity;
+  //   let closestPoint = null;
+
+  //   let prevPointOnCurve = null;
+
+  //   for (let i = 0; i < segments - 1; i++) {
+  //     const t1 = i / (segments - 1);
+  //     const t2 = (i + 1) / (segments - 1);
+  //     const p1 = prevPointOnCurve ?? this.getPoint(t1);
+  //     const p2 = this.getPoint(t2);
+  //     const currentClosestPoint = ClosestPointOnLineSegment(p1, p2, point);
+  //     const distanceSqr = Vector.distanceSqr(point, currentClosestPoint);
+
+  //     if (distanceSqr < closestDistance) {
+  //       closestDistance = distanceSqr;
+  //       closestPoint = currentClosestPoint;
+  //     }
+
+  //     prevPointOnCurve = p2;
+  //   }
+
+  //   return {
+  //     distance: closestDistance,
+  //     point: closestPoint
+  //   };
+  // };
+
+  const projP = new Vector();
+
+  this.distanceSqrToPoint = function(p) {
+    Vector.copy(p, projP);
+    // projP.y = 0;
 
     var d;
-    var step = 0.5;
+    var step = this.startStepSize;
     var start = 0;
     var end = 1;
-    while (step >= 0.095) {
+    while (step >= this.endStepSize) {
       d = this._getClosestDistanceInRange(projP, start, end, step);
-      start = d.t - step;
-      end = d.t + step;
+      start = d.newStart;
+      end = d.newEnd;
       step /= 2;
     }
 
     return {
       distance: d.distance,
       point: d.point,
-      t: d.t,
+      t: d.newStart,
     };
   };
 
-  this._getClosestDistanceInRange = function(projP, start, end, step) {
-    var closestDistance = Infinity;
-    var closestPoint;
-    var closestT;
+  this._getClosestDistanceInRange = function(point, start, end, step) {
+    let closestDistance = Infinity;
+    let closestPoint = null;
+    let closestT = null;
 
-    start = Math.max(0, start);
-    end = Math.min(1, end);
+    let prevPointOnCurve = null;
 
-    for (var t = start; t <= end; t += step) {
-      var curvePoint = this.getPoint(t);
+    for (let i = start; i <= end - step; i += step) {
+      const t1 = i;
+      const t2 = i + step;
+      const p1 = prevPointOnCurve ?? this.getPoint(t1);
+      const p2 = this.getPoint(t2);
+      const currentClosestPoint = ClosestPointOnLineSegment(p1, p2, point);
+      const distanceSqr = Vector.distanceSqr(point, currentClosestPoint);
 
-      var d = Vector.distanceSqr(projP, new Vector(curvePoint.x, 0, curvePoint.z));
-      if (d < closestDistance) {
-        closestDistance = d;
-        closestPoint = curvePoint;
-        closestT = t;
+      if (distanceSqr < closestDistance) {
+        closestDistance = distanceSqr;
+        closestPoint = currentClosestPoint;
+        closestT = t1;
       }
+
+      prevPointOnCurve = p2;
     }
 
     return {
       distance: closestDistance,
       point: closestPoint,
-      t: closestT,
+      newStart: closestT,
+      newEnd: closestT + step
     };
   };
 
-  this.getPoint = function(t) {
+  const A1 = new Vector();
+  const A2 = new Vector();
+  const A3 = new Vector();
+  const B1 = new Vector();
+  const B2 = new Vector();
+
+  this.getPoint = function(t, dst) {
+    dst = dst || new Vector();
+
     var k0 = 0;
     var k1 = GetKnotInterval(this.p0, this.p1);
     var k2 = GetKnotInterval(this.p1, this.p2) + k1;
     var k3 = GetKnotInterval(this.p2, this.p3) + k2;
 
     var u = lerp(k1, k2, t);
-    var A1 = Remap(k0, k1, this.p0, this.p1, u);
-    var A2 = Remap(k1, k2, this.p1, this.p2, u);
-    var A3 = Remap(k2, k3, this.p2, this.p3, u);
-    var B1 = Remap(k0, k2, A1, A2, u);
-    var B2 = Remap(k1, k3, A2, A3, u);
 
-    return Remap(k1, k2, B1, B2, u);
+    Remap(k0, k1, this.p0, this.p1, u, A1);
+    Remap(k1, k2, this.p1, this.p2, u, A2);
+    Remap(k2, k3, this.p2, this.p3, u, A3);
+    Remap(k0, k2, A1, A2, u, B1);
+    Remap(k1, k3, A2, A3, u, B2);
+
+    Remap(k1, k2, B1, B2, u, dst);
+    return dst;
   };
 
-  function Remap(a, b, c, d, u) {
-    return Vector.lerp(c, d, (u - a) / (b - a));
+  function Remap(a, b, c, d, u, dst) {
+    return Vector.lerp(c, d, (u - a) / (b - a), dst);
   }
 
   function GetKnotInterval(a, b) {

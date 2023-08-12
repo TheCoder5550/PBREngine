@@ -2,7 +2,7 @@
   "name": "multiplayerengine",
   "version": "1.0.0",
   "description": "",
-  "main": "server.js",
+  "private": true,
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
@@ -14,7 +14,9 @@
     "ws": "^7.4.4"
   },
   "devDependencies": {
-    "eslint": "^8.31.0"
+    "eslint": "^8.31.0",
+    "webpack": "^5.88.2",
+    "webpack-cli": "^5.1.4"
   },
   "repository": {
     "type": "git",
