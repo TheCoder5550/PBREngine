@@ -1,0 +1,587 @@
+* {
+  box-sizing: border-box;
+
+  -webkit-touch-callout: none; /* iOS Safari */
+    -webkit-user-select: none; /* Safari */
+     -khtml-user-select: none; /* Konqueror HTML */
+       -moz-user-select: none; /* Old versions of Firefox */
+        -ms-user-select: none; /* Internet Explorer/Edge */
+            user-select: none; /* Non-prefixed version, currently
+                                  supported by Chrome, Edge, Opera and Firefox */
+
+  font-family: 'Oswald', sans-serif;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1); 
+}
+ 
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555; 
+}
+
+:root {
+  font-family: 'Oswald', sans-serif;
+
+  --theme: rgb(196, 84, 53);
+}
+
+body {
+  background: black;
+  /* background: url(../../infiniteGrassHillsWithTrees6.PNG); */
+  /* background: url(loadingScreenImage.png); */
+  /* background-size: 101%; */
+  
+  margin: 0;
+  overflow: hidden;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.isSelectable {
+  transition: outline 100ms, outline-offset 100ms !important;
+}
+
+.isSelectable.selected {
+  outline: 4px solid var(--theme) !important;
+  outline-offset: 2px !important;
+  isolation: isolate;
+}
+
+.glass {
+  /* From https://css.glass */
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.loader {
+  --width: 7px;
+
+  width: 50px;
+  height: 50px;
+
+  border-radius: 50%;
+  border: var(--width) solid transparent; /*2*/
+  background: conic-gradient(white, transparent, transparent, transparent) border-box; /*3*/
+  -webkit-mask: /*4*/
+     linear-gradient(#fff 0 0) padding-box, 
+     linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; /*5'*/
+          mask-composite: exclude; /*5*/
+
+  animation: 1s infinite spinLoader;
+}
+
+.loader::after {
+  content: "";
+
+  position: absolute;
+  top: calc(-1 * var(--width));
+  left: 50%;
+  transform: translateX(-50%);
+
+  width: var(--width);
+  height: var(--width);
+
+  background: white;
+  border-radius: 50%;
+}
+
+@keyframes spinLoader {
+  from {
+    transform: rotate(0);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+.ingameUICanvas {
+  pointer-events: none;
+}
+
+canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.loading {
+  --barHeight: 150px;
+
+  z-index: 200;
+  
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+
+  color: white;
+  /* backdrop-filter: brightness(25%) blur(3px); */
+}
+
+.loading .backgroundImage {
+  position: absolute;
+  top: 0;
+  bottom: var(--barHeight);
+  left: 0;
+  right: 0;
+
+  background: black;
+  background: url(../../lowpolyDesert.PNG);
+  background-size: cover;
+  background-position: center;
+}
+
+.loading .topBar,
+.loading .bottomBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--barHeight);
+
+  background-color: black;
+}
+
+.loading .topBar {
+  top: 0;
+}
+
+.loading .bottomBar {
+  bottom: 0;
+
+  display: flex;
+  justify-content: center;
+}
+
+.bottomBar .content {
+  width: 100%;
+  max-width: 1200px;
+  padding: 1rem 2rem;
+
+  position: relative;
+}
+
+.content .loaderWrapper {
+  position: absolute;
+  right: 1rem;
+  bottom: 30px;
+
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.loading h1 {
+  margin-top: 0.25em;
+  margin-bottom: 0;
+  font-size: 2.5em;
+  /* text-align: center; */
+}
+
+.loading .subheading {
+  margin-top: 0.5em;
+
+  color: darkgray;
+  font-style: italic;
+}
+
+a {
+  color: inherit;
+  pointer-events: all;
+}
+
+.loading h3 {
+  color: darkgray;
+  font-style: italic;
+}
+
+.loading > img {
+  width: 500px;
+  margin: 20px;
+}
+
+.progressBar {
+  position: relative;
+
+  width: 175px;
+  height: 5px;
+
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.progressBar .progress {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: white;
+
+  width: 0%;
+}
+
+.progressStatus {
+  margin: 0;
+}
+
+.pauseOverlay {
+  backdrop-filter: brightness(70%) blur(10px);
+  z-index: 100;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  /* padding: 2em; */
+
+  color: white;
+}
+
+.pauseOverlay .menu > div {
+  /* display: flex;
+  flex-direction: column;
+  align-items: center; */
+
+  display: grid;
+  grid-template-areas: "G G S" "G G R" "C C T";
+
+  grid-template-columns: repeat(3, 175px);
+  grid-template-rows: repeat(3, 75px);
+  gap: 10px;
+
+  /* width: 200px; */
+}
+
+.pauseOverlay .menu > div > button:nth-child(1) { grid-area: G; }
+.pauseOverlay .menu > div > button:nth-child(2) { grid-area: S; }
+.pauseOverlay .menu > div > button:nth-child(3) { grid-area: R; }
+.pauseOverlay .menu > div > button:nth-child(4) { grid-area: C; }
+.pauseOverlay .menu > div > button:nth-child(5) { grid-area: T; }
+
+.pauseOverlay .menu > div > button:nth-child(2),
+.pauseOverlay .menu > div > button:nth-child(3),
+.pauseOverlay .menu > div > button:nth-child(5) {
+  align-items: center;
+}
+
+.pauseOverlay .menu > div > button {
+  position: relative;
+
+  pointer-events: all;
+  outline: none;
+  border: none;
+  background: white;
+
+  font-weight: bold;
+  font-size: 1.5em;
+  padding: 0.5em;
+  border-radius: 5px;
+
+  transition: transform 100ms;
+
+  display: flex;
+}
+
+.pauseOverlay .menu > div > button.selected,
+.pauseOverlay .menu > div > button.selected {
+  transform: scale(0.97);
+  
+  background: rgb(196, 84, 53);
+  color: white;
+}
+.pauseOverlay .menu > div > button:active {
+  transform: scale(0.93);
+  background: rgb(122, 57, 39);;
+}
+
+.pauseOverlay .menu > div > button > .material-symbols-outlined {
+  margin-right: 0.2em;
+  font-weight: bold;
+  font-size: 1.25em;
+}
+
+.pauseOverlay .menu > div > button:nth-child(2).selected > .material-symbols-outlined,
+.pauseOverlay .menu > div > button:nth-child(3).selected > .material-symbols-outlined {
+  animation: arrowSpin 500ms reverse;
+}
+
+@keyframes arrowSpin {
+  from {
+    transform: rotate(0);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pauseOverlay .menu > div > button > img {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
+.overlay .tooltip {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  
+  display: flex;
+  flex-direction: row;
+
+  color: white;
+
+  z-index: 100;
+}
+
+.overlay .tooltip > div {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+
+  margin: 10px;
+  margin-right: 0;
+
+  padding: 5px 10px;
+  padding-right: 20px;
+
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 10px;
+}
+
+.overlay .tooltip > div > img {
+  height: 40px;
+  margin-right: 0.25em;
+}
+
+.overlay .tooltip > div > span {
+  font-weight: bold;
+}
+
+.garage {
+  z-index: 5;
+  padding: 30px;
+}
+
+.garage .carName {
+  font-size: 2em;
+  font-style: italic;
+  font-weight: bold;
+  color: white;
+
+  margin-bottom: 0.5em;
+}
+
+.garage > .info {
+  display: flex;
+  flex-direction: column;
+  /* background: rgba(0, 0, 0, 0.5); */
+  color: white;
+
+  width: 400px;
+  padding: 10px;
+  border-radius: 5px;
+}
+
+.garage > .info > .stats {
+}
+
+.garage > .info > .stats > div {
+  padding: 10px;
+  margin-bottom: 10px;
+  /* background: rgba(0, 0, 0, 0.5); */
+  border-radius: 5px;
+
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.garage > .info > .stats > div > .name {
+  font-weight: bold;
+}
+
+.garage > .selectCar {
+  pointer-events: all;
+  cursor: pointer;
+
+  position: absolute;
+  bottom: 30px;
+  left: 30px;
+
+  border: none;
+  background: lime;
+  color: darkgreen;
+  font-size: 2em;
+  font-weight: bold;
+  font-style: italic;
+  border-radius: 5px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px;
+  padding-right: 15px;
+}
+
+.garage > .selectCar:not(:disabled):hover,
+.garage > .selectCar:not(:disabled):focus {
+  transform: scale(0.97);
+}
+
+.garage > .selectCar:not(:disabled):active {
+  transform: scale(0.93);
+}
+
+.garage > .selectCar:disabled {
+  background: gray;
+  color: darkgray;
+  cursor: default;
+}
+
+.garage > .selectCar > img {
+  height: 50px;
+}
+
+.garage > .selectCar:disabled > img {
+  display: none;
+}
+
+.settings {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  padding: 10px;
+}
+
+.settings > .settingsContainer {
+  width: 900px;
+  height: 600px;
+
+  padding: 1em;
+  gap: 10px;
+
+  background: white;
+  border-radius: 5px;
+
+  pointer-events: all;
+  z-index: 100;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.settings > .settingsContainer > .items {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+
+  overflow-y: auto;
+}
+
+.settings > .settingsContainer > .items > .group {
+  display: flex;
+  flex-direction: column;
+
+  margin-bottom: 30px;
+  padding: 6px;
+}
+
+.settings > .settingsContainer > .items > .group > .title {
+  font-size: 1.5em;
+  font-weight: bold;
+  color: gray;
+
+  margin-bottom: 15px;
+}
+
+.settings > .settingsContainer > .items .item {
+  /* border: 2px solid black; */
+  background: #eee;
+  border-radius: 5px;
+
+  padding: 1em;
+  margin-bottom: 7.5px;
+
+  display: flex;
+  justify-content: space-between;
+
+}
+
+.settings > .settingsContainer > .items .item:last-child {
+  margin-bottom: 0;
+}
+
+.settings > .settingsContainer > .buttons {
+  margin-top: 1em;
+}
+
+.messages {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+
+  height: 350px;
+  overflow-y: hidden;
+
+  z-index: 10;
+  pointer-events: all;
+
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+
+  -webkit-mask-image: linear-gradient(180deg, #000 85%, transparent);
+}
+
+.messages:hover {
+  overflow-y: scroll;
+  overflow-y: overlay;
+}
+
+.messages > .message {
+  color: white;
+  background: rgba(0, 0, 0, 0.25);
+
+  padding: 0.3em 0.6em;
+
+  width: 300px;
+
+  animation: hide 5s linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes hide {
+  0% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.messages:hover > .message {
+  opacity: 1 !important;
+}

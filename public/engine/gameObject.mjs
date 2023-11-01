@@ -9,8 +9,17 @@ import { AABB } from "./physics.mjs";
 function GameObject(name = "Unnamed", options = {}) {
   var _this = this;
 
+  /**
+   * @type {string}
+   */
   this.name = name;
+  /**
+   * @type {GameObject[]}
+   */
   this.children = def(options.children, []); 
+  /**
+   * @type {GameObject}
+   */
   this.parent = null;
 
   this.transform = new Transform(options.matrix, options.position, options.rotation, options.scale);
@@ -25,8 +34,26 @@ function GameObject(name = "Unnamed", options = {}) {
     _aabbNeedsUpdating = true;
   };
 
+  /**
+   * @returns {AABB}
+   */
   this.getAABB = function() {
     return _aabb;
+  };
+
+  this.forceAABBUpdate = function() {
+    if (this.meshRenderer && this.meshRenderer.getAABB) {
+      if (!_aabb) {
+        _aabb = new AABB();
+      }
+
+      this.meshRenderer.getAABB(_aabb);
+      if (!(this.meshRenderer instanceof Renderer.MeshInstanceRenderer)) {
+        _aabb.approxTransform(this.transform.worldMatrix);
+      }
+
+      _aabbNeedsUpdating = false;
+    }
   };
 
   this.transform.on("transformChange", onUpdateAABB);
@@ -36,6 +63,7 @@ function GameObject(name = "Unnamed", options = {}) {
   this.visible = def(options.visible, true);
   this.castShadows = def(options.castShadows, true);
   this.receiveShadows = def(options.receiveShadows, true);
+  this.disableFrustumCulling = def(options.disableFrustumCulling, false);
   this.runUpdate = def(options.runUpdate, true);
   this.active = def(options.active, true);
 
@@ -73,6 +101,11 @@ function GameObject(name = "Unnamed", options = {}) {
     }
   };
 
+  /**
+   * 
+   * @param {(obj: GameObject) => void} func 
+   * @param {(child: GameObject) => boolean} condition 
+   */
   this.traverseCondition = function(func, condition = () => true) {
     func(this);
     for (var child of this.children) {
@@ -108,14 +141,26 @@ function GameObject(name = "Unnamed", options = {}) {
     return _components;
   };
 
+  /**
+   * @description Add component to gameobject. Returns the added component
+   * @template T
+   * @param {T} comp 
+   * @returns {T}
+   */
   this.addComponent = function(comp) {
     comp.gameObject = this;
     _components.push(comp);
-    comp.onAdd?.();
+    comp.onAdd?.(this);
 
     return comp;
   };
 
+  /**
+   * @description Remove component from gameobject. Returns the removed component
+   * @template T
+   * @param {T} comp 
+   * @returns {T}
+   */
   this.removeComponent = function(comp) {
     _components.splice(_components.indexOf(comp), 1);
     delete comp.gameObject;
@@ -246,7 +291,17 @@ function GameObject(name = "Unnamed", options = {}) {
     }
   };
 
+  /**
+   * @description Add {@link GameObject} as child
+   * @param {GameObject} child
+   * @returns {GameObject}
+  **/
   this.addChild = function(child) {
+    if (!(child instanceof GameObject)) {
+      console.error(child);
+      throw new Error("Child is not GameObject");
+    }
+
     if (child.parent == null) {
       child.parent = this;
       this.children.push(child);
@@ -257,6 +312,11 @@ function GameObject(name = "Unnamed", options = {}) {
   };
   this.add = this.addChild;
 
+  /**
+   * @description Add multiple children
+   * @param {GameObject[]} children
+   * @returns {GameObject[]}
+  **/
   this.addChildren = function(children) {
     for (var i = 0; i < children.length; i++) {
       this.addChild(children[i]);

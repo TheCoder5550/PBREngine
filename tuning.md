@@ -21,3 +21,7 @@ Can't do 360 entries? Try tuning these:
 
 ## Better stability on keyboard
 Increase auto countersteer velocity to around 0.5 to 1 to not oversteer in turns
+
+## Wobbles/bounces when gaining traction
+1. Increase rollbar strength
+1. Use different rollbar algorithm

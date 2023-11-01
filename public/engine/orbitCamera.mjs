@@ -1,9 +1,29 @@
 import Vector from "./vector.mjs";
 import Matrix from "./matrix.mjs";
-import { Camera } from "./renderer.mjs";
+import Renderer, { Camera } from "./renderer.mjs";
 import Quaternion from "./quaternion.mjs";
 
+/**
+ * @description Creates a camera
+ * @param {Renderer} renderer 
+ * @param {{
+*  position?: Vector,
+*  rotation?: Quaternion,
+*  layer?: number,
+*  renderTexture?: unknown,
+*  fov?: number,
+*  near?: number,
+*  far?: number,
+*  size?: number,
+*  type?: keyof Camera.Type
+* }} cameraSettings
+* @param {{ rotate: boolean, translate: boolean, scale: boolean, stylePointer: boolean }} [settings={}] 
+*/
 export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
+  if (!(renderer instanceof Renderer)) {
+    throw new Error("renderer is not of type 'Renderer'");
+  }
+
   var _this = this;
 
   {

@@ -81,7 +81,7 @@
       var physicsEngine = new PhysicsEngine(scene);
 
       let p = scene.add(renderer.CreateShape("sphere"));
-      p.transform.scale = Vector.fill(0.1);
+      p.transform.scale = Vector.fill(0.01);
       let rbP = new Rigidbody();
       rbP.frozen = true;
       p.addComponent(rbP);
@@ -96,9 +96,10 @@
       rb2.position = new Vector(3, -3, 3);
       c2.addComponent(rb2);
 
-      let dc = physicsEngine.add(new DistanceConstraint(rbP, Vector.zero(), rb1, new Vector(-1, 1, -1)));
+      let dc = physicsEngine.add(new DistanceConstraint(rb1, new Vector(-1, 1, -1), rbP, Vector.zero()));
+      // let dc = physicsEngine.add(new DistanceConstraint(rbP, Vector.zero(), rb1, new Vector(-1, 1, -1)));
       let debugSphere = scene.add(renderer.CreateShape("sphere"));
-      debugSphere.transform.scale = Vector.fill(0.1);
+      debugSphere.transform.scale = Vector.fill(0.02);
       dc.debugSphere = debugSphere;
 
       physicsEngine.add(new DistanceConstraint(rb1, new Vector(1, -1, 1), rb2, new Vector(-1, 1, -1)));

@@ -18,7 +18,7 @@ import {
   downloadURL,
   wrap
 } from "./helper.mjs";
-import { getTriangleNormal } from "./algebra.mjs";
+import { getSignedDistanceToPlane, getTriangleNormal } from "./algebra.mjs";
 import { LerpCurve } from "./curves.mjs";
 import { AABB } from "./physics.mjs";
 import { GameObject } from "./gameObject.mjs";
@@ -69,6 +69,7 @@ import * as blurSource from "../assets/shaders/built-in/blur.mjs";
 
 function Renderer(settings = {}) {
   var renderer = this;
+  /** @type {WebGL2RenderingContext} */
   var gl;
   
   var renderScale = settings.renderScale ?? 1;
@@ -82,7 +83,16 @@ function Renderer(settings = {}) {
 
   this.eventHandler = new EventHandler();
 
-  this.mouse = {x: 0, y: 0, any: false, left: false, right: false, middle: false, movement: {x: 0, y: 0}};
+  this.mouse = {
+    x: 0,
+    y: 0,
+    any: false,
+    left: false,
+    right: false,
+    middle: false,
+    movement: {x: 0, y: 0},
+    scroll: {x: 0, y: 0, z: 0},
+  };
   var keys = [];
   var keysDown = [];
   var keysUp = [];
@@ -188,6 +198,7 @@ function Renderer(settings = {}) {
     this.setupSettings = settings;
     this.path = settings.path ?? "./";
 
+    /** @type {HTMLCanvasElement} */
     this.canvas = settings.canvas ?? document.body.appendChild(document.createElement("canvas"));
     setCanvasSize();
 
@@ -221,7 +232,7 @@ function Renderer(settings = {}) {
       }
     }
 
-    console.log("Using Webgl version " + this.version);
+    console.info("Using Webgl version " + this.version);
 
     // Stats
     // const getMethods = (obj) => {
@@ -292,6 +303,14 @@ function Renderer(settings = {}) {
 
       this.eventHandler.fireEvent("mousemove", e);
     };
+
+    this.canvas.addEventListener("wheel", event => {
+      this.mouse.scroll.x = event.deltaX;
+      this.mouse.scroll.y = event.deltaY;
+      this.mouse.scroll.z = event.deltaZ;
+
+      this.eventHandler.fireEvent("scroll", event);
+    });
 
     document.addEventListener("keydown", e => {
       keys[e.keyCode] = true;
@@ -414,7 +433,7 @@ function Renderer(settings = {}) {
       this.createProgramFromFile(this.path + `assets/shaders/built-in/webgl${this.version}/godrays`).then(program => {
         var godrayProgram = new ProgramContainer(program);
         this.godrays = new Godrays(godrayProgram);
-        console.log(this.godrays);
+        console.info(this.godrays);
       });
     }
 
@@ -425,6 +444,9 @@ function Renderer(settings = {}) {
 
     this.splitsumTexture = this.loadSplitsum(this.path + "assets/pbr/splitsum.png");
     logGLError("Splitsum");
+
+    this.ditherTexture = this.loadTexture(this.path + "assets/textures/dither.png");
+    logGLError("Dither");
 
     lastUpdate = performance.now();
     requestAnimationFrame(loop);
@@ -455,7 +477,7 @@ function Renderer(settings = {}) {
     // sortable.sort(function(a, b) {
     //   return b[1] - a[1];
     // });
-    // console.log(sortable);
+    // console.info(sortable);
 
     frameNumber++;
     requestAnimationFrame(loop);
@@ -525,7 +547,10 @@ function Renderer(settings = {}) {
   };
 
   this.render = function(camera, secondaryCameras = null, settings = {}) {
-    let scene = this.getActiveScene();
+    const scene = this.getActiveScene();
+    if (!scene) {
+      throw new Error("No active scene");
+    }
 
     this.postprocessing.exposure.value = scene.postprocessing.exposure;
     this.postprocessing.gamma.value = scene.postprocessing.gamma;
@@ -549,6 +574,11 @@ function Renderer(settings = {}) {
     }
   });
 
+  /**
+   * @description Add scene to renderer
+   * @param {Scene} scene
+   * @returns {Scene}
+  **/
   this.add = function(scene) {
     this.scenes.push(scene);
     scene.renderer = this;
@@ -560,6 +590,10 @@ function Renderer(settings = {}) {
     this.eventHandler.addEvent(event, func);
   };
 
+  /**
+   * @description Get currently active scene
+   * @returns {Scene}
+   */
   this.getActiveScene = function() {
     return this.scenes[this.currentScene];
   };
@@ -1426,6 +1460,9 @@ function Renderer(settings = {}) {
   };
 
   this.createProgram = function(vertexSource, fragmentSource) {
+    vertexSource = vertexSource.trim();
+    fragmentSource = fragmentSource.trim();
+
     var vertexShader = compileShader(vertexSource, gl.VERTEX_SHADER);
     var fragmentShader = compileShader(fragmentSource, gl.FRAGMENT_SHADER);
   
@@ -1452,7 +1489,7 @@ function Renderer(settings = {}) {
           errorMessage += "\n" + type + ":\n" + error;
         }
 
-        console.log(type, gl.getShaderSource(shader));
+        console.trace(type, gl.getShaderSource(shader));
       }
 
       throw new Error(errorMessage);
@@ -2095,7 +2132,8 @@ function Renderer(settings = {}) {
     this.drag = 1;
     this.gravityScale = 1;
 
-    var _p = new Vector();
+    const zeroMatrix = new Matrix();
+    const _p = new Vector();
 
     this.emit = function(amount = 1) {
       for (var i = 0; i < amount; i++) {
@@ -2141,6 +2179,7 @@ function Renderer(settings = {}) {
           this.colorData[i * 4 + 3] = p.getAlpha();
         }
         else {
+          this.matrixData.set(zeroMatrix, i * 16);
           this.colorData[i * 4 + 3] = 0;
         }
       }
@@ -2478,7 +2517,7 @@ function Renderer(settings = {}) {
 
         bindUniforms();
 
-        console.log("Recompiling postprocessing");
+        console.info("Recompiling postprocessing");
 
         return true;
       }
@@ -3342,6 +3381,8 @@ function Renderer(settings = {}) {
       this.programContainer.setUniform("fogColor", scene.fogColor);
       this.programContainer.setUniform("fogIntensity", scene.skyboxFogIntensity);
       this.programContainer.setUniform("iTime", renderer.getTime());
+      this.programContainer.setUniform("_SkyboxSpeed", scene.skyboxAnimation.speed);
+      this.programContainer.setUniform("_SkyboxDirection", Vector.toArray(scene.skyboxAnimation.direction));
 
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap);
@@ -3837,7 +3878,7 @@ function Renderer(settings = {}) {
   //         //   for (var i = 0; i < n.length; i++) {
   //         //     n[i] = uniform.arguments[i] + materialTextureUnitOffset;
   //         //   }
-  //         //   // console.log(name, n);
+  //         //   // console.info(name, n);
   //         //   gl["uniform" + uniform.type + "v"](location, n);
   //         // }
   //         // else {
@@ -4061,6 +4102,8 @@ function Renderer(settings = {}) {
       handleTextureBind(scene.specularCubemap, "u_specularIBL");
     }
 
+    handleTextureBind(renderer.ditherTexture, "ditherTexture");
+
     // // Camera
     // let sps = programContainer.uniformBuffers["sharedPerScene"];
     // if (sps && scene.sharedUBO) {
@@ -4241,7 +4284,19 @@ function Renderer(settings = {}) {
       }
       return true;
     }
+
+    // bruh, this is technically not correct. Should combine all MeshData and then check convexity on that
+    isConvex() {
+      for (let meshData of this.meshData) {
+        if (!meshData.isConvex()) {
+          return false;
+        }
+      }
+
+      return true;
+    }
   }
+  Renderer.BaseMeshRenderer = BaseMeshRenderer;
 
   class SkinnedMeshRenderer extends BaseMeshRenderer {
     constructor(skin, materials, meshData, options = {}) {
@@ -4346,9 +4401,12 @@ function Renderer(settings = {}) {
       //   matrixLocations.push(gl.getAttribLocation(mat.program, 'modelMatrix'));
       // }
 
-      this.matrixBuffer = gl.createBuffer();
       this.needsBufferUpdate = false;
+      this.matrixBuffer = gl.createBuffer();
       this.matrices = [];
+
+      this.ditherBuffer = gl.createBuffer();
+      this.ditherAmount = new WeakMap();
     }
 
     // bruh bounding box does not take into account the size of each mesh, only its origin
@@ -4376,9 +4434,15 @@ function Renderer(settings = {}) {
     }
   
     addInstance(instance/*, update = true*/) {
+      if (!Matrix.isMatrix(instance)) {
+        throw new Error("Instance must be a matrix");
+      }
+
       var newMat = Matrix.copy(instance);
       this.matrices.push(newMat);
       this.needsBufferUpdate = true;
+
+      this.ditherAmount.set(newMat, 0);
   
       // if (update) {
       //   this.updateMatrixData();
@@ -4390,6 +4454,8 @@ function Renderer(settings = {}) {
     addInstanceDontCopy(instance/*, update = true*/) {
       this.matrices.push(instance);
       this.needsBufferUpdate = true;
+
+      this.ditherAmount.set(instance, 0);
   
       // if (update) {
       //   this.updateMatrixData();
@@ -4439,6 +4505,20 @@ function Renderer(settings = {}) {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.matrixBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, this.matrixData, gl.DYNAMIC_DRAW);
     }
+
+    setDitherAmount(instance, ditherAmount = 0) {
+      this.ditherAmount.set(instance, ditherAmount);
+    }
+
+    updateDitherBuffer() {
+      const ditherData = new Float32Array(this.matrices.length);
+      for (var i = 0; i < this.matrices.length; i++) {
+        ditherData[i] = this.ditherAmount.get(this.matrices[i]) ?? 0;
+      }
+  
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.ditherBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, ditherData, gl.STREAM_DRAW);
+    }
   
     render(camera, baseMatrix, shadowPass = false, opaquePass = true, prevMatrix, settings = {}) {
       let downscaledPass = settings.downscaledPass ?? false;
@@ -4449,6 +4529,9 @@ function Renderer(settings = {}) {
       if (this.needsBufferUpdate) {
         this.updateMatrixData();
         this.needsBufferUpdate = false;
+      }
+      if (!shadowPass) {
+        this.updateDitherBuffer();
       }
 
       if (this.matrices.length > 0) {
@@ -4480,6 +4563,17 @@ function Renderer(settings = {}) {
             gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 4 * 16, j * 16);
             vertexAttribDivisor(loc, 1);
           }
+
+          // Dithering
+          // if (!shadowPass) {
+            const loc = mat.programContainer.getAttribLocation("ditherAmount");
+            if (loc) {
+              gl.bindBuffer(gl.ARRAY_BUFFER, this.ditherBuffer);
+              gl.enableVertexAttribArray(loc);
+              gl.vertexAttribPointer(loc, 1, gl.FLOAT, false, 0, 0);
+              vertexAttribDivisor(loc, 1);
+            }
+          // }
 
           if (mat instanceof NewMaterial) {
             bindMaterial(mat, {
@@ -4886,29 +4980,29 @@ function Renderer(settings = {}) {
         // return allEdges.find(e => (e.a == edge[0] && e.b == edge[1] || (e.b == edge[0] && e.a == edge[1])));
       };
 
-      let getConnectedVertices = (vertex) => {
-        let connectedVertices = [];
+      // let getConnectedVertices = (vertex) => {
+      //   let connectedVertices = [];
 
-        for (let i = 0; i < indices.length; i += 3) {
-          let ia = indices[i + 0];
-          let ib = indices[i + 1];
-          let ic = indices[i + 2];
+      //   for (let i = 0; i < indices.length; i += 3) {
+      //     let ia = indices[i + 0];
+      //     let ib = indices[i + 1];
+      //     let ic = indices[i + 2];
 
-          if (
-            ia == vertex ||
-            ib == vertex ||
-            ic == vertex
-          ) {
-            connectedVertices.push(ia, ib, ic);
-          }
-        }
+      //     if (
+      //       ia == vertex ||
+      //       ib == vertex ||
+      //       ic == vertex
+      //     ) {
+      //       connectedVertices.push(ia, ib, ic);
+      //     }
+      //   }
 
-        connectedVertices = new Set(connectedVertices);
-        connectedVertices.delete(vertex);
-        connectedVertices = Array.from(connectedVertices);
+      //   connectedVertices = new Set(connectedVertices);
+      //   connectedVertices.delete(vertex);
+      //   connectedVertices = Array.from(connectedVertices);
 
-        return connectedVertices;
-      };
+      //   return connectedVertices;
+      // };
 
       let getConnectedTriangles = (edge) => {
         let connectedTriangles = [];
@@ -4974,6 +5068,8 @@ function Renderer(settings = {}) {
         connectedVertices[i] = Array.from(new Set(connectedVertices[i]));
       }
 
+      const _pos = new Vector();
+      let newPosition = Vector.zero();
       for (let i = 0; i < vertices.length / 3; i++) {
         // let connectedVertices = getConnectedVertices(i);
         let currentConnectedVertices = connectedVertices[i];
@@ -4982,11 +5078,13 @@ function Renderer(settings = {}) {
         let beta = n == 2 ? 1 / 8 : n == 3 ? 3 / 16 : 3 / 8 / n;
         let center = n >= 3 ? 1 - n * beta : 3 / 4;
 
-        let newPosition = Vector.zero();
+        Vector.zero(newPosition);
         for (let vertex of currentConnectedVertices) {
-          Vector.addTo(newPosition, Vector.multiply(getVertex(vertex), beta));
+          Vector.multiply(getVertex(vertex), beta, _pos);
+          Vector.addTo(newPosition, _pos);
         }
-        Vector.addTo(newPosition, Vector.multiply(getVertex(i), center));
+        Vector.multiply(getVertex(i), center, _pos);
+        Vector.addTo(newPosition, _pos);
 
         newVertices[i * 3 + 0] = newPosition.x;
         newVertices[i * 3 + 1] = newPosition.y;
@@ -5088,8 +5186,8 @@ function Renderer(settings = {}) {
         // newIndices.push(ia, ib, ic);
       }
 
-      // console.log(newIndices, newVertices);
-      // console.log(indices, vertices);
+      // console.info(newIndices, newVertices);
+      // console.info(indices, vertices);
 
       // for (let i = 0; i < newVertices.length; i += 3) {
       //   let sphere = scene.add(renderer.CreateShape("sphere"));
@@ -5124,6 +5222,53 @@ function Renderer(settings = {}) {
 
       this.recalculateNormals();
       // this.recalculateTangents();
+    };
+
+    this.isConvex = function() {
+      const indices = this.data.indices.bufferData;
+
+      const getVertexPosition = (buffer, offset) => {
+        const p = new Vector(
+          buffer[offset * 3],
+          buffer[offset * 3 + 1],
+          buffer[offset * 3 + 2]
+        );
+        return p;
+      };
+
+      const validateFace = (origin, normal) => {
+        for (let i = 0; i < indices.length; i++) {
+          const index = indices[i];
+          const vertex = getVertexPosition(indices, index);
+
+          const signedDistance = getSignedDistanceToPlane(vertex, origin, normal);
+          if (signedDistance > 0) {
+            return false;
+          }
+        }
+
+        return true;
+      };
+
+      for (let i = 0; i < indices.length; i += 3) {
+        const indexA = indices[i];
+        const indexB = indices[i + 1];
+        const indexC = indices[i + 2];
+    
+        const vertexA = getVertexPosition(indices, indexA);
+        const vertexB = getVertexPosition(indices, indexB);
+        const vertexC = getVertexPosition(indices, indexC);
+
+        const normal = getTriangleNormal([ vertexA, vertexB, vertexC ]);
+        const origin = vertexA;
+
+        const validation = validateFace(origin, normal);
+        if (!validation) {
+          return false;
+        }
+      }
+
+      return true;
     };
 
     // bruh
@@ -5376,7 +5521,7 @@ function Renderer(settings = {}) {
     //     tangents[i2 * 3 + 1] = tangent[1];
     //     tangents[i2 * 3 + 2] = tangent[2];
 
-    //     console.log(tangent);
+    //     console.info(tangent);
 
     //     return tangent;
     //   }
@@ -5652,7 +5797,7 @@ function Renderer(settings = {}) {
     var materialsCreated = [];
 
     console.time("Loading " + path);
-    console.log(json);
+    console.info(json);
 
     var end = path.indexOf(".glb") + 4;
     var start = path.lastIndexOf("/", end) + 1;
@@ -5862,7 +6007,7 @@ function Renderer(settings = {}) {
 
       var customData = node.extras;
       if (customData) {
-        console.log("Custom data:", customData);
+        console.info("Custom data:", customData);
         gameObject.customData = {...customData};
       }
     
@@ -5871,7 +6016,7 @@ function Renderer(settings = {}) {
 
         var customMeshData = mesh.extras;
         if (customMeshData) {
-          console.log("Custom mesh data:", customMeshData);
+          console.info("Custom mesh data:", customMeshData);
           gameObject.customData = {
             ...gameObject.customData,
             ...customMeshData
@@ -5901,8 +6046,9 @@ function Renderer(settings = {}) {
             };
           }
 
+          const loadVertexColors = loadSettings.loadVertexColors ?? true;
           var vertexColors = getAccessorAndBuffer(currentPrimitive.attributes.COLOR_0);
-          if (vertexColors) {
+          if (loadVertexColors && vertexColors) {
             meshData.color = { bufferData: invertColors(vertexColors.buffer), size: vertexColors.size, stride: vertexColors.stride };
           }
 
@@ -6276,6 +6422,95 @@ function Renderer(settings = {}) {
       }
     };
   }
+
+  this.getSubdividedPlaneMeshData = function(subdivisions) {
+    const uvs = [];
+    const vertices = [];
+    const triangles = [];
+    const tangents = [];
+  
+    const res = Math.pow(2, subdivisions);
+
+    for (let i = 0; i <= res; i++) {
+      for (let j = 0; j <= res; j++) {
+        const x = i / res * 2 - 1;
+        const y = j / res * 2 - 1;
+        const z = 0;
+
+        const u = i / res;
+        const v = j / res;
+
+        vertices.push(x, y, z);
+        uvs.push(u, v);
+      }
+    }
+  
+    const normals = new Array(vertices.length / 3);
+    for (let i = 0; i < normals.length; i++) {
+      normals[i] = [];
+    }
+  
+    for (let i = 0; i < res; i++) {
+      for (let j = 0; j < res; j++) {
+        const ind = j + i * (res + 1);
+        const indices = [
+          ind,
+          ind + res + 1,
+          ind + 1,
+  
+          ind + 1,
+          ind + res + 1,
+          ind + res + 1 + 1,
+        ];
+        triangles.push(...indices);
+  
+        const t1Normal = getTriangleNormal([Vector.fromArray(vertices, indices[0] * 3), Vector.fromArray(vertices, indices[1] * 3), Vector.fromArray(vertices, indices[2] * 3)]);
+        const t2Normal = getTriangleNormal([Vector.fromArray(vertices, indices[3] * 3), Vector.fromArray(vertices, indices[4] * 3), Vector.fromArray(vertices, indices[5] * 3)]);
+  
+        normals[indices[0]].push(t1Normal);
+        normals[indices[1]].push(t1Normal);
+        normals[indices[2]].push(t1Normal);
+        normals[indices[3]].push(t2Normal);
+        normals[indices[4]].push(t2Normal);
+        normals[indices[5]].push(t2Normal);
+      }
+    }
+  
+    const outNormals = [];
+    for (let i = 0; i < normals.length; i++) {
+      const normal = Vector.divide(normals[i].reduce((a, b) => {
+        return Vector.add(a, b);
+      }, Vector.zero()), normals[i].length);
+  
+      outNormals.push(normal.x, normal.y, normal.z);
+      tangents.push(normal.y, normal.x, normal.z, -1); // bruh -1 might be wrong
+    }
+  
+    const meshData = {
+      indices: {
+        bufferData: new Uint32Array(triangles),
+        target: gl.ELEMENT_ARRAY_BUFFER
+      },
+      position: {
+        bufferData: new Float32Array(vertices),
+        size: 3
+      },
+      normal: {
+        bufferData: new Float32Array(outNormals),
+        size: 3
+      },
+      tangent: {
+        bufferData: new Float32Array(tangents),
+        size: 4
+      },
+      uv: {
+        bufferData: new Float32Array(uvs),
+        size: 2
+      }
+    };
+    
+    return new MeshData(meshData);
+  };
 
   this.getPlaneData = getPlaneData;
   function getPlaneData() {
@@ -6679,7 +6914,13 @@ function Renderer(settings = {}) {
     ];*/
   }
 
-  this.CreateShape = function(shape = ENUMS.SHAPES.CUBE, material = null, subdivs = 3) {
+  /**
+   * @param {"cube" |"plane" | "sphere"} shape
+   * @param {NewMaterial} material
+   * @param {number} subdivs
+   * @returns {GameObject}
+   */
+  this.CreateShape = function(shape, material = null, subdivs = 3) {
     var meshData;
     shape = shape.toLowerCase();
 
@@ -6700,6 +6941,29 @@ function Renderer(settings = {}) {
     var meshRenderer = new MeshRenderer(material, meshData);
 
     var gameObject = new GameObject("Shape");
+    gameObject.meshRenderer = meshRenderer;
+
+    return gameObject;
+  };
+
+  /**
+   * 
+   * @param {Vector} origin 
+   * @param {Vector} normal 
+   * @param {NewMaterial} material 
+   * @returns {GameObject}
+   */
+  this.CreatePlane = function(subdivisions = 0, origin = Vector.zero(), normal = Vector.up(), material = null) {
+    const meshData = subdivisions === 0 ? new MeshData(this.getPlaneData()) : this.getSubdividedPlaneMeshData(subdivisions);
+    material = material ?? this.CreateLitMaterial();
+    const meshRenderer = new MeshRenderer(material, meshData);
+
+    const gameObject = new GameObject("Plane");
+    gameObject.transform.matrix = Matrix.lookInDirection(
+      origin,
+      normal,
+      Math.abs(Vector.dot(normal, Vector.up())) > 0.999 ? new Vector(1, 0, 0) : Vector.up()
+    );
     gameObject.meshRenderer = meshRenderer;
 
     return gameObject;
@@ -6925,15 +7189,19 @@ function Renderer(settings = {}) {
 
   function ForwardPBRRenderpipeline(renderer) {
     if (!(renderer instanceof Renderer)) {
-      throw new Error("Renderer is not of class 'Renderer'");
+      throw new Error("renderer is not of class 'Renderer'");
     }
 
-    console.log("Using %cforward%c renderpipeline", "color: green; text-transform: uppercase; font-weight: bold;", "");
+    console.info("Using %cforward%c renderpipeline", "color: green; text-transform: uppercase; font-weight: bold;", "");
   
     this.renderer = renderer;
     var gl = this.renderer.gl;
   
     this.render = function(camera, secondaryCameras, scene, settings) {
+      if (typeof camera === "undefined") {
+        throw new Error("Camera is not defined");
+      }
+
       this.renderer.currentBoundMaterials = new WeakMap();
 
       // Shadows
@@ -6957,10 +7225,20 @@ function Renderer(settings = {}) {
   
       // Clear framebuffer/screen
       if (renderer.version > 1) {
-        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+        gl.drawBuffers([ gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1 ]);
       }
       gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+      // Fill motion blur texture with (0.5, 0.5, ..., ...)
+      if (renderer.version > 1) {
+        gl.drawBuffers([ gl.NONE, gl.COLOR_ATTACHMENT1 ]);
+        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+        gl.clearColor(0.5, 0.5, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.drawBuffers([ gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1 ]);
+        gl.clearColor(...currentClearColor);
+      }
   
       // Skybox
       gl.disable(gl.BLEND);
@@ -7244,7 +7522,7 @@ function Renderer(settings = {}) {
       throw new Error("Deferred rendering is only available with WebGL2");
     }
 
-    console.log("Using %cdeferred%c renderpipeline", "color: red; text-transform: uppercase; font-weight: bold;", "");
+    console.info("Using %cdeferred%c renderpipeline", "color: red; text-transform: uppercase; font-weight: bold;", "");
   
     this.renderer = renderer;
     var gl = this.renderer.gl;

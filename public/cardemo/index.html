@@ -31,7 +31,7 @@
 
     <div class="bottomBar">
       <div class="content">
-        <h1>WebGL - Realistic Car Demo</h1>
+        <h1>WebGL - Car Demo</h1>
         <h3 class="subheading">by <a href="https://aaserver.net/">Alfons Nilsson</a></h3>
 
         <div class="loaderWrapper">
@@ -87,37 +87,96 @@
 
   <div class="overlay garage hidden">
     <div class="info glass">
-      <span class="carName">Lamborghini Aventador</span>
+      <span class="carName">-</span>
 
-      <span>Stats</span>
+      <h3>Parts</h3>
       <div class="stats">
-        <div class="glass">
-          <span class="name">Engine torque</span>
-          <span class="value">-</span>
+        <!-- <div class="item">
+          <span>Engine</span>
+          <div class="card">
+            <img src="controls.png">
+            <div>
+              <span class="title">Default engine</span>
+              <span class="value">-</span>
+            </div>
+          </div>
+        </div> -->
+
+        <div class="item">
+          <span>Engine</span>
+          <div class="card glass">
+            <img src="controls.png">
+            <div>
+              <span class="title">Default engine</span>
+              <span class="value">-</span>
+            </div>
+          </div>
         </div>
-        <div class="glass">
-          <span class="name">Weight</span>
-          <span class="value">-</span>
+
+        <div class="item">
+          <span>Body</span>
+          <div class="card glass">
+            <img src="controls.png">
+            <div>
+              <span class="title">Default body</span>
+              <span class="value">-</span>
+            </div>
+          </div>
         </div>
-        <div class="glass">
-          <span class="name">Drivetrain</span>
-          <span class="value">-</span>
+
+        <div class="item">
+          <span>Drivetrain</span>
+          <div class="card glass">
+            <img src="controls.png">
+            <div>
+              <span class="title">Default drivetrain</span>
+              <span class="value">-</span>
+            </div>
+          </div>
         </div>
-        <div class="glass">
-          <span class="name">Differential</span>
-          <span class="value">-</span>
+
+        <div class="item">
+          <span>Differential</span>
+          <div class="card glass">
+            <img src="controls.png">
+            <div>
+              <span class="title">Default differential</span>
+              <span class="value">-</span>
+            </div>
+          </div>
         </div>
-        <div class="glass">
-          <span class="name">Friction</span>
-          <span class="value">-</span>
+
+        <div class="item">
+          <span>Wheels</span>
+          <div class="card glass">
+            <img src="controls.png">
+            <div>
+              <span class="title">Default wheels</span>
+              <span class="value">-</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="item">
+          <span>Steering</span>
+          <div class="card glass">
+            <img src="controls.png">
+            <div>
+              <span class="title">Default steering</span>
+              <span class="value">-</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <button class="selectCar" onclick="selectCar()">
+    <div id="carList">
+    </div>
+
+    <!-- <button class="selectCar" onclick="selectCar()">
       <img src="../assets/textures/keyIcons/Xbox Series/XboxSeriesX_A.png">
-      <span>Select</span>
-    </button>
+      <span class="label">Select</span>
+    </button> -->
   </div>
 
   <div class="overlay settings hidden">
@@ -149,12 +208,12 @@
     <div class="messages"></div>
   </div>
 
-  <div class="overlay" style="z-index: 1000000000; display: flex; flex-direction: column; align-items: flex-end;">
+  <!-- <div class="overlay" style="z-index: 1000000000; display: flex; flex-direction: column; align-items: flex-end;">
     <div>
       <span id="debug_drawCalls">0</span>
       <span>draw calls</span>
     </div>
-  </div>
+  </div> -->
 
   <!-- <script src="../../dist/bundle.js"></script> -->
   <script type="module" src="main.js"></script>

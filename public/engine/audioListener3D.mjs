@@ -1,10 +1,10 @@
-function AudioListener3D() {
+function AudioListener3D(audioContext) {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
-  this.audioContext = new AudioContext();
+  this.audioContext = audioContext || new AudioContext();
   const listener = this.audioContext.listener;
 
   this.setPosition = function(pos) {
-    if (listener.positionX) {
+    if (listener.positionX && listener.positionY && listener.positionZ) {
       listener.positionX.value = pos.x;
       listener.positionY.value = pos.y;
       listener.positionZ.value = pos.z;

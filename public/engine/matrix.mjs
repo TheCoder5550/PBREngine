@@ -799,12 +799,34 @@ export default class Matrix {
     // return {x: output[0], y: output[1], z: output[2]};
   }
 
-  static transformDirection(m, v) {
-    var output = [];
-    for (var i = 0; i < 4; i++) {
-      output[i] = m[i] * v.x + m[i + 4] * v.y + m[i + 8] * v.z + m[i + 12] * 0;
-    }
-    return {x: output[0], y: output[1], z: output[2]};
+  /**
+   * Transforms v ignoring position and scale of m
+   * @param {Matrix} m Transformation matrix
+   * @param {Vector} v Vector direction
+   * @param {Vector?} dst Destination vector
+   * @returns {Vector}
+   */
+  static transformDirection(m, v, dst) {
+    dst = dst || new Vector();
+    
+    const rotationMatrix = Matrix.getRotationMatrix(m);
+    return Matrix.transformVector(rotationMatrix, v, dst);
+
+    // const vx = v.x;
+    // const vy = v.y;
+    // const vz = v.z;
+
+    // dst.x = m[0] * vx + m[4] * vy + m[8] * vz;
+    // dst.y = m[1] * vx + m[5] * vy + m[9] * vz;
+    // dst.z = m[2] * vx + m[6] * vy + m[10] * vz;
+
+    // return dst;
+
+    // var output = [];
+    // for (var i = 0; i < 4; i++) {
+    //   output[i] = m[i] * v.x + m[i + 4] * v.y + m[i + 8] * v.z + m[i + 12] * 0;
+    // }
+    // return {x: output[0], y: output[1], z: output[2]};
   }
 
   // Quaternion
@@ -844,6 +866,13 @@ export default class Matrix {
       [...m.slice(8, 12)],
       [...m.slice(12, 16)]
     ]);
+  }
+
+  static logSummary(m) {
+    console.log("---Matrix summary---");
+    console.log("Position", Matrix.getPosition(m));
+    console.log("Scale", Matrix.getScale(m));
+    console.log("Rotation", Quaternion.fromMatrix(m));
   }
 }
 

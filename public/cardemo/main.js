@@ -1,5 +1,5 @@
 import Stats from "../statsModule.mjs";
-import GameCanvas from "../gameCanvas-5.0-module.mjs";
+import GameCanvas from "../gameCanvas-6.0-module.mjs";
 import * as ENUMS from "../engine/constants.mjs";
 import Renderer, { Scene, GameObject, Camera } from "../engine/renderer.mjs";
 import Vector from "../engine/vector.mjs";
@@ -8,7 +8,7 @@ import Quaternion from "../engine/quaternion.mjs";
 import { LerpCurve } from "../engine/curves.mjs";
 import { lerp, mapValue, clamp, loadImage, hideElement, showElement, getAngleBetween, getDistanceBetween, sleep, smoothstep } from "../engine/helper.mjs";
 import Perlin from "../engine/perlin.mjs";
-import { GetMeshAABB, PhysicsEngine, MeshCollider, AABB } from "../engine/physics.mjs";
+import { GetMeshAABB, PhysicsEngine, MeshCollider } from "../engine/physics.mjs";
 import { Car } from "../car.js";
 import * as carSettings from "./carSettings.mjs";
 import Keybindings from "../keybindingsController.mjs";
@@ -17,6 +17,9 @@ import OrbitCamera from "../engine/orbitCamera.mjs";
 import { NewMaterial } from "../engine/material.mjs";
 import Terrain from "../engine/terrain.mjs";
 import { CatmullRomCurve } from "../engine/curves.mjs";
+import PRNG from "../PRNG.mjs";
+import { getTriangleNormal } from "../engine/algebra.mjs";
+import GLDebugger from "../engine/GLDebugger.mjs";
 
 // import * as roadSource from "../assets/shaders/custom/road.glsl.mjs";
 import * as carPaintShader from "../assets/shaders/custom/carPaint.glsl.mjs";
@@ -24,7 +27,7 @@ import * as terrainShader from "./terrain.glsl.mjs";
 import * as simpleFoliage from "../assets/shaders/custom/simpleFoliage.glsl.mjs";
 // import createInspector from "../engine/inspector/inspector.mjs";
 import City from "./city.mjs";
-import { getTriangleNormal, rayToAABB } from "../engine/algebra.mjs";
+import TreeHandler from "../engine/treeHandler.mjs";
 
 class ControllerUIInteraction {
   #tickPath = "../assets/sound/menu tick.wav";
@@ -147,6 +150,7 @@ class ControllerUIInteraction {
       this.selectedElement.scrollIntoView({
         behavior: "smooth",
       });
+      this.selectedElement.onSelect?.();
       this.#playTickSound();
     }
     else {
@@ -224,17 +228,18 @@ document.addEventListener("DOMContentLoaded", async function () {
   const garageOverlay = document.querySelector(".garage");
   const loadingOverlay = document.querySelector(".loading");
   const settingsOverlay = document.querySelector(".settings");
-  const selectCarButton = garageOverlay.querySelector(".selectCar");
   const progressBar = loadingOverlay.querySelector(".progressBar");
   const progressStatus = loadingOverlay.querySelector(".progressStatus");
   let lastTextStatus;
   const messagesContainer = document.querySelector(".messages");
+  const garageCarList = document.querySelector("#carList");
 
+  const seed = "apples";
+  const prng = new PRNG(seed);
   const perlin = new Perlin();
   let stats;
 
-  // eslint-disable-next-line no-undef
-  const ui = new GameCanvas({ publicMethods: false });
+  const ui = new GameCanvas(undefined, { publicMethods: false });
   ui.canvas.classList.add("ingameUICanvas");
   ui.canvas.style.zIndex = 2;
 
@@ -245,8 +250,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   const spawnPosition = new Vector(0, 2, 0);
   const spawnRotation = Quaternion.identity();
-  const allowedCars = [ "myLowpolySportsCar", "lowpolyJeep" ];
-  // var allowedCars = [
+  const allowedCars = [ "tocus", "myLowpolySportsCar", "lowpolyJeep" ];
+  // const allowedCars = [
   //   "skyline",
   //   "drift",
   //   "drift2",
@@ -257,11 +262,12 @@ document.addEventListener("DOMContentLoaded", async function () {
   //   "M3_E30",
   //   "crownVic",
   //   "aventador",
-  //    "porscheCarreraGTConcept2000",
+  //   "porscheCarreraGTConcept2000",
   // ];
   let selectedCar = 0;
   let loadedCar = 0;
   let carRotation = 0;
+  let garageFOV = 30;
 
   const gamepadManager = new GamepadManager();
   const bindsLookup = {
@@ -282,7 +288,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       controller: "A"
     },
     "clutch": {
-      keyboard: "KeyC",
+      keyboard: "KeyF",
       controller: "Y"
     },
     "steer": {
@@ -361,8 +367,6 @@ document.addEventListener("DOMContentLoaded", async function () {
       controller: "A"
     },
   };
-  var keybindings;
-  var controllerUIInteraction;
 
   // Multiplayer
   var ws;
@@ -386,10 +390,32 @@ document.addEventListener("DOMContentLoaded", async function () {
   renderer.disableContextMenu();
   renderer.canvas.style.position = "fixed";
 
+  renderer.on("mousemove", () => {
+    if (renderer.getActiveScene() !== garageScene) {
+      return;
+    }
+
+    if (!renderer.mouse.left) {
+      return;
+    }
+
+    carRotation += renderer.mouse.movement.x * 0.01;
+  });
+
+  renderer.on("scroll", () => {
+    if (renderer.getActiveScene() !== garageScene) {
+      return;
+    }
+
+    garageFOV += renderer.mouse.scroll.y * 0.01;
+    garageFOV = clamp(garageFOV, 10, 40);
+    garageCamera.setFOV(garageFOV);
+  });
+
   window.isDay = isDay;
   const settingsManager = new SettingsManager();
-  keybindings = new Keybindings(renderer, gamepadManager, bindsLookup);
-  controllerUIInteraction = new ControllerUIInteraction(keybindings);
+  const keybindings = new Keybindings(renderer, gamepadManager, bindsLookup);
+  const controllerUIInteraction = new ControllerUIInteraction(keybindings);
 
   // Scene
   setProgress(currentTask++, totalTasks, "Loading scene");
@@ -400,6 +426,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   scene.fogDensity = 0.001;
   scene.skyboxFogIntensity = 1;
   scene.environmentMinLight = 0.5;
+  scene.skyboxAnimation.speed = 0.01;
 
   scene.postprocessing.exposure = -5;//-1;
   scene.postprocessing.vignette.amount = 0.3;
@@ -411,14 +438,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   isDay(true);
 
-  // await scene.loadEnvironment({ hdrFolder: "cubemaps/infiniteForestCapture" });
+  await scene.loadEnvironment({ hdrFolder: "cubemaps/lowpolyDesert" });
 
-  await scene.loadEnvironment({
-    // hdr: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr",
-    hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k_precomputed",
-    // hdrFolder: "../assets/hdri/snowy_field_1k",
-    // res: 1024
-  });
+  // await scene.loadEnvironment({
+  //   // hdr: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr",
+  //   hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k_precomputed",
+  //   // hdrFolder: "../assets/hdri/snowy_field_1k",
+  //   // res: 1024
+  // });
 
   // Garage scene
   setProgress(currentTask++, totalTasks, "Generating garage");
@@ -440,7 +467,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   garageScene.add(await renderer.loadGLTF("./garage.glb"));
 
   const garageCamera = new Camera({ fov: 30 });
-  garageCamera.transform.matrix = Matrix.lookAt(new Vector(0, 1.5, 6), new Vector(0, 0.5, 0), Vector.up());
+  garageCamera.transform.matrix = Matrix.lookAt(new Vector(1.5, 1.5, 6), new Vector(1.5, 0.5, 0), Vector.up());
   var resizeEvent = () => {
     garageCamera.setAspect(renderer.aspect);
   };
@@ -449,7 +476,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   // Debugger
   // setProgress(currentTask++, totalTasks, "Initializing debugger");
-  // window.Debug = new GLDebugger(scene);
+  window.Debug = new GLDebugger(scene, 1000);
+  // window.Debug = {
+  //   Bounds: () => {},
+  //   Vector: () => {},
+  //   Point: () => {}
+  // };
 
   // Physics engine
   setProgress(currentTask++, totalTasks, "Initializing physics engine");
@@ -485,225 +517,33 @@ document.addEventListener("DOMContentLoaded", async function () {
       twoTone: 0,
       color1: [0.05, 0.05, 0.05],
     }),
+    blue: new CarPaintMaterial(renderer, carPaintProgram, {
+      flakesNormalTexture: flakes,
+      flakeScale: 10_000,
+      metallic: 1,
+      roughness: 0.5,
+      clearcoatRoughness: 0,
+      clearcoatFactor: 0.5,
+      twoTone: 0,
+      color1: [0.1, 0.1, 0.9],
+    }),
   };
 
   // Load map
   setProgress(currentTask++, totalTasks, "Loading map");
 
   // const { terrain } = await generateCity();
-  const { terrain, checkChunks } = await generateLowpolyForest();
+  // const { terrain, checkChunks } = await generateLowpolyForest();
   // const { terrain, checkChunks } = await generateForest();
   // const { terrain } = await generateTerrain();
-  // const { terrain } = await generatePlayground();
+  const { terrain } = await generatePlayground();
   // const { terrain } = await generateTouge();
 
-  // const terrain = new Terrain(scene, {
-  //   terrainSize: 10_000,
-  //   colliderDepthThreshold: 6,
-  //   // enableCollision: false,
-  // });
-  // terrain.chunkRes = 25;
-
-  // terrain.getHeight = function(i, j) {
-  //   return 0;
-
-  //   var power = 2.5;
-  //   var noiseLayers = 2;
-  //   var noiseScale = 0.001;
-  //   const amplitude = 20;
-
-  //   var heightFalloff = 1;//1 - clamp((Vector.length(new Vector(i, j)) - 400) * 0.005, 0, 1);
-  //   var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * amplitude * heightFalloff;
-
-  //   // elevation *= smoothstep(Math.abs(i), 10, 50);
-
-  //   return elevation;
-  // };
-
-  // var litTerrain = new renderer.ProgramContainer(await renderer.createProgramFromFile(renderer.path + "assets/shaders/custom/webgl2/litTerrain"));
-
-  // // var grassAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/aerial_rocks_02_1k/textures/aerial_rocks_02_diff_1k.jpg", { ...renderer.getSRGBFormats() });
-  // // var grassNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/aerial_rocks_02_1k/textures/aerial_rocks_02_nor_gl_1k.png");
-  // // var grassAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/Grass_001_SD/Grass_001_COLOR.jpg", { ...SRGBFormat });
-  // // var grassNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/Grass_001_SD/Grass_001_NORM.jpg");
-  // // var grassAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/brown_mud_leaves_01_2k_jpg/brown_mud_leaves_01_diff_2k.jpg", { ...SRGBFormat });
-  // // var grassNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/brown_mud_leaves_01_2k_jpg/brown_mud_leaves_01_Nor_2k.jpg");
-
-  // // var stoneAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/rocks_ground_06/diffuse.jpg", { ...SRGBFormat });
-  // // var stoneNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/rocks_ground_06/normal.png");
-
-  // let [
-  //   grassAlbedoImage,
-  //   grassNormalImage,
-  //   stoneAlbedoImage,
-  //   stoneNormalImage,
-  //   snowAlbedoImage,
-  //   snowNormalImage
-  // ] = await Promise.all([
-  //   loadImage(renderer.path + "assets/textures/GroundForest003/GroundForest003_COL_VAR1_3K.jpg"),
-  //   loadImage(renderer.path + "assets/textures/GroundForest003/GroundForest003_NRM_3K.jpg"),
-  //   loadImage(renderer.path + "assets/textures/aerial_rocks_02_1k/textures/aerial_rocks_02_diff_1k.jpg"),
-  //   loadImage(renderer.path + "assets/textures/aerial_rocks_02_1k/textures/aerial_rocks_02_nor_gl_1k.png"),
-  //   loadImage(renderer.path + "assets/textures/Snow/albedo.jpg"),
-  //   loadImage(renderer.path + "assets/textures/Snow/normal.jpg")
-  // ]);
-  
-  // let SRGBFormat = renderer.getSRGBFormats();
-
-  // let grassAlbedo = renderer.loadTexture(grassAlbedoImage, { ...SRGBFormat });
-  // let grassNormal = renderer.loadTexture(grassNormalImage);
-  // let stoneAlbedo = renderer.loadTexture(stoneAlbedoImage, { ...SRGBFormat });
-  // let stoneNormal = renderer.loadTexture(stoneNormalImage);
-  // let snowAlbedo = renderer.loadTexture(snowAlbedoImage, { ...SRGBFormat });
-  // let snowNormal = renderer.loadTexture(snowNormalImage);
-
-  // let terrainMat = renderer.CreateLitMaterial({}, litTerrain);
-  // terrainMat.setUniform("roughness", 1);
-  // terrainMat.setUniform("albedoTextures[0]", [ grassAlbedo, stoneAlbedo, snowAlbedo ]);
-  // terrainMat.setUniform("normalTextures[0]", [ grassNormal, stoneNormal, snowNormal ]);
-
-  // await terrain.loadMaterials(terrainMat);
-
-  // const { roadMaterial, asphaltMaterial } = await createRoadMaterials();
-
-  // const house = scene.add(await renderer.loadGLTF("./house.glb"));
-  // house.children[0].meshRenderer = house.children[0].meshRenderer.getInstanceMeshRenderer();
-
-  // const cityData = [
-  //   1, 1, 1, 1, 1, 1, 1, 1,
-  //   1, 2, 1, 0, 2, 0, 2, 1,
-  //   1, 2, 1, 0, 0, 0, 0, 1,
-  //   1, 1, 1, 1, 1, 1, 0, 1,
-  //   1, 0, 1, 0, 2, 1, 2, 1,
-  //   1, 0, 1, 0, 0, 1, 1, 1,
-  //   1, 0, 1, 0, 2, 0, 0, 1,
-  //   1, 1, 1, 1, 1, 1, 1, 1,
-  // ];
-  // const city = new City(scene, house.children[0].meshRenderer);
-  // city.generate(cityData, 8, 8, { material: roadMaterial, asphaltMaterial });
-
-  // const getTreeDensity = (position) => {
-  //   let i = Math.floor(position.x / 25 + 0.5);
-  //   let j = Math.floor(position.z / 25 + 0.5);
-
-  //   if (i < 0 || j < 0 || i >= 8 || j >= 8) {
-  //     return 1;
-  //   }
-
-  //   if (cityData[i * 8 + j] !== 0) {
-  //     return 0;
-  //   }
-
-  //   return 0.1;
-  // };
-
-  // // let track = await generateTrack({
-  // //   material: roadMaterial
-  // // });
-
-  // // let grass = await renderer.loadGLTF("grass1.glb");
-  // // grass.castShadows = false;
-  // // // grass.children[0].meshRenderer.materials[0].setUniform("albedo", [15, 15, 15, 1]);
-  // // grass.children[0].meshRenderer.materials[0].setUniform("albedo", [6, 8, 6, 1]);
-  // // let grassScatter = terrain.addScatter(grass);
-  // // grass.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
-  // // grassScatter.spawnProbability = (origin) => {
-  // //   if (Vector.lengthSqr(new Vector(origin.x, 0, origin.z)) <= 162 ** 2 && track.curve.distanceSqrToPoint(origin).distance < (track.width / 2) ** 2) {
-  // //     return 0;
-  // //   }
-
-  // //   let p = 1 - smoothstep(origin.y, 80, 100);
-  // //   return p;
-  // // };
-  // let tree = await renderer.loadGLTF("../assets/models/trees/wideTreeBillboard.glb");
-  // tree.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.5);
-  // let treeScatter = terrain.addScatter(tree, 2, 100, 10 * 10 * 5);
-  // tree.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
-  // treeScatter.minScale = 1 * 3;
-  // treeScatter.maxScale = 1.8 * 3;
-  // treeScatter.cross = true;
-  // treeScatter.spawnProbability = getTreeDensity;
-
-  // // // let tree = await renderer.loadGLTF("../assets/models/trees/stylizedAutumnBillboard.glb");
-  // // // let tree = await renderer.loadGLTF("../assets/models/treePbrBillboard.glb");
-  // // let tree = await renderer.loadGLTF("../assets/models/trees/wideTreeBillboard.glb");
-  // // tree.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.5);
-  // // // tree.children[0].meshRenderer.materials[0].programContainer = simpleFoliageProgram;
-  // // let treeScatter = terrain.addScatter(tree, 4, 100, 10 * 10 * 50);
-  // // tree.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
-  // // treeScatter.minScale = 1 * 4;
-  // // treeScatter.maxScale = 1.8 * 4;
-  // // treeScatter.cross = true;
-  // // treeScatter.spawnProbability = (origin) => {
-  // //   if (Vector.lengthSqr(new Vector(origin.x, 0, origin.z)) <= 162 ** 2 && track.curve.distanceSqrToPoint(origin).distance < (track.width / 2) ** 2) {
-  // //     return 0;
-  // //   }
-
-  // //   let p = 1 - clamp(mapValue(origin.y, 10, 50, 1, 0), 0, 0.95);
-  // //   p *= 1 - smoothstep(origin.y, 60, 100);
-  // //   return p;
-  // // };
-
-  // // let pebbles = await renderer.loadGLTF("../assets/models/rock.glb");
-  // // pebbles.castShadows = false;
-  // // let pebblesScatter = terrain.addScatter(pebbles, 2, 20);
-  // // pebblesScatter.minScale = 0.1;
-  // // pebblesScatter.maxScale = 0.15;
-  // // pebbles.children[0].meshRenderer.materials[0].doubleSided = false;
-  // // // pebbles.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
-  // // pebblesScatter.spawnProbability = (origin) => {
-  // //   if (Vector.lengthSqr(new Vector(origin.x, 0, origin.z)) <= 162 ** 2 && track.curve.distanceSqrToPoint(origin).distance < (track.width / 2) ** 2) {
-  // //     return 0;
-  // //   }
-
-  // //   return smoothstep(origin.y, 10, 20);
-  // // };
-
-  // // let rocks = await renderer.loadGLTF("../assets/models/rock.glb");
-  // // let rocksScatter = terrain.addScatter(rocks, 2, 220, 10);
-  // // rocksScatter.minScale = 2;
-  // // rocksScatter.maxScale = 6;
-  // // rocks.children[0].meshRenderer.materials[0].doubleSided = false;
-  // // rocksScatter.spawnProbability = (origin) => {
-  // //   if (Vector.lengthSqr(new Vector(origin.x, 0, origin.z)) <= 162 ** 2 && track.curve.distanceSqrToPoint(origin).distance < (track.width / 2) ** 2) {
-  // //     return 0;
-  // //   }
-
-  // //   return 1;
-  // // };
-  // // // rocks.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
-
-  // // Spawn in everything all at once
-  // terrain.chunkUpdatesPerFrame = 1e6;
-  // terrain.update();
-  // await sleep(5000);
-  // terrain.chunkUpdatesPerFrame = 1;
-
-  // // let m = scene.add(renderer.CreateShape("sphere")).meshRenderer.materials[0];
-  // // m.setUniform("roughness", 0);
-  // // m.setUniform("metallic", 1);
-
-  // // await createChunks();
-
-  // // await loadMap();
-
-  // // Set spawn point
-  // new Vector(0, 0.8, 50, spawnPosition);
-  // Quaternion.euler(0, Math.PI / 2, 0, spawnRotation);
-
-  // var controlPoints = JSON.parse('[{"x":238.9905803198908,"y":11.010891524613218,"z":0},{"x":248.35707929750777,"y":12.723226116925797,"z":180.44198024083917},{"x":86.43430472565373,"y":2.3016814664524694,"z":266.0174367013337},{"x":-68.42980023211553,"y":0.19100462446428695,"z":210.60526962657337},{"x":-291.0143147923255,"y":11.280076252913517,"z":211.43427595496414},{"x":-367.37847338756524,"y":44.89847560608845,"z":4.4990887150972286e-14},{"x":-244.37662920532279,"y":21.023621965313925,"z":-177.55001396826387},{"x":-88.49153796618087,"y":6.502505256081859,"z":-272.34894957783365},{"x":75.79755225098485,"y":0.26559658178005546,"z":-233.28087872103728},{"x":209.2681935881474,"y":11.838977337235947,"z":-152.04224240064795}]');
-  // var crCurve = new CatmullRomCurve(controlPoints, 0.5);
-  // initRoad(crCurve);
-
-  // // Grass
-  // setProgress(10, totalTasks, "Planting trees");
-  // await loadGrass();
-
-  // // Cubemap
+  // // Reflection probe
+  // await sleep(6000);
   // setProgress(currentTask++, totalTasks, "Generating cubemap");
-  // const cubemap = renderer.captureReflectionCubemap(new Vector(0, 2.5, 0));
-  // const oldSkybox = scene.skyboxCubemap;
-  // setProgress(currentTask++, totalTasks, "Loading cubemap");
+  // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 1, 0));
+  // var oldSkybox = scene.skyboxCubemap;
   // await scene.loadEnvironment({ cubemap });
   // scene.skyboxCubemap = oldSkybox;
   // scene.environmentIntensity = 1;
@@ -713,24 +553,58 @@ document.addEventListener("DOMContentLoaded", async function () {
   var models = {};
   var modelOffset = {};
 
-  var i = 0;
-  for (var key of allowedCars) {
+  for (let i = 0; i < allowedCars.length; i++) {
+    const key = allowedCars[i];
+
     setProgress(currentTask++, totalTasks, `Loading car number ${i + 1}: ${key}`);
 
-    var settings = carSettings[key];
+    const settings = carSettings[key];
 
-    var model = await renderer.loadGLTF(settings.model);
+    const model = await renderer.loadGLTF(settings.model);
     models[key] = model;
 
-    var aabb = GetMeshAABB(model);
+    // Apply custom paint material
+    model.traverse(gameObject => {
+      if (gameObject.meshRenderer) {
+        var mats = gameObject.meshRenderer.materials;
+        for (var mat of mats) {
+          if (mat.name.toLowerCase() == "carpaint") {
+            var i = mats.indexOf(mat);
+            mats[i] = paints.blue;
+            mats[i].setUniform("flakeScale", 50);
+          }
+          // mat.uniforms["enableMotionBlur"] = 0;
+        }
+      }
+    });
+
+    const aabb = GetMeshAABB(model);
     modelOffset[key] = Vector.add(Vector.negate(aabb.getCenter()), new Vector(0, aabb.getSize().y / 2, 0));
     model.transform.position = Vector.add(new Vector(i * 5, 0.1, 0), modelOffset[key]);
 
     garageScene.add(model);
 
-    i++;
+    // Add garage listing
+    const item = garageCarList.appendChild(document.createElement("div"));
+    item.classList.add("item", "isSelectable");
 
-    // break;
+    const nameLabel = item.appendChild(document.createElement("span"));
+    nameLabel.classList.add("name");
+    nameLabel.textContent = settings.name;
+    
+    item.onSelect = () => {
+      selectedCar = clamp(i, 0, Object.keys(models).length - 1);
+      setCarName();
+    };
+
+    item.addEventListener("click", () => {
+      if (selectedCar == i) {
+        window.selectCar();
+        return;
+      }
+
+      controllerUIInteraction.selectElement(item);
+    });
   }
 
   // Load car
@@ -741,19 +615,46 @@ document.addEventListener("DOMContentLoaded", async function () {
   let car;
   car = await loadCar(carSettings[carKey].settings, carModel);
 
+  const treeHandler = new TreeHandler(scene, car.mainCamera, "../assets/models/trees/myFirstTreeLOD/myFirstTreeLOD.glb", [
+    40,
+    80,
+    Infinity
+  ]);
+  await treeHandler.setup();
+
+  const area = 500;
+  for (let i = 0; i < 3_000; i++) {
+    const x = (prng.random() - 0.5) * 2 * area;
+    const z = (prng.random() - 0.5) * 2 * area;
+    const y = 0;
+
+    const position = { x, y, z };
+    const scale = Vector.fill(2 + prng.random());
+    const rotationY = prng.random() * Math.PI * 2;
+
+    const instance = Matrix.identity();
+    Matrix.applyTranslation(position, instance);
+    Matrix.applyScale(scale, instance);
+    Matrix.applyRotationY(rotationY, instance);
+    
+    treeHandler.addTree(instance);
+  }
+
+  for (const child of treeHandler.treeParent.children) {
+    child.forceAABBUpdate();
+    // console.log(child.getAABB());
+
+    const aabb = child.getAABB();
+    new Vector(-500, -20, -500, aabb.bl);
+    new Vector(500, 20, 500, aabb.tr);
+  }
+
   setProgress(currentTask++, totalTasks, "Finalizing physics colliders");
   physicsEngine.setupMeshCollider();
 
-  // Reflection probe
-  // bruh diffuse not generating correctly :(
-  // if (car) {
-  //   setProgress(currentTask++, totalTasks, "Generating cubemap");
-  //   var cubemap = renderer.captureReflectionCubemap(Vector.add(car.rb.position, new Vector(0, 6, 0)));
-  //   var oldSkybox = scene.skyboxCubemap;
-  //   await scene.loadEnvironment({ cubemap });
-  //   scene.skyboxCubemap = oldSkybox;
-  //   scene.environmentIntensity = 1;
-  // }
+  // let m = scene.add(renderer.CreateShape("sphere")).meshRenderer.materials[0];
+  // m.setUniform("roughness", 0);
+  // m.setUniform("metallic", 1);
 
   if (!car) {
     var fallbackCamera = new OrbitCamera(renderer, { far: 10_000 });
@@ -776,6 +677,11 @@ document.addEventListener("DOMContentLoaded", async function () {
           rotation: car.rb.rotation,
           velocity: car.rb.velocity,
           angularVelocity: car.rb.angularVelocity,
+          steerInput: car.getRawSteerInput(),
+          driveInput: car.getDriveInput(),
+          ebrakeInput: car.getEbrakeInput(),
+          brakeInput: car.getBrakeInput(),
+          clutchInput: car.getClutchInput()
         });
         sendMessage("getAllPlayers");
       }
@@ -807,6 +713,13 @@ document.addEventListener("DOMContentLoaded", async function () {
             sendLog(`${parsed.data.clientID} has joined`);
             break;
           case "leave":
+            var otherModel = othersModels[parsed.data.clientID];
+            if (otherModel) {
+              otherModel.model.remove();
+            }
+
+            delete othersModels[parsed.data.clientID];
+
             console.log("Player has left!", parsed.data.clientID);
             sendLog(`${parsed.data.clientID} has left`);
             break;
@@ -816,10 +729,11 @@ document.addEventListener("DOMContentLoaded", async function () {
         for (let player of parsed.data) {
           let otherModel = othersModels[player.clientID];
           if (!otherModel) {
-            let model = scene.add(models["skyline"].copy());
-            let car = await loadCar(carSettings["skyline"].settings, model);
-            car.activateAutoCountersteer = false;
-            car.simulateFriction = false;
+            let model = scene.add(models[allowedCars[0]].copy());
+            let car = await loadCar(carSettings[allowedCars[0]].settings, model);
+            // car.activateAutoCountersteer = false;
+            // car.simulateFriction = false;
+            car.update = () => {};
 
             othersModels[player.clientID] = otherModel = {
               model,
@@ -827,12 +741,18 @@ document.addEventListener("DOMContentLoaded", async function () {
             };
           }
 
-          let rb = otherModel.car.rb;
-          let d = player.data;
+          const car = otherModel.car;
+          const rb = car.rb;
+          const d = player.data;
           rb.position = d.position;
           rb.rotation = d.rotation;
           rb.velocity = d.velocity;
           rb.angularVelocity = d.angularVelocity;
+          car.setRawSteerInput(d.steerInput);
+          car.setDriveInput(d.driveInput);
+          car.setEbrakeInput(d.ebrakeInput);
+          car.setBrakeInput(d.brakeInput);
+          car.setClutchInput(d.clutchInput);
         }
       }
     }
@@ -846,11 +766,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     handlePauseChange();
   }, false);
 
-  setProgress(currentTask++, totalTasks, "Done!");
-
   settingsManager.loadSaveData();
-
-  hideElement(loadingOverlay);
 
   if (settingsManager.getSettingValue("Show FPS")) {
     stats = new Stats();
@@ -859,57 +775,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   // createInspector(renderer);
 
-  renderer.on("renderloop", function(frameTime, totalTime) {
+  setProgress(currentTask++, totalTasks, "Done!");
+  hideElement(loadingOverlay);
+
+  renderer.on("renderloop", function(frameTime) {
     ui.clearScreen();
 
     handleInput(frameTime);
 
-    if (renderer.getActiveScene() == scene) {
-      if (!paused) {
-        let currentCamera = car ? car.mainCamera : fallbackCamera.camera;
-
-        // scene.updateLights();
-
-        // terrain.update();
-        terrain?.update(currentCamera.transform);
-
-        physicsEngine.update();
-        if (car) {
-          if (car.rb.position.y < -300) {
-            car.resetGame();
-          }
-
-          car.update(frameTime);
-          car.renderUI(ui);
-        }
-
-        renderer.update(frameTime); // scene.update(frameTime);
-        renderer.render(currentCamera/*, [ snowCamera ]*/);
-      }
+    const activeScene = renderer.getActiveScene();
+    if (activeScene == scene) {
+      handleMainScene(frameTime);
     }
-    else {
-      var carRotQuat = Quaternion.euler(0, carRotation, 0);
-
-      garageScene.root.getChild("spin", true).transform.rotation = carRotQuat;
-
-      var i = 0;
-      for (var key in models) {
-        var model = models[key];
-
-        var target = Vector.add(new Vector((i - selectedCar) * 20, 0.1, 0), modelOffset[key]);
-        Vector.addTo(model.transform.position, Vector.multiply(Vector.subtract(target, model.transform.position), 0.3));
-      
-        model.transform.rotation = carRotQuat;
-
-        model.visible = selectedCar == i;
-
-        i++;
-      }
-
-      carRotation += frameTime * 0.1;
-
-      renderer.update(frameTime);
-      if (!paused) renderer.render(garageCamera);
+    else if (activeScene == garageScene) {
+      handleGarageScene(frameTime);
     }
 
     stats?.update();
@@ -919,6 +798,57 @@ document.addEventListener("DOMContentLoaded", async function () {
   window.scene = scene;
   window.physicsEngine = physicsEngine;
   window.car = car;
+
+  function handleMainScene(frameTime) {
+    if (!paused) {
+      let currentCamera = car ? car.mainCamera : fallbackCamera.camera;
+
+      // scene.updateLights();
+
+      // terrain.update();
+      terrain?.update(currentCamera.transform);
+
+      physicsEngine.update();
+      if (car) {
+        if (car.rb.position.y < -300) {
+          car.resetGame();
+        }
+
+        car.update(frameTime);
+        car.renderUI(ui);
+      }
+
+      renderer.update(frameTime); // scene.update(frameTime);
+      renderer.render(currentCamera/*, [ snowCamera ]*/);
+    }
+  }
+
+  function handleGarageScene(frameTime) {
+    const carRotQuat = Quaternion.euler(0, carRotation, 0);
+
+    garageScene.root.getChild("spin", true).transform.rotation = carRotQuat;
+
+    let i = 0;
+    for (const key in models) {
+      const model = models[key];
+
+      const target = Vector.add(new Vector((i - selectedCar) * 20, 0.1, 0), modelOffset[key]);
+      Vector.addTo(model.transform.position, Vector.multiply(Vector.subtract(target, model.transform.position), 0.3));
+    
+      model.transform.rotation = carRotQuat;
+
+      model.visible = selectedCar == i;
+
+      i++;
+    }
+
+    if (!renderer.mouse.left) {
+      carRotation += frameTime * 0.1;
+    }
+
+    renderer.update(frameTime);
+    if (!paused) renderer.render(garageCamera);
+  }
 
   function isDay(day) {
     if (day) {
@@ -944,43 +874,16 @@ document.addEventListener("DOMContentLoaded", async function () {
       var carModel = scene.add(models[key].copy());
       car = await loadCar(currentCarSettings.settings, carModel);
 
-      // var key = Object.keys(models)[selectedCar];
-      // var currentCarSettings = carSettings[key];
-      // car = new Car(scene, physicsEngine, {
-      //   path: renderer.path,
-      //   keybindings,
-
-      //   ...currentCarSettings.settings
-      // });
-
-      // car.resetPosition = Vector.copy(carResetPosition);
-
-      // var carModel = scene.add(models[key].copy());
-      // carModel.transform.matrix = Matrix.identity();
-      // car.setup(carModel);
-
-      // car.gameObject.traverse(gameObject => {
-      //   if (gameObject.meshRenderer) {
-      //     var mats = gameObject.meshRenderer.materials;
-      //     for (var mat of mats) {
-      //       if (mat.name.toLowerCase() == "carpaint") {
-      //         var i = mats.indexOf(mat);
-      //         mats[i] = paints.darkgray;
-      //         mats[i].setUniform("flakeScale", 50);
-      //       }
-  
-      //       mat.doubleSided = false;
-      //       mat.doubleSidedShadows = false;
-      //     }
-      //   }
-      // });
-
-      // car.rb.position = Vector.subtract(oldPosition, car.bottomOffset);
-
       loadedCar = selectedCar;
+      
     }
 
-    selectCarButton.disabled = loadedCar == selectedCar;
+    for (const child of garageCarList.children) {
+      child.style.background = "";
+    }
+    garageCarList.children[loadedCar].style.background = "red";
+
+    // selectCarButton.disabled = loadedCar == selectedCar;
   };
 
   window.gotoPlayground = function() {
@@ -1004,7 +907,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     // car.rb.position.y = terrain.getHeight(car.rb.position.x, car.rb.position.z) + 1;
 
     car.resetGame();
-    checkChunks?.();
+    window.checkChunks?.();
 
     window.resume();
   };
@@ -1080,15 +983,15 @@ document.addEventListener("DOMContentLoaded", async function () {
       if (keybindings.getInputDown("back")) {
         window.gotoPlayground();
       }
-      if (keybindings.getInputDown("garagePrev")) {
-        garageChangeCar(-1);
-      }
-      if (keybindings.getInputDown("garageNext")) {
-        garageChangeCar(1);
-      }
-      if (keybindings.getInputDown("menuSelect")) {
-        window.selectCar();
-      }
+      // if (keybindings.getInputDown("garagePrev")) {
+      //   garageChangeCar(-1);
+      // }
+      // if (keybindings.getInputDown("garageNext")) {
+      //   garageChangeCar(1);
+      // }
+      // if (keybindings.getInputDown("menuSelect")) {
+      //   window.selectCar();
+      // }
 
       carRotation += -quadraticCurve(deadZone(gamepadManager.getAxis("RSHorizontal"), 0.08)) * frameTime * 5;
     }
@@ -1100,7 +1003,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     selectedCar += dir;
     selectedCar = clamp(selectedCar, 0, Object.keys(models).length - 1);
 
-    selectCarButton.disabled = loadedCar == selectedCar;
+    // selectCarButton.disabled = loadedCar == selectedCar;
     setCarName();
   }
 
@@ -1136,6 +1039,12 @@ document.addEventListener("DOMContentLoaded", async function () {
     if (_scene == garageScene) {
       showElement(garageOverlay);
       setCarName();
+      controllerUIInteraction.selectElement(garageCarList.children[loadedCar]);
+
+      for (const child of garageCarList.children) {
+        child.style.background = "";
+      }
+      garageCarList.children[loadedCar].style.background = "red";
     }
     else {
       hideElement(garageOverlay);
@@ -1151,7 +1060,8 @@ document.addEventListener("DOMContentLoaded", async function () {
     garageOverlay.querySelectorAll(".stats .value")[1].textContent = `${css.mass} kg` ?? "UNKNOWN";
     garageOverlay.querySelectorAll(".stats .value")[2].textContent = css.drivetrain ?? "UNKNOWN";
     garageOverlay.querySelectorAll(".stats .value")[3].textContent = Object.keys(Car.ENUMS.DIFFERENTIAL).find(key => Car.ENUMS.DIFFERENTIAL[key] === css.differential) ?? "UNKNOWN";
-    garageOverlay.querySelectorAll(".stats .value")[4].textContent = css.friction ?? "UNKNOWN";
+    garageOverlay.querySelectorAll(".stats .value")[4].textContent = `Friction: ${css.friction}` ?? "UNKNOWN";
+    garageOverlay.querySelectorAll(".stats .value")[5].textContent = `${css.maxSteerAngle} deg` ?? "UNKNOWN";
   }
 
   async function loadCar(settings, model) {
@@ -1175,7 +1085,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         for (var mat of mats) {
           if (mat.name.toLowerCase() == "carpaint") {
             var i = mats.indexOf(mat);
-            mats[i] = paints.darkgray;
+            mats[i] = paints.blue;
             mats[i].setUniform("flakeScale", 50);
 
             // mat.setUniform("albedo", [1, 0, 0, 1]);
@@ -1371,6 +1281,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   // Flat playground with jumps
   async function generatePlayground() {
+    scene.postprocessing.exposure = -0.5;
+    scene.environmentIntensity = 1;
+    scene.environmentMinLight = 0.2;
+    scene.sunIntensity = Vector.fill(10);
+
     const mapPath = "playground.glb";
     const colliderPath = "playground.glb";
 
@@ -1380,12 +1295,60 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     if (colliderPath) {
       var collider = await renderer.loadGLTF(colliderPath, { loadMaterials: false, loadNormals: false, loadTangents: false });
+      collider.visible = false;
       collider.transform.set(map.transform);
+      scene.add(collider);
+
       physicsEngine.addMeshCollider(collider);
+
+      console.log(collider);
+
+      // for (const child of collider.children) {
+      //   child.addComponent(new MeshCollider());
+      // }
+
+      collider.children[0].addComponent(new MeshCollider());
+      collider.children[6].addComponent(new MeshCollider());
     }
 
-    new Vector(0, 1, 0, spawnPosition);
-    Quaternion.euler(0, 0, Math.PI * 0.27, spawnRotation);
+    const roadSign = await renderer.loadGLTF("./varberg.glb");
+    scene.add(roadSign);
+    roadSign.transform.position.y = 1;
+    roadSign.transform.position.z = -10;
+
+    // const simpleFoliageProgram = new renderer.CustomProgram(simpleFoliage.basic);
+
+    // for (let i = 0; i < 4; i++) {
+    //   const tree = scene.add(await renderer.loadGLTF("../assets/models/trees/jacaranda-lod0.glb"));
+    //   tree.transform.position.x = i * 10;
+    //   tree.transform.position.y = 0;
+    //   tree.transform.position.z = -20;
+    //   // tree.transform.scale = Vector.fill(0.5 + Math.random() * 0.6);
+
+    //   tree.children[2].meshRenderer.materials[1].programContainer = simpleFoliageProgram;
+    // }
+
+    // const tree = scene.add(await renderer.loadGLTF("../assets/models/trees/jacaranda-lod1.glb"));
+    // tree.transform.position.y = 0;
+    // tree.transform.position.z = -40;
+    // tree.children[2].meshRenderer.materials[0].programContainer = simpleFoliageProgram;
+
+    // {
+    //   const tree = scene.add(await renderer.loadGLTF("../assets/models/trees/myFirstTreeObj/myFirstTreeImposter.glb", { loadVertexColors: false }));
+    //   tree.transform.position.y = 0;
+    //   tree.transform.position.z = -60;
+    //   tree.castShadows = false;
+    //   tree.receiveShadows = false;
+    //   // tree.children[2].meshRenderer.materials[0].programContainer = simpleFoliageProgram;
+    // }
+
+    new Vector(-3, 1, 0, spawnPosition);
+
+    // new Vector(-3, 1, 0, spawnPosition);
+    // Quaternion.euler(0, 0, Math.PI * 0.27, spawnRotation);
+
+    // new Vector(-3, 0.3, 0, spawnPosition);
+    // Quaternion.euler(0, 0, Math.PI * 0.3, spawnRotation);
 
     // initSnow();
 
@@ -1508,7 +1471,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   }
 
   async function generateLowpolyForest() {
-    new Vector(0, 0, 0, spawnPosition);
+    new Vector(0, 0, -25, spawnPosition);
 
     scene.postprocessing.exposure = -0.5;
     scene.environmentIntensity = 1;
@@ -1520,10 +1483,6 @@ document.addEventListener("DOMContentLoaded", async function () {
     // plane.transform.rotation = Quaternion.euler(-Math.PI / 2, 0, 0);
     // plane.transform.scale = Vector.fill(100);
     // plane.addComponent(new MeshCollider());
-
-    let m = scene.add(renderer.CreateShape("sphere")).meshRenderer.materials[0];
-    m.setUniform("roughness", 0);
-    m.setUniform("metallic", 1);
 
     const solidColorInstanceProgram = new renderer.ProgramContainer(await renderer.createProgramFromFile("../assets/shaders/custom/webgl2/solidColor"));
     const aabbVis = scene.add(new GameObject("AABB", {
@@ -1537,16 +1496,23 @@ document.addEventListener("DOMContentLoaded", async function () {
     const signBase = await renderer.loadGLTF("70sign.glb");
 
     const sandMaterial = renderer.CreateLitMaterial({
-      albedo: [0.95 * 0.15, 0.84 * 0.13, 0.6 * 0.1, 1],
+      albedo: [0.1225, 0.0692, 0.035, 1],//[0.95 * 0.15, 0.84 * 0.13, 0.6 * 0.1, 1],
       roughness: 0.5,
       // metallicRoughnessTexture: flakes,
       // normalTexture: flakes,
       // normalStrength: 2
     });
     const roadMaterial = renderer.CreateLitMaterial({
-      albedo: [ 0.01, 0.01, 0.01, 1 ],
-      metallic: 0.5
+      albedoTexture: await renderer.loadTextureAsync("lowpolyRoad.png", { ...renderer.getSRGBFormats(), generateMipmap: false }),
+      albedo: [ 0.3, 0.2, 0.2, 1 ],
+      // albedo: [ 0.01, 0.01, 0.01, 1 ],
+      // metallic: 0.5
     });
+
+    const parkinglotBase = scene.add(renderer.CreateShape("cube", roadMaterial));
+    parkinglotBase.transform.scale = new Vector(20, 1, 120);
+    parkinglotBase.transform.position = new Vector(0, -0.95, -120);
+    parkinglotBase.addComponent(new MeshCollider());
 
     const chunkSize = 300;
     const roadWidth = 10;
@@ -1564,7 +1530,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     points.push(new Vector(0, startY, -chunkSize * 0.2));
 
     for (var i = 1; i < 9; i++) {
-      points.push(new Vector(0, startY, -chunkSize / 2 + i * chunkSize / 3));
+      points.push(new Vector(0, startY, -chunkSize * 0.5 + i * chunkSize / 3));
       // points[points.length - 1].y = terrain.getHeight(points[points.length - 1].x, points[points.length - 1].z);
     }
 
@@ -1574,7 +1540,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       const meshDataData = e.data.meshData;
       meshDataData.indices.target = renderer.gl.ELEMENT_ARRAY_BUFFER;
 
-      const terrain = new GameObject("Extruded curve");
+      const terrain = new GameObject("Lowpoly Terrain");
 
       const meshData = new renderer.MeshData(meshDataData);
       meshData.recalculateTangents();
@@ -1598,7 +1564,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           );
           Vector.addTo(origin, container.transform.position);
           const hit = physicsEngine.Raycast(origin, Vector.down());
-          if (!hit || hit.gameObject == container.getChild("Road")) continue;
+          if (!hit || hit.gameObject != terrain) continue;
 
           const matrix = Matrix.identity();
           Matrix.applyTranslation(hit.point, matrix);
@@ -1621,12 +1587,12 @@ document.addEventListener("DOMContentLoaded", async function () {
           );
           Vector.addTo(origin, container.transform.position);
           const hit = physicsEngine.Raycast(origin, Vector.down());
-          if (!hit || hit.gameObject == container.getChild("Road")) continue;
+          if (!hit || hit.gameObject != terrain) continue;
 
           const matrix = Matrix.identity();
           Matrix.applyTranslation(hit.point, matrix);
           Matrix.applyRotationY(Math.random() * 2 * Math.PI, matrix);
-          Matrix.applyScale(Vector.fill(Math.random() * 0.5 + 1), matrix);
+          Matrix.applyScale(Vector.fill(Math.random() * 0.5 + 0.5), matrix);
 
           ir.addInstance(matrix);
         }
@@ -1648,11 +1614,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 
       if (car.rb.position.z > (chunks.length - 3) * chunkSize) {
         for (let i = 0; i < 3; i++) {
-          yVel += (Math.random() - (0.5 + yVel * 0.02 + startY * 0.1)) * hillyness;
+          yVel += (prng.random() - (0.5 + yVel * 0.02 + startY * 0.1)) * hillyness;
           startY += yVel;
 
           points.push(new Vector(
-            (Math.random() - 0.5) * chunkSize * curveXMax,
+            (prng.random() - 0.5) * chunkSize * curveXMax,
             startY,
             -chunkSize / 2 + (points.length - 1) * chunkSize / 3
           ));
@@ -3190,30 +3156,30 @@ document.addEventListener("DOMContentLoaded", async function () {
       scene.add(container);
 
       if (isForest) {
-        for (let origin of grass) {
-          const p = Vector.add(chunkCenter, origin);
-          const hit = physicsEngine.Raycast(
-            new Vector(p.x, p.y + 50, p.z),
-            Vector.down()
-          );
-          // const hit = { firstHit: { point: p } };
+        // for (let origin of grass) {
+        //   const p = Vector.add(chunkCenter, origin);
+        //   const hit = physicsEngine.Raycast(
+        //     new Vector(p.x, p.y + 50, p.z),
+        //     Vector.down()
+        //   );
+        //   // const hit = { firstHit: { point: p } };
 
-          if (hit) {
-            Vector.set(p, hit.point);
-          }
+        //   if (hit) {
+        //     Vector.set(p, hit.point);
+        //   }
 
-          const minScale = 1;
-          const maxScale = 1.5;
+        //   const minScale = 1;
+        //   const maxScale = 1.5;
 
-          let m = Matrix.transform([
-            ["translate", Vector.add(p, new Vector(0, -0.2, 0))],
-            ["scale", Vector.fill(minScale + Math.random() * (maxScale - minScale))],
-            ["ry", Math.random() * 2 * Math.PI],
-            ["rx", (Math.random() - 0.5) * 0.07],
-            ["rz", (Math.random() - 0.5) * 0.07],
-          ]);
-          instanceGrass.children[0].meshRenderer.addInstance(m);
-        }
+        //   let m = Matrix.transform([
+        //     ["translate", Vector.add(p, new Vector(0, -0.2, 0))],
+        //     ["scale", Vector.fill(minScale + Math.random() * (maxScale - minScale))],
+        //     ["ry", Math.random() * 2 * Math.PI],
+        //     ["rx", (Math.random() - 0.5) * 0.07],
+        //     ["rz", (Math.random() - 0.5) * 0.07],
+        //   ]);
+        //   instanceGrass.children[0].meshRenderer.addInstance(m);
+        // }
 
         for (let origin of trees) {
           const p = Vector.add(chunkCenter, origin);
@@ -3604,14 +3570,16 @@ document.addEventListener("DOMContentLoaded", async function () {
       _soundGroup: new SettingGroup("Sound"),
 
       masterVolume: new SliderSetting("Master volume", 1, value => {
-        if (car) {
+        if (car && car.mainGainNode) {
           car.mainGainNode.gain.value = value;
         }
         saveSettings();
       }, 0, 2, 0.01, true),
 
       haptics: new CheckboxSetting("Haptics", true, value => {
-        car.haptics = value;
+        if (car) {
+          car.haptics = value;
+        }
         saveSettings();
       }),
 

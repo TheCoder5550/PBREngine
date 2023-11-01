@@ -1,0 +1,9 @@
+/*!(m instanceof Material) && */
+
+/**
+ * lil-gui
+ * https://lil-gui.georgealways.com
+ * @version 0.19.0
+ * @author George Michael Brower
+ * @license MIT
+ */

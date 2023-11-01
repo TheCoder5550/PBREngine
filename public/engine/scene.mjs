@@ -5,13 +5,14 @@ import { PostProcessingSettings } from "./postprocessingSettings.mjs";
 import { BloomSettings } from "./bloomSettings.mjs";
 import { NewMaterial } from "./material.mjs";
 
-function Scene(name) {
+export function Scene(name) {
   this.renderer = null;
   this.name = name;
   this.root = new GameObject("root");
 
-  this.sunDirection = Vector.normalize({x: -0.8, y: 1.3, z: -1.2});
-  this.sunIntensity = Vector.multiply(new Vector(1, 0.9, 0.85), 10);
+  this.sunDirection = Vector.normalize({x: -0.8, y: 1.3, z: 1.2});
+  this.sunIntensity = Vector.multiply(new Vector(1, 0.9, 0.85), 5);
+  this.skyboxAnimation = new SkyboxAnimationSettings();
   this.skyboxVisible = true;
   this.smoothSkybox = false;
   this.environmentIntensity = 1;
@@ -98,7 +99,7 @@ function Scene(name) {
       }
       else {
         var program = new this.renderer.ProgramContainer(await this.renderer.createProgramFromFile(this.renderer.path + `assets/shaders/built-in/webgl${this.renderer.version}/procedualSkybox`));
-        var mat = new NewMaterial(program);
+        var mat = new NewMaterial(program, { sunDirection: Vector.toArray(this.sunDirection) });
         this.skyboxCubemap = await this.renderer.createCubemapFromCube(mat, res);
         this.diffuseCubemap = await this.renderer.getDiffuseCubemap(this.skyboxCubemap);
       }
@@ -117,12 +118,21 @@ function Scene(name) {
     return false;
   };
 
+  /**
+   * @description Copies environment cubemaps from 'scene' to this scene
+   * @param {Scene} scene
+  **/
   this.copyEnvironment = function(scene) {
     this.skyboxCubemap = scene.skyboxCubemap;
     this.diffuseCubemap = scene.diffuseCubemap;
     this.specularCubemap = scene.specularCubemap;
   };
 
+  /**
+   * @description Add {@link GameObject} to scene
+   * @param {GameObject} gameObject
+   * @returns {GameObject}
+  **/
   this.add = function(gameObject) {
     if (Array.isArray(gameObject)) {
       return this.root.addChildren(gameObject);
@@ -132,6 +142,11 @@ function Scene(name) {
     }
   };
 
+  /**
+   * @description Removes {@link GameObject} from scene
+   * @param {GameObject} gameObject
+   * @returns {GameObject}
+  **/
   this.remove = function(gameObject) {
     if (Array.isArray(gameObject)) {
       for (var go of gameObject) {
@@ -197,6 +212,7 @@ function Scene(name) {
   // }
 }
 
-export {
-  Scene
-};
+function SkyboxAnimationSettings(settings = {}) {
+  this.speed = settings.speed ?? 0;
+  this.direction = settings.direction ?? new Vector(1, -0.3, 0);
+}

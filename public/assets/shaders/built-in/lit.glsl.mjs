@@ -209,8 +209,8 @@ ${shadowBase}
 
 // PBR
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
-  return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0); // trying this
-  // return F0 + (1.0 - F0) * pow(max(1.0 - cosTheta, 0.0), 5.0);
+  // return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0); // trying this
+  return F0 + (1.0 - F0) * pow(max(1.0 - cosTheta, 0.0), 5.0);
 }
 
 vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
@@ -234,7 +234,7 @@ float GeometrySchlickGGX(float NdotV, float roughness) {
   float r = (roughness + 1.0);
   float k = (r*r) / 8.0;
 
-  float num   = NdotV;
+  float num   = 1.;//NdotV;
   float denom = NdotV * (1.0 - k) + k;
 
   return num / denom;
@@ -277,23 +277,42 @@ vec3 IBL (vec3 N, vec3 V, vec3 R, vec3 albedo, float metallic, float roughness, 
 
 vec3 DirectionalLight (vec3 worldPos, vec3 N, vec3 V, vec3 lightDir, vec3 lightColor, vec3 albedo, float metallic, float roughness, float scalarF0) {
   vec3 L = normalize(lightDir);  
-  vec3 H = normalize(V + L);  
-  vec3 radiance     = lightColor;     
-  vec3 F0 = vec3(scalarF0); 
-  F0      = mix(F0, albedo, metallic);
-  vec3 F  = fresnelSchlick(max(dot(H, V), 0.0), F0);    
-  float NDF = DistributionGGX(N, H, roughness);       
-  float G   = GeometrySmith(N, V, L, roughness);     
-  vec3 nominator    = NDF * G * F;
-  float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001;
-  vec3 specular     = nominator / denominator;
-  vec3 kS = F;
-  vec3 kD = vec3(1.0) - kS;
+  vec3 H = normalize(V + L);
 
-  kD *= 1.0 - metallic;
+  vec3 radiance = lightColor;
   float NdotL = max(dot(N, L), 0.0);
 
+  vec3 F0 = vec3(scalarF0); 
+  F0 = mix(F0, albedo, metallic);
+  vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);    
+
+  // Specular
+  float NDF = DistributionGGX(N, H, roughness);
+  vec3 specular = vec3(0);
+
+  // if (dot(N, V) <= 0.01) {
+  //   float G2 = GeometrySchlickGGX(max(dot(N, L), 0.0), roughness);
+  //   float r1 = (roughness + 1.);
+  //   vec3 numerator = 2. * F * NDF * G2;
+  //   float denominator = max(dot(N, L), 0.0) * r1 * r1 + 0.001;
+  //   specular = numerator / denominator;
+  // }
+  // else {
+    float G = GeometrySmith(N, V, L, roughness);     
+    vec3 numerator = NDF * G * F;
+    // float denominator = 4.0 * max(dot(N, H), 0.0) * max(dot(N, L), 0.0) + 0.001; // incorrect (almost no highlights) but no back-facing normal artifacts
+    float denominator = 4.0;// * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001;
+    specular = numerator / denominator;
+  // }
+
+  // Diffuse
+  vec3 kS = F;
+  vec3 kD = vec3(1.0) - kS;
+  kD *= 1.0 - metallic;
+
+  // Combine
   vec3 finalColor = (kD * albedo / PI + specular) * radiance * NdotL;
+
   return finalColor;
 }
 
@@ -309,7 +328,7 @@ vec3 PositionalLight (vec3 worldPos, vec3 N, vec3 V, vec3 lightPos, vec3 lightCo
   float NDF = DistributionGGX(N, H, roughness);       
   float G   = GeometrySmith(N, V, L, roughness);     
   vec3 nominator    = NDF * G * F;
-  float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001; 
+  float denominator = 4.0;// * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001; 
   vec3 specular     = nominator / denominator;       
   vec3 kS = F;
   vec3 kD = vec3(1.0) - kS;
@@ -336,13 +355,21 @@ vec3 Spotlight (vec3 worldPos, vec3 N, vec3 V, vec3 lightPos, vec3 dir, float an
   float NDF = DistributionGGX(N, H, roughness);       
   float G   = GeometrySmith(N, V, L, roughness);     
   vec3 nominator    = NDF * G * F;
-  float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001; 
+  float denominator = 4.0;// * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001; 
   vec3 specular     = nominator / denominator;       
   vec3 kS = F;
   vec3 kD = vec3(1.0) - kS;
     
   kD *= 1.0 - metallic;     
   float NdotL = max(dot(N, L), 0.0);
+
+  // if (dot(N, V) <= 0.01) {
+  //   float G2 = GeometrySchlickGGX(max(dot(N, L), 0.0), roughness);
+  //   float r1 = (roughness + 1.);
+  //   vec3 numerator = 2. * F * NDF * G2;
+  //   float denominator = max(dot(N, L), 0.0) * r1 * r1 + 0.001;
+  //   specular = numerator / denominator;
+  // }
   
   return (kD * albedo / PI + specular) * radiance * NdotL;  
 }
@@ -375,19 +402,33 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 
   vec3 R = reflect(-V, N);
 
+  vec3 L = normalize(sunDirection.xyz);
+  vec3 H = normalize(V + L);
+
+  // return vec4(vec3(dot(N, V) < 0. ? 1. : 0.), 1);
+  // return vec4(vec3(dot(N, H) < 0. ? 1. : 0.), 1);
+  // return vec4(vec3(dot(N, L) < 0. ? 1. : 0.), 1);
+  // return vec4(vec3(dot(H, V) < 0. ? 1. : 0.), 1);
+
   float f0 = 0.04;
 
   float shadowAmount = getShadowAmount(vPosition, dot(sunDirection.xyz, N));
   // float environmentMinLight = 0.25;
 
   vec3 col = vec3(0);
+
+  // Ambient
   col += ambientColor;
+
+  // Environment
   col += IBL(N, V, R, _albedo.rgb, _metallic, _roughness, f0) * _ao * (environmentMinLight + shadowAmount * (1. - environmentMinLight));
   
+  // Directional sun light
   if (sunIntensity.xyz != vec3(0)) {
     col += DirectionalLight(vPosition, N, V, sunDirection.xyz, sunIntensity.xyz, _albedo.rgb, _metallic, _roughness, f0) * _ao * shadowAmount;
   }
 
+  // Lights
   for (int i = 0; i < int(nrLights); i++) {
     LightInfo light = lights[i];
     if (light.type == 0) {
@@ -401,6 +442,7 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
     }
   }
 
+  // Emission
   col += _emission;
 
   return vec4(col, _albedo.a);
@@ -521,6 +563,7 @@ in vec4 tangent; //in vec3 tangent;
 in vec3 color;
 in vec2 uv;
 in mat4 modelMatrix;
+in float ditherAmount;
 
 out vec3 vPosition;
 out vec3 vNormal;
@@ -529,6 +572,7 @@ out vec3 vColor;
 out vec2 vUV;
 out mat4 vModelMatrix;
 out mat3 vTBN;
+out float vDitherAmount;
 
 const int levels = 2;
 
@@ -551,6 +595,7 @@ void main() {
   vUV = uv;
   vColor = color;
   vModelMatrix = modelMatrix;
+  vDitherAmount = ditherAmount;
 
   vec3 _T = normalize(vec3(modelMatrix * vec4(vTangent.xyz, 0.0)));
   vec3 _B = normalize(vec3(modelMatrix * vec4(cross(vNormal, vTangent.xyz) * vTangent.w, 0.0)));
@@ -688,8 +733,18 @@ ${litBase}
 
 ${fogBase}
 
+uniform float ditherAmount;
+uniform sampler2D ditherTexture;
+
 void main() {
   ${motionBlurMain}
+
+  // Dither
+  float dither = texture(ditherTexture, gl_FragCoord.xy / 8.).r;
+  float d = 1. - ditherAmount;
+  if (d + (d < 0. ? dither : -dither) < 0.) {
+    discard;
+  }
   
   // fragColor = vec4(1, 0, 0, 1);
   // return;
@@ -759,6 +814,9 @@ void main() {
 var webgl2FragmentInstanced = webgl2Fragment;
 webgl2FragmentInstanced = webgl2FragmentInstanced.replace(/modelMatrix/g, "vModelMatrix");
 webgl2FragmentInstanced = webgl2FragmentInstanced.replace(/uniform mat4 vModelMatrix/g, "in mat4 vModelMatrix");
+
+webgl2FragmentInstanced = webgl2FragmentInstanced.replace(/uniform float ditherAmount/g, "in float vDitherAmount");
+webgl2FragmentInstanced = webgl2FragmentInstanced.replace(/ditherAmount/g, "vDitherAmount");
 // bruh
 webgl2FragmentInstanced = webgl2FragmentInstanced.replace("motionVector = (NDCPos - PrevNDCPos).xy * 0.5 + 0.5;", "motionVector = vec2(0.5);");
 

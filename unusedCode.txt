@@ -480,3 +480,245 @@
     throw new Error("No peak found!");
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// const terrain = new Terrain(scene, {
+  //   terrainSize: 10_000,
+  //   colliderDepthThreshold: 6,
+  //   // enableCollision: false,
+  // });
+  // terrain.chunkRes = 25;
+
+  // terrain.getHeight = function(i, j) {
+  //   return 0;
+
+  //   var power = 2.5;
+  //   var noiseLayers = 2;
+  //   var noiseScale = 0.001;
+  //   const amplitude = 20;
+
+  //   var heightFalloff = 1;//1 - clamp((Vector.length(new Vector(i, j)) - 400) * 0.005, 0, 1);
+  //   var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * amplitude * heightFalloff;
+
+  //   // elevation *= smoothstep(Math.abs(i), 10, 50);
+
+  //   return elevation;
+  // };
+
+  // var litTerrain = new renderer.ProgramContainer(await renderer.createProgramFromFile(renderer.path + "assets/shaders/custom/webgl2/litTerrain"));
+
+  // // var grassAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/aerial_rocks_02_1k/textures/aerial_rocks_02_diff_1k.jpg", { ...renderer.getSRGBFormats() });
+  // // var grassNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/aerial_rocks_02_1k/textures/aerial_rocks_02_nor_gl_1k.png");
+  // // var grassAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/Grass_001_SD/Grass_001_COLOR.jpg", { ...SRGBFormat });
+  // // var grassNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/Grass_001_SD/Grass_001_NORM.jpg");
+  // // var grassAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/brown_mud_leaves_01_2k_jpg/brown_mud_leaves_01_diff_2k.jpg", { ...SRGBFormat });
+  // // var grassNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/brown_mud_leaves_01_2k_jpg/brown_mud_leaves_01_Nor_2k.jpg");
+
+  // // var stoneAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/rocks_ground_06/diffuse.jpg", { ...SRGBFormat });
+  // // var stoneNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/rocks_ground_06/normal.png");
+
+  // let [
+  //   grassAlbedoImage,
+  //   grassNormalImage,
+  //   stoneAlbedoImage,
+  //   stoneNormalImage,
+  //   snowAlbedoImage,
+  //   snowNormalImage
+  // ] = await Promise.all([
+  //   loadImage(renderer.path + "assets/textures/GroundForest003/GroundForest003_COL_VAR1_3K.jpg"),
+  //   loadImage(renderer.path + "assets/textures/GroundForest003/GroundForest003_NRM_3K.jpg"),
+  //   loadImage(renderer.path + "assets/textures/aerial_rocks_02_1k/textures/aerial_rocks_02_diff_1k.jpg"),
+  //   loadImage(renderer.path + "assets/textures/aerial_rocks_02_1k/textures/aerial_rocks_02_nor_gl_1k.png"),
+  //   loadImage(renderer.path + "assets/textures/Snow/albedo.jpg"),
+  //   loadImage(renderer.path + "assets/textures/Snow/normal.jpg")
+  // ]);
+  
+  // let SRGBFormat = renderer.getSRGBFormats();
+
+  // let grassAlbedo = renderer.loadTexture(grassAlbedoImage, { ...SRGBFormat });
+  // let grassNormal = renderer.loadTexture(grassNormalImage);
+  // let stoneAlbedo = renderer.loadTexture(stoneAlbedoImage, { ...SRGBFormat });
+  // let stoneNormal = renderer.loadTexture(stoneNormalImage);
+  // let snowAlbedo = renderer.loadTexture(snowAlbedoImage, { ...SRGBFormat });
+  // let snowNormal = renderer.loadTexture(snowNormalImage);
+
+  // let terrainMat = renderer.CreateLitMaterial({}, litTerrain);
+  // terrainMat.setUniform("roughness", 1);
+  // terrainMat.setUniform("albedoTextures[0]", [ grassAlbedo, stoneAlbedo, snowAlbedo ]);
+  // terrainMat.setUniform("normalTextures[0]", [ grassNormal, stoneNormal, snowNormal ]);
+
+  // await terrain.loadMaterials(terrainMat);
+
+  // const { roadMaterial, asphaltMaterial } = await createRoadMaterials();
+
+  // const house = scene.add(await renderer.loadGLTF("./house.glb"));
+  // house.children[0].meshRenderer = house.children[0].meshRenderer.getInstanceMeshRenderer();
+
+  // const cityData = [
+  //   1, 1, 1, 1, 1, 1, 1, 1,
+  //   1, 2, 1, 0, 2, 0, 2, 1,
+  //   1, 2, 1, 0, 0, 0, 0, 1,
+  //   1, 1, 1, 1, 1, 1, 0, 1,
+  //   1, 0, 1, 0, 2, 1, 2, 1,
+  //   1, 0, 1, 0, 0, 1, 1, 1,
+  //   1, 0, 1, 0, 2, 0, 0, 1,
+  //   1, 1, 1, 1, 1, 1, 1, 1,
+  // ];
+  // const city = new City(scene, house.children[0].meshRenderer);
+  // city.generate(cityData, 8, 8, { material: roadMaterial, asphaltMaterial });
+
+  // const getTreeDensity = (position) => {
+  //   let i = Math.floor(position.x / 25 + 0.5);
+  //   let j = Math.floor(position.z / 25 + 0.5);
+
+  //   if (i < 0 || j < 0 || i >= 8 || j >= 8) {
+  //     return 1;
+  //   }
+
+  //   if (cityData[i * 8 + j] !== 0) {
+  //     return 0;
+  //   }
+
+  //   return 0.1;
+  // };
+
+  // // let track = await generateTrack({
+  // //   material: roadMaterial
+  // // });
+
+  // // let grass = await renderer.loadGLTF("grass1.glb");
+  // // grass.castShadows = false;
+  // // // grass.children[0].meshRenderer.materials[0].setUniform("albedo", [15, 15, 15, 1]);
+  // // grass.children[0].meshRenderer.materials[0].setUniform("albedo", [6, 8, 6, 1]);
+  // // let grassScatter = terrain.addScatter(grass);
+  // // grass.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
+  // // grassScatter.spawnProbability = (origin) => {
+  // //   if (Vector.lengthSqr(new Vector(origin.x, 0, origin.z)) <= 162 ** 2 && track.curve.distanceSqrToPoint(origin).distance < (track.width / 2) ** 2) {
+  // //     return 0;
+  // //   }
+
+  // //   let p = 1 - smoothstep(origin.y, 80, 100);
+  // //   return p;
+  // // };
+  // let tree = await renderer.loadGLTF("../assets/models/trees/wideTreeBillboard.glb");
+  // tree.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.5);
+  // let treeScatter = terrain.addScatter(tree, 2, 100, 10 * 10 * 5);
+  // tree.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
+  // treeScatter.minScale = 1 * 3;
+  // treeScatter.maxScale = 1.8 * 3;
+  // treeScatter.cross = true;
+  // treeScatter.spawnProbability = getTreeDensity;
+
+  // // // let tree = await renderer.loadGLTF("../assets/models/trees/stylizedAutumnBillboard.glb");
+  // // // let tree = await renderer.loadGLTF("../assets/models/treePbrBillboard.glb");
+  // // let tree = await renderer.loadGLTF("../assets/models/trees/wideTreeBillboard.glb");
+  // // tree.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.5);
+  // // // tree.children[0].meshRenderer.materials[0].programContainer = simpleFoliageProgram;
+  // // let treeScatter = terrain.addScatter(tree, 4, 100, 10 * 10 * 50);
+  // // tree.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
+  // // treeScatter.minScale = 1 * 4;
+  // // treeScatter.maxScale = 1.8 * 4;
+  // // treeScatter.cross = true;
+  // // treeScatter.spawnProbability = (origin) => {
+  // //   if (Vector.lengthSqr(new Vector(origin.x, 0, origin.z)) <= 162 ** 2 && track.curve.distanceSqrToPoint(origin).distance < (track.width / 2) ** 2) {
+  // //     return 0;
+  // //   }
+
+  // //   let p = 1 - clamp(mapValue(origin.y, 10, 50, 1, 0), 0, 0.95);
+  // //   p *= 1 - smoothstep(origin.y, 60, 100);
+  // //   return p;
+  // // };
+
+  // // let pebbles = await renderer.loadGLTF("../assets/models/rock.glb");
+  // // pebbles.castShadows = false;
+  // // let pebblesScatter = terrain.addScatter(pebbles, 2, 20);
+  // // pebblesScatter.minScale = 0.1;
+  // // pebblesScatter.maxScale = 0.15;
+  // // pebbles.children[0].meshRenderer.materials[0].doubleSided = false;
+  // // // pebbles.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
+  // // pebblesScatter.spawnProbability = (origin) => {
+  // //   if (Vector.lengthSqr(new Vector(origin.x, 0, origin.z)) <= 162 ** 2 && track.curve.distanceSqrToPoint(origin).distance < (track.width / 2) ** 2) {
+  // //     return 0;
+  // //   }
+
+  // //   return smoothstep(origin.y, 10, 20);
+  // // };
+
+  // // let rocks = await renderer.loadGLTF("../assets/models/rock.glb");
+  // // let rocksScatter = terrain.addScatter(rocks, 2, 220, 10);
+  // // rocksScatter.minScale = 2;
+  // // rocksScatter.maxScale = 6;
+  // // rocks.children[0].meshRenderer.materials[0].doubleSided = false;
+  // // rocksScatter.spawnProbability = (origin) => {
+  // //   if (Vector.lengthSqr(new Vector(origin.x, 0, origin.z)) <= 162 ** 2 && track.curve.distanceSqrToPoint(origin).distance < (track.width / 2) ** 2) {
+  // //     return 0;
+  // //   }
+
+  // //   return 1;
+  // // };
+  // // // rocks.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
+
+  // // Spawn in everything all at once
+  // terrain.chunkUpdatesPerFrame = 1e6;
+  // terrain.update();
+  // await sleep(5000);
+  // terrain.chunkUpdatesPerFrame = 1;
+
+  // // let m = scene.add(renderer.CreateShape("sphere")).meshRenderer.materials[0];
+  // // m.setUniform("roughness", 0);
+  // // m.setUniform("metallic", 1);
+
+  // // await createChunks();
+
+  // // await loadMap();
+
+  // // Set spawn point
+  // new Vector(0, 0.8, 50, spawnPosition);
+  // Quaternion.euler(0, Math.PI / 2, 0, spawnRotation);
+
+  // var controlPoints = JSON.parse('[{"x":238.9905803198908,"y":11.010891524613218,"z":0},{"x":248.35707929750777,"y":12.723226116925797,"z":180.44198024083917},{"x":86.43430472565373,"y":2.3016814664524694,"z":266.0174367013337},{"x":-68.42980023211553,"y":0.19100462446428695,"z":210.60526962657337},{"x":-291.0143147923255,"y":11.280076252913517,"z":211.43427595496414},{"x":-367.37847338756524,"y":44.89847560608845,"z":4.4990887150972286e-14},{"x":-244.37662920532279,"y":21.023621965313925,"z":-177.55001396826387},{"x":-88.49153796618087,"y":6.502505256081859,"z":-272.34894957783365},{"x":75.79755225098485,"y":0.26559658178005546,"z":-233.28087872103728},{"x":209.2681935881474,"y":11.838977337235947,"z":-152.04224240064795}]');
+  // var crCurve = new CatmullRomCurve(controlPoints, 0.5);
+  // initRoad(crCurve);
+
+  // // Grass
+  // setProgress(10, totalTasks, "Planting trees");
+  // await loadGrass();
+
+  // // Cubemap
+  // setProgress(currentTask++, totalTasks, "Generating cubemap");
+  // const cubemap = renderer.captureReflectionCubemap(new Vector(0, 2.5, 0));
+  // const oldSkybox = scene.skyboxCubemap;
+  // setProgress(currentTask++, totalTasks, "Loading cubemap");
+  // await scene.loadEnvironment({ cubemap });
+  // scene.skyboxCubemap = oldSkybox;
+  // scene.environmentIntensity = 1;

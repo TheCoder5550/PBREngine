@@ -2,13 +2,15 @@ import Vector from "./engine/vector.mjs";
 import Matrix from "./engine/matrix.mjs";
 import Quaternion from "./engine/quaternion.mjs";
 import { GameObject, FindMaterials, flyCamera, Scene } from "./engine/renderer.mjs";
-import { Rigidbody, BoxCollider, AABB, GetMeshAABB, SphereCollider, PhysicsEngine, MeshCollider } from "./engine/physics.mjs";
-import { clamp,  lerp, mapValue, smoothstep } from "./engine/helper.mjs";
+import { Rigidbody, BoxCollider, AABB, GetMeshAABB, PhysicsEngine } from "./engine/physics.mjs";
+import { clamp, clamp01, smoothstep } from "./engine/helper.mjs";
 import Keybindings from "./keybindingsController.mjs";
 import { Camera } from "./engine/renderer.mjs";
 import GamepadManager, { deadZone, quadraticCurve } from "./gamepadManager.js";
 import Perlin from "./engine/perlin.mjs";
 import GameCanvas from "./gameCanvas-5.0-module.mjs";
+import { AudioListener3D } from "./engine/audioListener3D.mjs";
+import { getSignedDistanceToPlane } from "./engine/algebra.mjs";
 
 const radPerSecToRPM = 30 / Math.PI;
 
@@ -21,7 +23,6 @@ function Trailer(scene, physicsEngine, settings = {}) {
     throw new Error("physicsEngine is not of class 'PhysicsEngine'");
   }
 
-  var _this = this;
   var renderer = scene.renderer;
   let path = settings.path ?? renderer.path ?? "./";
 
@@ -96,10 +97,10 @@ function Trailer(scene, physicsEngine, settings = {}) {
     // this.gameObject.addChild(centerVis);
 
     this.gameObject.addComponent(this.rb);
-    this.gameObject.addComponent(new BoxCollider(new AABB(
-      Vector.divide(boxSize, -2),
-      Vector.divide(boxSize, 2)
-    ), -1000));
+    // this.gameObject.addComponent(new BoxCollider(new AABB(
+    //   Vector.divide(boxSize, -2),
+    //   Vector.divide(boxSize, 2)
+    // ), -1000));
 
     // var wheelModel = this.gameObject.getChild("WheelModel", true);
     // var staticWheelModel = this.gameObject.getChild("WheelModelStatic", true);
@@ -673,14 +674,14 @@ function Car(scene, physicsEngine, settings = {}) {
   this.followCamera.followHeight = cameraSettings.followHeight ?? 0.4;
   this.followCamera.followSpeed = cameraSettings.followSpeed ?? 0.05;
   this.followCamera.pitch = cameraSettings.pitch ?? 0.15;
-  this.followCamera.accelerationSpeed = cameraSettings.accelerationSpeed ?? 0.05;
-  this.followCamera.accelerationEffect = cameraSettings.accelerationEffect ?? 0.3;
+  this.followCamera.accelerationSpeed = cameraSettings.accelerationSpeed ?? 0.07;
+  this.followCamera.accelerationEffect = cameraSettings.accelerationEffect ?? 0.45;
 
   var cameraControllers = [
     this.followCamera,
     new SpectatorCamera(this),
     new HoodFollowCamera(this),
-    new InteriorFollowCamera(this),
+    // new InteriorFollowCamera(this),
     new PhotoCamera(this),
   ];
   var currentCameraControllerIndex = 0;
@@ -743,7 +744,6 @@ function Car(scene, physicsEngine, settings = {}) {
 
   let highestSkidFreq = 1;
   let highestSkidVolume = 0;
-  let activateTCS = false;
   let throttleLimit = 1;
 
   // Object pool
@@ -777,14 +777,52 @@ function Car(scene, physicsEngine, settings = {}) {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     this.audioContext = new AudioContext();
 
+    this.audioListener3D = new AudioListener3D(this.audioContext);
+
     this.mainGainNode = this.audioContext.createGain();
     this.mainGainNode.connect(this.audioContext.destination);
+
+    const pannerModel = "HRTF";
+
+    const distanceModel = "exponential";
+    // const maxDistance = 30;
+    const refDistance = 1;
+    const rollOff = 0.25;
+  
+    const innerCone = 360;
+    const outerCone = 360;
+    const outerGain = 0;
+
+    const orientationX = 0.0;
+    const orientationY = 0.0;
+    const orientationZ = -1.0;
+
+    const position = Vector.zero();
+
+    this.panner = new PannerNode(this.audioContext, {
+      panningModel: pannerModel,
+      distanceModel: distanceModel,
+      positionX: position.x,
+      positionY: position.y,
+      positionZ: position.z,
+      orientationX: orientationX,
+      orientationY: orientationY,
+      orientationZ: orientationZ,
+      refDistance: refDistance,
+      // maxDistance: maxDistance,
+      rolloffFactor: rollOff,
+      coneInnerAngle: innerCone,
+      coneOuterAngle: outerCone,
+      coneOuterGain: outerGain
+    });
+
+    this.panner.connect(this.mainGainNode);
     
     loadSample(this.audioContext, this.skidAudioSource).then(sample => {
       var { source, gainNode } = playSample(this.audioContext, sample);
       this.skidSource = source;
       this.skidGain = gainNode;
-      this.skidGain.connect(this.mainGainNode);
+      this.skidGain.connect(this.panner);
   
       gainNode.gain.value = 0;
     });
@@ -793,7 +831,7 @@ function Car(scene, physicsEngine, settings = {}) {
       var { source, gainNode } = playSample(this.audioContext, sample);
       this.offroadSource = source;
       this.offroadGain = gainNode;
-      this.offroadGain.connect(this.mainGainNode);
+      this.offroadGain.connect(this.panner);
   
       gainNode.gain.value = 0;
     });
@@ -802,7 +840,7 @@ function Car(scene, physicsEngine, settings = {}) {
       this.bottomOutSample = sample;
     });
 
-    this.engine.setupAudio(this.audioContext, this.mainGainNode);
+    this.engine.setupAudio(this.audioContext, this.panner);
 
     this.horn = new Horn(this.audioContext);
   };
@@ -920,6 +958,8 @@ function Car(scene, physicsEngine, settings = {}) {
     );
     // this.rb.inertia = Vector.fill(this.rb.mass);
 
+    const colliderSize = Vector.compMultiply(boxSize, new Vector(0.8, 0.8, 0.8));
+
     // var colliderVis = renderer.CreateShape("cube");
     // var md = colliderVis.meshRenderer.meshData[0];
     // md.applyTransform(Matrix.scale(Vector.compMultiply(boxSize, new Vector(0.4, 0.4, 0.4))));
@@ -936,10 +976,10 @@ function Car(scene, physicsEngine, settings = {}) {
     // this.gameObject.addChild(centerVis);
 
     this.gameObject.addComponent(this.rb);
-    this.gameObject.addComponent(new BoxCollider(new AABB(
-      Vector.divide(boxSize, -2),
-      Vector.divide(boxSize, 2)
-    ), -1000));
+    // this.gameObject.addComponent(new BoxCollider(new AABB(
+    //   Vector.divide(colliderSize, -2),
+    //   Vector.divide(colliderSize, 2)
+    // ), -1000));
 
     // var wheelModel = this.gameObject.getChild("WheelModel", true);
     // var staticWheelModel = this.gameObject.getChild("WheelModelStatic", true);
@@ -1055,11 +1095,11 @@ function Car(scene, physicsEngine, settings = {}) {
     // lightMaterials.brake = FindMaterials("tex_shiny", this.gameObject)[0];
     // lightMaterials.turnSignal = FindMaterials("Mirror Lamp", this.gameObject)[0];
 
-    lightMaterials.mainFront = FindMaterials("LampWhite", this.gameObject, true)[0];
-    lightMaterials.mainRear = FindMaterials("LampRedLight", this.gameObject, true)[0];
-    lightMaterials.brake = FindMaterials("LampRed", this.gameObject, true)[0];
-    lightMaterials.turnSignal = FindMaterials("LampOrange", this.gameObject, true)[0];
-    lightMaterials.reverseRear = FindMaterials("Reverse", this.gameObject, true)[0];
+    lightMaterials.mainFront = FindMaterials("LampWhite", this.gameObject, true);
+    lightMaterials.mainRear = FindMaterials("LampRedLight", this.gameObject, true);
+    lightMaterials.brake = FindMaterials("LampRed", this.gameObject, true);
+    lightMaterials.turnSignal = FindMaterials("LampOrange", this.gameObject, true);
+    lightMaterials.reverseRear = FindMaterials("Reverse", this.gameObject, true);
 
     this.setLightEmission("mainRear", [1, 0, 0]);
 
@@ -1102,13 +1142,14 @@ function Car(scene, physicsEngine, settings = {}) {
     smoke.startSize = (dst) => {
       Vector.fill(Math.random() * 0.4 + 0.2, dst);
     };
-    smoke.endSize = (dst) => Vector.fill(3, dst);
-    smoke.emitHealth = 2.5;
+    smoke.endSize = (dst) => Vector.fill(3 * 0.5, dst);
+    smoke.emitHealth = 0.5;//2.5;
     smoke.gravityScale = 0;
     // smoke.wind = (dst) => Vector.zero(dst);
     smoke.drag = 0.1;
     smoke.orientation = "faceCamera";
     smoke.localParticles = false;
+    // smoke.alpha = 0.0; // Will be set every frame
     this.smoke = smoke;
 
     // Grass particles
@@ -1174,7 +1215,7 @@ function Car(scene, physicsEngine, settings = {}) {
     this.rb.torque = Vector.zero();
 
     this.currentGear = 1;
-    this.engine.angularVelocity = 0;
+    this.engine.angularVelocity = this.engine.minRPM / radPerSecToRPM;
     this.clutch.angularVelocity = 0;
 
     for (var wheel of this.wheels) {
@@ -1305,6 +1346,15 @@ function Car(scene, physicsEngine, settings = {}) {
     if (this.frozen) {
       return;
     }
+
+    // Audio
+    this.audioListener3D.setPosition(this.mainCamera.transform.position);
+    this.audioListener3D.setDirection(this.mainCamera.transform.forward, this.mainCamera.transform.up);
+
+    const pos = this.rb.position;
+    this.panner.positionX.value = pos.x;
+    this.panner.positionY.value = pos.y;
+    this.panner.positionZ.value = pos.z;
 
     if (this.horn) {
       if (keybindings.getInputDown("horn")) {
@@ -1637,7 +1687,6 @@ function Car(scene, physicsEngine, settings = {}) {
 
     highestSkidFreq = 1;
     highestSkidVolume = 0;
-    activateTCS = false;
     var lastEngineRPM = this.engine.getRPM();
     let getClutchInput = keybindings.getInput("clutch");
 
@@ -1667,8 +1716,7 @@ function Car(scene, physicsEngine, settings = {}) {
       lastEngineRPM = this.engine.getRPM();
       //
 
-      this.engine.fixedUpdate(dt, activateTCS);
-      activateTCS = false;
+      this.engine.fixedUpdate(dt);
 
       clutchConstraint(this.engine, this.clutch, dt, 1, 1, Math.pow(1 - clutchInput, 4) * this.clutch.impulseCapacity);
 
@@ -1751,7 +1799,7 @@ function Car(scene, physicsEngine, settings = {}) {
             // v.y += 0.5;
           };
           
-          this.smoke.alpha = clamp((Math.abs(speedDiff) - 5) / 10, 0, 1) * 0.1;
+          this.smoke.alpha = clamp((Math.abs(speedDiff) - 5) / 10, 0, 1) * 0.05;
           this.smoke.emit();
 
           // gamepadManager.vibrate(20, 0.5, 0.1);
@@ -1861,7 +1909,7 @@ function Car(scene, physicsEngine, settings = {}) {
       source.playbackRate.value = 0.9 + Math.random() * 0.2;
 
       gainNode.gain.value = clamp(bottomOutStrength / 3000, 0, 1.5);
-      gainNode.connect(this.mainGainNode);
+      gainNode.connect(this.panner);
       
       hasPlayedBottomOutSound = true;
       setTimeout(() => {
@@ -1876,28 +1924,53 @@ function Car(scene, physicsEngine, settings = {}) {
     rawSteerInput = clamp(input, -1, 1);
   };
 
+  this.getRawSteerInput = function() {
+    return rawSteerInput;
+  };
+
   this.setDriveInput = function(input) {
     driveInput = clamp(input, 0, 1);
+  };
+
+  this.getDriveInput = function() {
+    return driveInput;
   };
 
   this.setBrakeInput = function(input) {
     brakeInput = clamp(input, 0, 1);
   };
 
+  this.getBrakeInput = function() {
+    return brakeInput;
+  };
+
   this.setClutchInput = function(input) {
     clutchInput = clamp(input, 0, 1);
+  };
+
+  this.getClutchInput = function() {
+    return clutchInput;
   };
 
   this.setEbrakeInput = function(input) {
     ebrakeInput = clamp(input, 0, 1);
   };
 
+  this.getEbrakeInput = function() {
+    return ebrakeInput;
+  };
+
   this.setLightEmission = function(lightName, value = [0, 0, 0]) {
-    var mat = lightMaterials[lightName];
-    if (mat) {
-      if (!Array.isArray(value)) {
-        value = [value, value, value];
-      }
+    const mats = lightMaterials[lightName];
+    if (!mats) {
+      return;
+    }
+
+    if (!Array.isArray(value)) {
+      value = [value, value, value];
+    }
+
+    for (const mat of mats) {
       mat.setUniform("emissiveFactor", value);
     }
   };
@@ -1977,8 +2050,8 @@ function Car(scene, physicsEngine, settings = {}) {
             let { source, gainNode } = playSample(context, sample);
             i.onSource = source;
             i.onGain = gainNode;
+
             gainNode.connect(mainGainNode);
-        
             gainNode.gain.value = 0;
           });
         }
@@ -1988,8 +2061,8 @@ function Car(scene, physicsEngine, settings = {}) {
             let { source, gainNode } = playSample(context, sample);
             i.offSource = source;
             i.offGain = gainNode;
+
             gainNode.connect(mainGainNode);
-        
             gainNode.gain.value = 0;
           });
         }
@@ -1999,8 +2072,8 @@ function Car(scene, physicsEngine, settings = {}) {
             let { source, gainNode } = playSample(context, sample);
             i.interiorOnSource = source;
             i.interiorOnGain = gainNode;
+
             gainNode.connect(mainGainNode);
-        
             gainNode.gain.value = 0;
           });
         }
@@ -2010,8 +2083,8 @@ function Car(scene, physicsEngine, settings = {}) {
             let { source, gainNode } = playSample(context, sample);
             i.interiorOffSource = source;
             i.interiorOffGain = gainNode;
+
             gainNode.connect(mainGainNode);
-        
             gainNode.gain.value = 0;
           });
         }
@@ -2032,7 +2105,7 @@ function Car(scene, physicsEngine, settings = {}) {
       this.handleAudio();
     };
 
-    this.fixedUpdate = function(dt, activateTCS = false) {
+    this.fixedUpdate = function(dt) {
       let currentTorque = this.torqueLookup(this.getRPM()) * this.torque;
 
       if (this.canThrottle) {
@@ -2043,19 +2116,16 @@ function Car(scene, physicsEngine, settings = {}) {
           virtualDriveInput = clamp(clamp((this.minRPM - this.getRPM()) / 100, 0, 0.4) + virtualDriveInput, 0, 1);
         }
 
-        // bruh works surprisingly well... (on friction approx. eq. to 1)
-        // if (activateTCS) {
-        //   virtualDriveInput *= 0.2;
-        // }
-
-        if (_this.limitReverseSpeed && _this.currentGear === 0 && this.getRPM() >= this.minRPM) {
-          virtualDriveInput *= 0.3;
+        if (_this.limitReverseSpeed && _this.currentGear === 0 && this.getRPM() >= 1600) {
+          virtualDriveInput *= clamp(this.getRPM() / this.maxRPM + 0.1, 0.3, 1);//0.3;
         }
 
         // var targetRPM = driveInput * this.maxRPM;
         // if (this.getRPM() < targetRPM) {
-          this.angularVelocity += virtualDriveInput * /*clamp(Math.abs(this.getRPM() - targetRPM) / 500, 0, 1) **/ currentTorque / this.inertia * dt;
+        //   this.angularVelocity += virtualDriveInput * clamp(Math.abs(this.getRPM() - targetRPM) / 500, 0, 1) * currentTorque / this.inertia * dt;
         // }
+
+        this.angularVelocity += virtualDriveInput * currentTorque / this.inertia * dt;
 
         if (virtualDriveInput && this.getRPM() > this.maxRPM) {
           this.angularVelocity = this.maxRPM / radPerSecToRPM + 10;
@@ -2074,6 +2144,13 @@ function Car(scene, physicsEngine, settings = {}) {
     this.handleAudio = function() {
       var rpm = clamp(this.getRPM(), 0, this.maxRPM);
 
+      const diff = Vector.normalize(Vector.subtract(_this.mainCamera.transform.position, _this.rb.position));
+      const velocity = _this.rb.velocity;
+      const relativeVelocity = Vector.dot(diff, velocity);
+
+      const soundSpeed = 343;
+      const dopplerCoeff = Math.max(0, soundSpeed / (soundSpeed - relativeVelocity));
+
       for (let sample of samples) {
         var x = rpm;
         var a = sample.from;
@@ -2090,12 +2167,12 @@ function Car(scene, physicsEngine, settings = {}) {
           if (_this.getCurrentCameraController() instanceof InteriorFollowCamera) {
             if (sample.interiorOnGain) {
               sample.interiorOnGain.gain.value = volume * 0.3 * rpmChange;
-              sample.interiorOnSource.playbackRate.value = rpm / (sample.baseRPM * baseMult);
+              sample.interiorOnSource.playbackRate.value = rpm / (sample.baseRPM * baseMult) * dopplerCoeff;
             }
 
             if (sample.interiorOffGain) {
               sample.interiorOffGain.gain.value = volume * 0.4 * (1 - rpmChange); 
-              sample.interiorOffSource.playbackRate.value = rpm / (sample.baseRPM * baseMult);
+              sample.interiorOffSource.playbackRate.value = rpm / (sample.baseRPM * baseMult) * dopplerCoeff;
             }
 
             if (sample.onGain) {
@@ -2108,12 +2185,12 @@ function Car(scene, physicsEngine, settings = {}) {
           else {
             if (sample.onGain) {
               sample.onGain.gain.value = volume * 0.3 * rpmChange;
-              sample.onSource.playbackRate.value = rpm / (sample.baseRPM * baseMult);
+              sample.onSource.playbackRate.value = rpm / (sample.baseRPM * baseMult) * dopplerCoeff;
             }
 
             if (sample.offGain) {
               sample.offGain.gain.value = volume * 0.4 * (1 - rpmChange); 
-              sample.offSource.playbackRate.value = rpm / (sample.baseRPM * baseMult);
+              sample.offSource.playbackRate.value = rpm / (sample.baseRPM * baseMult) * dopplerCoeff;
             }
 
             if (sample.interiorOnGain) {
@@ -2177,6 +2254,8 @@ function Car(scene, physicsEngine, settings = {}) {
     };
 
     this.torqueLookup = function(rpm) {
+      // return 1;
+
       return (-Math.pow(Math.abs((rpm - 4600) / 145), 1.4) + 309) / 309;
     };
   }
@@ -2202,7 +2281,7 @@ function Car(scene, physicsEngine, settings = {}) {
     b.angularVelocity += impulses[1] / b.inertia;
   }
 
-  function gearConstraint(a, b, dt, ra = 1, rb = 1, maxImpulse = Infinity) {
+  function gearConstraint(a, b, dt, ra = 1, rb = 1/*, maxImpulse = Infinity*/) {
     var biasFactor = 0;
     var C = a.angle / ra - b.angle / rb;
     var jacobian = [1 / ra, -1 / rb];
@@ -2219,7 +2298,7 @@ function Car(scene, physicsEngine, settings = {}) {
     var angVelDiff = (a.angularVelocity - b.angularVelocity) * LSDFactor;
 
     var biasFactor = 0;
-    var maxImpulse = Infinity;
+    // var maxImpulse = Infinity;
     var C = 0;
     var jacobian = [0.5, 0.5, -1 / radius];
     var velocities = [a.angularVelocity, b.angularVelocity, m.angularVelocity];
@@ -2260,7 +2339,11 @@ function Car(scene, physicsEngine, settings = {}) {
         // let up = wheel.up;
         // let wheelVelocity = this.rb.GetPointVelocity(worldPos);
 
+        window.Debug?.Vector(ray.origin, ray.direction, wheel.radius + wheel.stopLength * 30);
+
         if (wheel.isGrounded && hit && hit.distance < wheel.suspensionTravel + wheel.radius) {
+          // window.Debug.Point(hit.point, );
+
           Vector.multiply(ray.direction, wheel.radius + wheel.stopLength, _tempVector);
           Vector.add(ray.origin, _tempVector, _furthestPoint);
 
@@ -2271,7 +2354,7 @@ function Car(scene, physicsEngine, settings = {}) {
           // let C = -Vector.dot(Vector.subtract(hit.point, furthestPoint), hit.normal);
 
           if (C < 0) {
-            wheel.isGrounded = true;
+            // wheel.isGrounded = true;
 
             Vector.subtract(_furthestPoint, this.rb.position, _tempVector);
             Vector.cross(_tempVector, hit.normal, _r);
@@ -2430,22 +2513,36 @@ function Car(scene, physicsEngine, settings = {}) {
     let totalForce = new Vector();
 
     var simulateSuspension = (dt) => {
-      for (let wheel of this.wheels) {
-        let ray = wheel.ray;
-        let hit = wheel.groundHit;
-        let worldPos = wheel.worldPos;
-        let up = wheel.up;
+      for (const wheel of this.wheels) {
+        const ray = wheel.ray;
+        const hit = wheel.groundHit;
+        const worldPos = wheel.worldPos;
+        const up = wheel.up;
         this.rb.GetPointVelocity(worldPos, _wheelVelocity);
 
         if (wheel.isGrounded) {
-          let rayDist = hit.distance;
+          const rayDist = hit.distance;
 
           let springError = wheel.suspensionTravel - (rayDist - wheel.radius);
+          Vector.multiply(ray.direction, springError * -wheel.suspensionForce, currentSpringForce);
+
           // let springError = 1 - (rayDist - wheel.radius) / wheel.suspensionTravel;
 
-          // Spring force
-          Vector.multiply(ray.direction, springError * -wheel.suspensionForce, currentSpringForce);
+          // // Spring force
+          // const up = Vector.projectOnPlane(hit.normal, forward);
+          // const springError = -getSignedDistanceToPlane(
+          //   Vector.add(ray.origin, Vector.multiply(ray.direction, wheel.suspensionTravel)),
+          //   Vector.add(ray.origin, Vector.multiply(ray.direction, hit.distance - wheel.radius)),
+          //   hit.normal
+          // );
+          // Vector.multiply(up, springError * wheel.suspensionForce, currentSpringForce);
           
+          // window.Debug.Vector(
+          //   ray.origin,
+          //   up,
+          //   1
+          // );
+
           // Damping force
           Vector.projectOnPlane(this.rb.velocity, hit.normal, _tempVector);
           Vector.subtract(_wheelVelocity, _tempVector, _tempVector);
@@ -2468,21 +2565,65 @@ function Car(scene, physicsEngine, settings = {}) {
 
   {
     var simulateRollbars = (dt) => {
+      const compensateForFloatingWheels = false;
+      const useGlobalUp = false;
+
       for (let rollbar of this.rollbars) {
         let aComp = rollbar.a.compressionAmount ?? 0;
         let bComp = rollbar.b.compressionAmount ?? 0;
         let force = (aComp - bComp) * this.antiRoll;
 
         if (rollbar.a.isGrounded) {
-          Vector.multiply(rollbar.a.up, (rollbar.b.isGrounded ? 1 : 2) * force * dt, _tempVector);
+          const forceMult = compensateForFloatingWheels ? (rollbar.b.isGrounded ? 1 : 2) : 1;
+          const up = useGlobalUp ? Vector.up() : rollbar.a.up;
+
+          Vector.multiply(up, forceMult * force * dt, _tempVector);
           this.rb.AddImpulseAtPosition(_tempVector, rollbar.a.worldPos);
         }
 
         if (rollbar.b.isGrounded) {
-          Vector.multiply(rollbar.b.up, (rollbar.a.isGrounded ? 1 : 2) * -force * dt, _tempVector);
+          const forceMult = compensateForFloatingWheels ? (rollbar.a.isGrounded ? 1 : 2) : 1;
+          const up = useGlobalUp ? Vector.up() : rollbar.b.up;
+
+          Vector.multiply(up, forceMult * -force * dt, _tempVector);
           this.rb.AddImpulseAtPosition(_tempVector, rollbar.b.worldPos);
         }
       }
+
+      // Compensate by doubling the force on one side when the wheels on the other side is in the air.
+      // for (let rollbar of this.rollbars) {
+      //   let aComp = rollbar.a.compressionAmount ?? 0;
+      //   let bComp = rollbar.b.compressionAmount ?? 0;
+      //   let force = (aComp - bComp) * this.antiRoll;
+
+      //   if (rollbar.a.isGrounded) {
+      //     Vector.multiply(rollbar.a.up, (rollbar.b.isGrounded ? 1 : 2) * force * dt, _tempVector);
+      //     this.rb.AddImpulseAtPosition(_tempVector, rollbar.a.worldPos);
+      //   }
+
+      //   if (rollbar.b.isGrounded) {
+      //     Vector.multiply(rollbar.b.up, (rollbar.a.isGrounded ? 1 : 2) * -force * dt, _tempVector);
+      //     this.rb.AddImpulseAtPosition(_tempVector, rollbar.b.worldPos);
+      //   }
+      // }
+
+      // Makes the car a lot more stable when standing on two wheels (Instead of sliding to the side)
+      // const up = Vector.up();
+      // for (let rollbar of this.rollbars) {
+      //   let aComp = rollbar.a.compressionAmount ?? 0;
+      //   let bComp = rollbar.b.compressionAmount ?? 0;
+      //   let force = (aComp - bComp) * this.antiRoll;
+
+      //   if (rollbar.a.isGrounded) {
+      //     Vector.multiply(up, (rollbar.b.isGrounded ? 1 : 2) * force * dt, _tempVector);
+      //     this.rb.AddImpulseAtPosition(_tempVector, rollbar.a.worldPos);
+      //   }
+
+      //   if (rollbar.b.isGrounded) {
+      //     Vector.multiply(up, (rollbar.a.isGrounded ? 1 : 2) * -force * dt, _tempVector);
+      //     this.rb.AddImpulseAtPosition(_tempVector, rollbar.b.worldPos);
+      //   }
+      // }
     };
   }
 
@@ -2598,10 +2739,6 @@ function Car(scene, physicsEngine, settings = {}) {
           else {
             wheel.throttleLimit = 1;
           }
-
-          // if (this.TCS && Math.abs(wheel.angularVelocity * wheel.radius + forwardVelocity) > 1) {
-          //   activateTCS = true;
-          // }
 
           var rho = Math.sqrt(s * s + a * a);
 
@@ -2847,7 +2984,7 @@ function Car(scene, physicsEngine, settings = {}) {
   
     var steps = max / 1000;
     var tickSize = 0.9;
-    var number = 0;
+    // var number = 0;
     for (let i = 0; i <= 270; i += 270 / steps) {
       let angle = (i + 135) * Math.PI / 180;
       const currentColor = angle >= redStart ? red : tickColor;
@@ -2859,9 +2996,9 @@ function Car(scene, physicsEngine, settings = {}) {
         y + Math.sin(angle) * (size * tickSize),
         currentColor, 1
       );
+
       // ui.text(number, x + Math.cos(angle) * (size * tickSize * 0.9), y + Math.sin(angle) * (size * tickSize * 0.9), size / 8, tickColor);
-  
-      number++;
+      // number++;
     }
   
     ui.resetTextXAlign();
@@ -3157,6 +3294,8 @@ class TPPFollowCamera extends CameraController {
   #cameraShakeTarget = Vector.zero();
   #cameraShake = Vector.zero();
 
+  #smoothUP = Vector.up();
+
   CAMERA_FOLLOW_MODES = { FOLLOW_VELOCITY: 1, FOLLOW_DIRECTION: 2, FOLLOW_INVERSE_DIRECTION: 3 };
   followMode = this.CAMERA_FOLLOW_MODES.FOLLOW_VELOCITY;
   followDistance = 5;
@@ -3172,6 +3311,7 @@ class TPPFollowCamera extends CameraController {
   }
 
   resetForward() {
+    Vector.copy(this.car.gameObject.transform.up, this.#smoothUP);
     this.#cameraCarForward = Matrix.getForward(this.car.gameObject.transform.worldMatrix);
     this.#yVel = 0;
     this.#y = this.car.rb.position.y + 0.15 + this.followHeight / Math.sqrt(1 + this.followHeight ** 2) * this.followDistance;
@@ -3187,10 +3327,10 @@ class TPPFollowCamera extends CameraController {
 
   update(camera, dt) {
     var carWorldMatrix = this.car.gameObject.transform.worldMatrix;
-    var up = Matrix.getUp(carWorldMatrix);
+    // var up = Matrix.getUp(carWorldMatrix);
     var forward = Vector.negate(Matrix.getForward(carWorldMatrix));
 
-    var upAcceleration = Vector.dot(this.car.rb.acceleration, up);
+    // var upAcceleration = Vector.dot(this.car.rb.acceleration, up);
     var forwardAcceleration = Vector.dot(this.car.rb.acceleration, forward);
     if (!isNaN(forwardAcceleration)) {
       this.#currentFollowDistance -= (this.#currentFollowDistance - this.followDistance * (1 + forwardAcceleration / dt * this.accelerationEffect)) * this.accelerationSpeed;
@@ -3210,7 +3350,7 @@ class TPPFollowCamera extends CameraController {
 
     var targetForward;
     if (this.followMode == this.CAMERA_FOLLOW_MODES.FOLLOW_VELOCITY) {
-      if (Vector.length(planeVelocity) > 1) {
+      if (Vector.length(planeVelocity) > 3) {
         targetForward = Vector.negate(Vector.normalize(planeVelocity));
         // targetForward = Vector.slerp(targetForward, Vector.negate(forward), 0.2 * 0);
         // cameraCarForward = Vector.negate(targetForward);
@@ -3218,6 +3358,9 @@ class TPPFollowCamera extends CameraController {
       else {
         targetForward = Vector.negate(forward);
       }
+
+      // targetForward = Vector.slerp(forward, Vector.normalize(planeVelocity), clamp(Vector.length(planeVelocity) / 3 - 1, 0, 1));
+      // Vector.negateTo(targetForward);
     }
     else if (this.followMode == this.CAMERA_FOLLOW_MODES.FOLLOW_DIRECTION) {
       targetForward = Vector.negate(forward);
@@ -3231,9 +3374,25 @@ class TPPFollowCamera extends CameraController {
     }
     // targetForward = Quaternion.QxV(Quaternion.angleAxis(cameraTurnAngle, this.car.gameObject.transform.up/*Vector.up()*/), targetForward);
 
-    this.#cameraCarForward = Vector.slerp(this.#cameraCarForward, targetForward, followSpeed);
+    // Smooth forward direction
+    Vector.slerp(this.#smoothUP, this.car.gameObject.transform.up, followSpeed * 0.5, this.#smoothUP);
+    const up = Vector.up();//this.#smoothUP;
+    const a = Vector.projectOnPlane(this.#cameraCarForward, up);
+    const b = Vector.projectOnPlane(targetForward, up);
+
+    Vector.normalizeTo(a);
+    Vector.normalizeTo(b);
+
+    const angle = Math.acos(Vector.dot(a, b));
+    const cross = Vector.cross(a, b);
+    const sign = Math.sign(Vector.dot(cross, up));
+    Quaternion.QxV(Quaternion.angleAxis(followSpeed * angle * sign, up), a, this.#cameraCarForward);
+
+    // this.#cameraCarForward = Vector.slerp(this.#cameraCarForward, targetForward, followSpeed);
+    
+    // Apply user camera rotation
     var currentForward = Vector.copy(this.#cameraCarForward);
-    currentForward = Quaternion.QxV(Quaternion.angleAxis(this.#smoothTurnAngle, this.car.gameObject.transform.up), currentForward);
+    currentForward = Quaternion.QxV(Quaternion.angleAxis(this.#smoothTurnAngle, Vector.up()/*this.car.gameObject.transform.up*/), currentForward);
 
     var finalCameraDir = null;
 
@@ -3269,7 +3428,7 @@ class TPPFollowCamera extends CameraController {
     this.#y += this.#yVel * dt;
 
     camera.transform.position = Vector.add(origin, finalCameraDir);
-    camera.transform.position.y = this.#y;
+    // camera.transform.position.y = this.#y;
     camera.transform.matrix = Matrix.lookAt(camera.transform.position, origin);
     
     Matrix.rotateX(camera.transform.matrix, pitch, camera.transform.matrix);
@@ -3391,24 +3550,25 @@ class InteriorFollowCamera extends CameraController {
 }
 
 class PhotoCamera extends CameraController {
+  #position = Vector.zero();
   #cameraEulerAngles = Vector.zero();
-  #initialFov = 45;
+  #oldFOV = 45;
 
   constructor(car) {
     super();
     this.car = car;
-    this.#initialFov = this.car.mainCamera.getFOV();
   }
 
   onReset() {
   }
 
   onActivate() {
+    this.#oldFOV = this.car.mainCamera.getFOV();
     this.car.rb.frozen = true;
   }
 
   onDeactivate() {
-    this.car.mainCamera.setFOV(this.#initialFov);
+    this.car.mainCamera.setFOV(this.#oldFOV);
     this.car.rb.frozen = false;
   }
 
@@ -3425,14 +3585,18 @@ class PhotoCamera extends CameraController {
 
     var speed = 15;
     var c = Math.cos(this.#cameraEulerAngles.x);
-    camera.transform.position.x -= vertical * Math.cos(this.#cameraEulerAngles.y + Math.PI / 2) * speed * dt * c;
-    camera.transform.position.z -= vertical * -Math.sin(this.#cameraEulerAngles.y + Math.PI / 2) * speed * dt * c;
-    camera.transform.position.y -= vertical * Math.sin(this.#cameraEulerAngles.x) * speed * dt;
+    this.#position.x -= vertical * Math.cos(this.#cameraEulerAngles.y + Math.PI / 2) * speed * dt * c;
+    this.#position.z -= vertical * -Math.sin(this.#cameraEulerAngles.y + Math.PI / 2) * speed * dt * c;
+    this.#position.y -= vertical * Math.sin(this.#cameraEulerAngles.x) * speed * dt;
 
-    camera.transform.position.x += horizontal * Math.cos(this.#cameraEulerAngles.y) * speed * dt;
-    camera.transform.position.z += horizontal * -Math.sin(this.#cameraEulerAngles.y) * speed * dt;
+    this.#position.x += horizontal * Math.cos(this.#cameraEulerAngles.y) * speed * dt;
+    this.#position.z += horizontal * -Math.sin(this.#cameraEulerAngles.y) * speed * dt;
+
+    camera.transform.position = this.#position;
 
     flyCamera(this.car.renderer, camera, this.#cameraEulerAngles, dt);
+
+    this.#position = camera.transform.position;
 
     var fovInc = 1 + 0.03 * (this.car.keybindings.gamepadManager.getButton("LS") - this.car.keybindings.gamepadManager.getButton("RS"));
     var newFov = oldFov * fovInc;
@@ -3444,8 +3608,7 @@ class PhotoCamera extends CameraController {
 }
 
 class SpectatorCamera extends CameraController {
-  // #vdt = new Vector();
-
+  #oldFOV = 45;
   #origin = new Vector();
 
   constructor(car) {
@@ -3454,25 +3617,21 @@ class SpectatorCamera extends CameraController {
   }
 
   onActivate(camera) {
+    this.#oldFOV = this.car.mainCamera.getFOV();
     Vector.set(this.#origin, camera.transform.worldPosition);
   }
 
-  update(camera, dt) {
+  onDeactivate() {
+    this.car.mainCamera.setFOV(this.#oldFOV);
+  }
+
+  update(camera) {
     let distance = Vector.distance(this.#origin, this.car.rb.position);
     let fov = 100 / Math.max(0, distance - 5) ** 0.7;
     fov = clamp(fov, 6, 35);
     camera.setFOV(fov);
 
     camera.transform.matrix = Matrix.lookAt(this.#origin, this.car.rb.position);
-
-    // var hoodCamera = this.car.gameObject.getChild("HoodCamera", true);
-    // if (hoodCamera) {
-    //   camera.transform.matrix = hoodCamera.transform.worldMatrix;
-
-    //   Vector.set(this.#vdt, this.car.rb.velocity);
-    //   Vector.multiplyTo(this.#vdt, dt);
-    //   Vector.addTo(camera.transform.position, this.#vdt);
-    // }
   }
 }
 

@@ -107,7 +107,7 @@ class Vector {
   }
 
   static isVectorIsh(v) {
-    return typeof v == "object" && ("x" in v || "y" in v || "z" in v);
+    return v != null && typeof v == "object" && ("x" in v || "y" in v || "z" in v);
   }
 
   static isNaN(v) {
@@ -374,6 +374,16 @@ class Vector {
     var sum = v.x * v.x + v.y * v.y;
     if (v.z) sum += v.z * v.z;
     return sum;
+  }
+
+  // Vector pointing from a to b with length = 1
+  static tangent(a, b, dst) {
+    dst = dst || new Vector();
+
+    Vector.set(dst, b);
+    Vector.subtractTo(dst, a);
+    Vector.normalizeTo(dst);
+    return dst;
   }
 
   static distance(a, b) {

@@ -34,6 +34,10 @@ function clamp(x, a, b) {
   return Math.max(a, Math.min(b, x));
 }
 
+export function clamp01(x) {
+  return clamp(x, 0, 1);
+}
+
 function saturate(t) {
   return clamp(t, 0, 1);
 }

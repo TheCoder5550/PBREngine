@@ -187,20 +187,23 @@ function Softbody(physicsEngine, md) {
       }
 
       // Colliders
-      for (let i in pointMasses) {
-        let pointMass = pointMasses[i];
-        
-        for (let collider of colliders) {
-          collider.constrain(pointMass);
+      // Every other iteration can be skipped since colliders are big and pretty stable
+      if (_ % 3 === 0 || _ === this.constraintIterations - 1) {
+        for (let i in pointMasses) {
+          let pointMass = pointMasses[i];
+          
+          for (let collider of colliders) {
+            collider.constrain(pointMass);
+          }
+
+          // var l = -3;
+          // if (pointMass.position.y < l) {
+          //   pointMass.position.y = l;
+
+          //   // var vel = pointMass.getVelocity();
+          //   // Vector.addTo(pointMass.position, Vector.multiply(vel, -0.5));
+          // }
         }
-
-        // var l = -3;
-        // if (pointMass.position.y < l) {
-        //   pointMass.position.y = l;
-
-        //   // var vel = pointMass.getVelocity();
-        //   // Vector.addTo(pointMass.position, Vector.multiply(vel, -0.5));
-        // }
       }
 
       // Apply all forces for current iteration
@@ -220,7 +223,7 @@ function Softbody(physicsEngine, md) {
     }
 
     // Update physics mesh
-    md.setAttribute("position", md.data.position);
+    // md.setAttribute("position", md.data.position);
     // md.recalculateNormals();
 
     // Update visual mesh
@@ -346,26 +349,53 @@ function PlaneCollider(position, normal) {
   };
 }
 
+const pa = new Vector();
+const ba = new Vector();
+const diff = new Vector();
+const _normal = new Vector();
+const _scaledNormal = new Vector();
+const bah = new Vector();
+const abah = new Vector();
+
 function CapsuleCollider(a, b, radius) {
   this.a = a;
   this.b = b;
   this.radius = radius;
 
   this.constrain = function(pointMass) {
-    let p = pointMass.position;
-    let pa = Vector.subtract(p, this.a);
-    let ba = Vector.subtract(this.b, this.a);
-    let h = clamp(Vector.dot(pa, ba) / Vector.dot(ba, ba), 0, 1);
-    let diff = Vector.subtract(pa, Vector.multiply(ba, h));
-    let normal = Vector.normalize(diff);
-    let distance = Vector.length(diff) - this.radius;
+    Vector.subtract(pointMass.position, this.a, pa);
+    Vector.subtract(this.b, this.a, ba);
+    const h = clamp(Vector.dot(pa, ba) / Vector.dot(ba, ba), 0, 1);
 
-    if (distance < 0) {
-      pointMass.position = Vector.add(Vector.add(this.a, Vector.multiply(ba, h)), Vector.multiply(normal, this.radius));
+    Vector.multiply(ba, h, bah);
+    Vector.subtract(pa, bah, diff);
 
-      // let diff = Vector.subtract(Vector.add(Vector.add(this.a, Vector.multiply(ba, h)), Vector.multiply(normal, this.radius)), p);
-      // Vector.addTo(pointMass.forceToAdd, diff);
+    const lengthSqr = Vector.lengthSqr(diff);
+    const distanceSqr = lengthSqr - this.radius * this.radius;
+
+    if (distanceSqr < 0) {
+      // const distance = Math.sqrt(lengthSqr) - this.radius;
+      Vector.normalize(diff, _normal);
+
+      Vector.add(this.a, bah, abah);
+      Vector.multiply(_normal, this.radius, _scaledNormal);
+      Vector.add(abah, _scaledNormal, pointMass.position);
     }
+    
+    // let p = pointMass.position;
+    // let pa = Vector.subtract(p, this.a);
+    // let ba = Vector.subtract(this.b, this.a);
+    // let h = clamp(Vector.dot(pa, ba) / Vector.dot(ba, ba), 0, 1);
+    // let diff = Vector.subtract(pa, Vector.multiply(ba, h));
+    // let normal = Vector.normalize(diff);
+    // let distance = Vector.length(diff) - this.radius;
+
+    // if (distance < 0) {
+    //   pointMass.position = Vector.add(Vector.add(this.a, Vector.multiply(ba, h)), Vector.multiply(normal, this.radius));
+
+    //   // let diff = Vector.subtract(Vector.add(Vector.add(this.a, Vector.multiply(ba, h)), Vector.multiply(normal, this.radius)), p);
+    //   // Vector.addTo(pointMass.forceToAdd, diff);
+    // }
   };
 }
 

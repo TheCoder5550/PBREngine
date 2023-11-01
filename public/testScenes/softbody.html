@@ -83,11 +83,13 @@
       var physicsEngine = new PhysicsEngine(scene);
       physicsEngine.multipleTimestepsPerFrame = false;
 
-      let sphere = scene.add(renderer.CreateShape("sphere", null, 3));
+      let sphere = scene.add(renderer.CreateShape("sphere", null, 2/*3*/));
       sphere.visible = false;
       sphere.castShadows = false;
       sphere.meshRenderer.materials[0].setUniform("albedoTexture", await renderer.loadTexture("../assets/textures/palette.png"));
       let softbody = new Softbody(physicsEngine, sphere.meshRenderer.meshData[0]);
+      softbody.pressure = 2 * 0.2 * 0.2;
+      softbody.setSpringStrength(0.5 * 0.3);
       window.softbody = softbody;
 
       window.gldebug = new GLDebugger(scene);

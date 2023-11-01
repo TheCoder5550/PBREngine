@@ -1,0 +1,2 @@
+# ASCII to binary fbx
+C:\Users\alfon\Downloads\FbxFormatConverter.exe -c myFirstTree.fbx -o myFirstTree_binary.fbx -binary

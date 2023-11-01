@@ -10,7 +10,7 @@
 import Vector from "./vector.mjs";
 import Matrix from "./matrix.mjs";
 import Quaternion from "./quaternion.mjs";
-import { xor, clamp } from "./helper.mjs";
+import { clamp } from "./helper.mjs";
 
 import {
   AABBToAABB,
@@ -25,111 +25,112 @@ import {
   triangleTriangleIntersection,
   AABBTriangleToAABBTriangle,
 } from "./algebra.mjs";
-import { EventHandler, Scene } from "./renderer.mjs";
+import { EventHandler, GameObject, Scene } from "./renderer.mjs";
+import { CubeGeometry, MeshGeometry, VClip, computeDistance } from "./vclip.mjs";
 
-function CreateCubeCollider(pos, scale, rot) {
-  var aabb = new AABBCollider(Vector.subtract(pos, scale), Vector.add(pos, scale), Matrix.transform([
-    ["rx", rot.x],
-    ["ry", rot.y],
-    ["rz", rot.z]
-  ]));
-  colliders.push(aabb);
-}
+// export function CreateCubeCollider(pos, scale, rot) {
+//   var aabb = new AABBCollider(Vector.subtract(pos, scale), Vector.add(pos, scale), Matrix.transform([
+//     ["rx", rot.x],
+//     ["ry", rot.y],
+//     ["rz", rot.z]
+//   ]));
+//   colliders.push(aabb);
+// }
 
-function AABBCollider(bl, tr, matrix = Matrix.identity(), inverted = false) {
-  this.bl = bl || {x: -5, y: -5, z: -5};
-  this.tr = tr || {x: 5, y: 5, z: 5};
-  this.inverted = inverted;
-  this.matrix = matrix;
-  this.inverseMatrix = Matrix.inverse(this.matrix);
+// export function AABBCollider(bl, tr, matrix = Matrix.identity(), inverted = false) {
+//   this.bl = bl || {x: -5, y: -5, z: -5};
+//   this.tr = tr || {x: 5, y: 5, z: 5};
+//   this.inverted = inverted;
+//   this.matrix = matrix;
+//   this.inverseMatrix = Matrix.inverse(this.matrix);
 
-  this.vertices = [
-    {x: this.tr.x, y: this.tr.y, z: this.tr.z},
-    {x: this.bl.x, y: this.tr.y, z: this.tr.z},
-    {x: this.bl.x, y: this.tr.y, z: this.bl.z},
-    {x: this.tr.x, y: this.tr.y, z: this.bl.z},
+//   this.vertices = [
+//     {x: this.tr.x, y: this.tr.y, z: this.tr.z},
+//     {x: this.bl.x, y: this.tr.y, z: this.tr.z},
+//     {x: this.bl.x, y: this.tr.y, z: this.bl.z},
+//     {x: this.tr.x, y: this.tr.y, z: this.bl.z},
 
-    {x: this.tr.x, y: this.bl.y, z: this.tr.z},
-    {x: this.bl.x, y: this.bl.y, z: this.tr.z},
-    {x: this.bl.x, y: this.bl.y, z: this.bl.z},
-    {x: this.tr.x, y: this.bl.y, z: this.bl.z},
-  ];
+//     {x: this.tr.x, y: this.bl.y, z: this.tr.z},
+//     {x: this.bl.x, y: this.bl.y, z: this.tr.z},
+//     {x: this.bl.x, y: this.bl.y, z: this.bl.z},
+//     {x: this.tr.x, y: this.bl.y, z: this.bl.z},
+//   ];
 
-  this.planes = [
-    [0, 1, 2, 3],
-    [4, 5, 6, 7],
-    [0, 1, 5, 4],
-    [1, 2, 6, 5],
-    [2, 3, 7, 6],
-    [0, 3, 7, 4]
-  ];
+//   this.planes = [
+//     [0, 1, 2, 3],
+//     [4, 5, 6, 7],
+//     [0, 1, 5, 4],
+//     [1, 2, 6, 5],
+//     [2, 3, 7, 6],
+//     [0, 3, 7, 4]
+//   ];
 
-  this.planeNormals = [
-    {x: 0, y: 1, z: 0},
-    {x: 0, y: -1, z: 0},
-    {x: 0, y: 0, z: 1},
-    {x: -1, y: 0, z: 0},
-    {x: 0, y: 0, z: -1},
-    {x: 1, y: 0, z: 0}
-  ];
+//   this.planeNormals = [
+//     {x: 0, y: 1, z: 0},
+//     {x: 0, y: -1, z: 0},
+//     {x: 0, y: 0, z: 1},
+//     {x: -1, y: 0, z: 0},
+//     {x: 0, y: 0, z: -1},
+//     {x: 1, y: 0, z: 0}
+//   ];
 
-  if (this.inverted) {
-    for (var i = 0; i < this.planeNormals.length; i++) {
-      this.planeNormals[i] = Vector.multiply(this.planeNormals[i], -1);
-    }
-  }
+//   if (this.inverted) {
+//     for (var i = 0; i < this.planeNormals.length; i++) {
+//       this.planeNormals[i] = Vector.multiply(this.planeNormals[i], -1);
+//     }
+//   }
 
-  var aabbGameObject = scene.root.getChild("AABB");
-  if (aabbGameObject) {
-    aabbGameObject.meshRenderer.addInstance(Matrix.multiply(Matrix.transform([
-      ["translate", Vector.divide(Vector.add(this.bl, this.tr), 2)],
-      ["sx", (this.tr.x - this.bl.x) / 2],
-      ["sy", (this.tr.y - this.bl.y) / 2],
-      ["sz", (this.tr.z - this.bl.z) / 2]
-    ]), Matrix.copy(this.matrix)));
-  }
+//   var aabbGameObject = scene.root.getChild("AABB");
+//   if (aabbGameObject) {
+//     aabbGameObject.meshRenderer.addInstance(Matrix.multiply(Matrix.transform([
+//       ["translate", Vector.divide(Vector.add(this.bl, this.tr), 2)],
+//       ["sx", (this.tr.x - this.bl.x) / 2],
+//       ["sy", (this.tr.y - this.bl.y) / 2],
+//       ["sz", (this.tr.z - this.bl.z) / 2]
+//     ]), Matrix.copy(this.matrix)));
+//   }
 
-  this.getNormal = function(point) {
-    var aabbPos = Vector.divide(Vector.add(this.bl, this.tr), 2);
-    point = Matrix.matrixToVector(Matrix.multiplyMat4Vec(this.matrix, Matrix.vectorToMatrix(Vector.subtract(point, aabbPos))));
-    point = Vector.add(point, aabbPos);
+//   this.getNormal = function(point) {
+//     var aabbPos = Vector.divide(Vector.add(this.bl, this.tr), 2);
+//     point = Matrix.matrixToVector(Matrix.multiplyMat4Vec(this.matrix, Matrix.vectorToMatrix(Vector.subtract(point, aabbPos))));
+//     point = Vector.add(point, aabbPos);
 
-    var smallestDistance = Infinity;
-    var plane;
+//     var smallestDistance = Infinity;
+//     var plane;
 
-    for (var i = 0; i < this.planes.length; i++) {
-      var normal = this.planeNormals[i];
-      var distance = Vector.dot(normal, Vector.subtract(point, this.vertices[this.planes[i][0]]));
-      var pointOnPlane = Vector.subtract(point, Vector.multiply(normal, distance));
+//     for (var i = 0; i < this.planes.length; i++) {
+//       var normal = this.planeNormals[i];
+//       var distance = Vector.dot(normal, Vector.subtract(point, this.vertices[this.planes[i][0]]));
+//       var pointOnPlane = Vector.subtract(point, Vector.multiply(normal, distance));
 
-      pointOnPlane.x = clamp(pointOnPlane.x, this.bl.x, this.tr.x);
-      pointOnPlane.y = clamp(pointOnPlane.y, this.bl.y, this.tr.y);
-      pointOnPlane.z = clamp(pointOnPlane.z, this.bl.z, this.tr.z);
+//       pointOnPlane.x = clamp(pointOnPlane.x, this.bl.x, this.tr.x);
+//       pointOnPlane.y = clamp(pointOnPlane.y, this.bl.y, this.tr.y);
+//       pointOnPlane.z = clamp(pointOnPlane.z, this.bl.z, this.tr.z);
 
-      distance = Vector.distance(pointOnPlane, point);
+//       distance = Vector.distance(pointOnPlane, point);
 
-      if (distance < smallestDistance) {
-        smallestDistance = distance;
-        plane = i;
-      }
-    }
+//       if (distance < smallestDistance) {
+//         smallestDistance = distance;
+//         plane = i;
+//       }
+//     }
 
-    return {
-      normal: Matrix.matrixToVector(Matrix.multiplyMat4Vec(this.inverseMatrix, Matrix.vectorToMatrix(this.planeNormals[plane]))),
-      distance: smallestDistance
-    };
-  };
+//     return {
+//       normal: Matrix.matrixToVector(Matrix.multiplyMat4Vec(this.inverseMatrix, Matrix.vectorToMatrix(this.planeNormals[plane]))),
+//       distance: smallestDistance
+//     };
+//   };
 
-  this.pointInside = function(point) {
-    var aabbPos = Vector.divide(Vector.add(this.bl, this.tr), 2);
-    point = Matrix.matrixToVector(Matrix.multiplyMat4Vec(this.matrix, Matrix.vectorToMatrix(Vector.subtract(point, aabbPos))));
-    point = Vector.add(point, aabbPos);
+//   this.pointInside = function(point) {
+//     var aabbPos = Vector.divide(Vector.add(this.bl, this.tr), 2);
+//     point = Matrix.matrixToVector(Matrix.multiplyMat4Vec(this.matrix, Matrix.vectorToMatrix(Vector.subtract(point, aabbPos))));
+//     point = Vector.add(point, aabbPos);
 
-    return xor(this.inverted, point.x >= this.bl.x && point.x <= this.tr.x &&
-                              point.y >= this.bl.y && point.y <= this.tr.y &&
-                              point.z >= this.bl.z && point.z <= this.tr.z);
-  };
-}
+//     return xor(this.inverted, point.x >= this.bl.x && point.x <= this.tr.x &&
+//                               point.y >= this.bl.y && point.y <= this.tr.y &&
+//                               point.z >= this.bl.z && point.z <= this.tr.z);
+//   };
+// }
 
 // function MeshCollider(data, matrix = Matrix.identity()) {
 //   this.vertices = data.position.bufferData;
@@ -293,7 +294,7 @@ function Octree(aabb, maxDepth = 5) {
 
     for (let i = 0; i < this.items.length; i++) {
       // if (!output.includes(this.items[i])) {
-        output.push(this.items[i]);
+      output.push(this.items[i]);
       // }
     }
 
@@ -443,7 +444,7 @@ function Octree(aabb, maxDepth = 5) {
 }
 
 function SimpleAABB(bl, tr) {
-  if (typeof window !== 'undefined') window.aabbcalls++;
+  if (typeof window !== "undefined") window.aabbcalls++;
   this.bl = bl;
   this.tr = tr;
 }
@@ -666,14 +667,14 @@ function PhysicsEngine(scene, settings = {}) {
     throw new Error("scene is not of class 'Scene'");
   }
 
-  var physicsEngine = this;
+  const physicsEngine = this;
   this.scene = scene;
 
   this.gravity = new Vector(0, -9.82, 0);
 
   var components = [];
   let constraintsToSolve = [];
-  this.constraintIterations = 20;//5;
+  this.constraintIterations = 100;//20;//5;
   this.constraintBias = 0.4;
 
   this.dt = 1 / 60;
@@ -758,8 +759,6 @@ function PhysicsEngine(scene, settings = {}) {
 
               const indices = []; // bruh gc
               currentOctree._query((cAABB) => rayToAABB(origin, direction, cAABB), indices);
-              
-              // console.log(indices.length);
 
               for (let i = 0; i < indices.length; i++) {
                 const index = indices[i];
@@ -1227,29 +1226,29 @@ function PhysicsEngine(scene, settings = {}) {
           for (let collider of capsuleColliders) {
             hasConstraints = true;
 
-            var mat = Matrix.removeTranslation(Matrix.copy(rigidbody.gameObject.transform.worldMatrix));
-            var a = Vector.add(rigidbody.position, Matrix.transformVector(mat, collider.a));
-            var b = Vector.add(rigidbody.position, Matrix.transformVector(mat, collider.b));
+            let mat = Matrix.removeTranslation(Matrix.copy(rigidbody.gameObject.transform.worldMatrix));
+            let a = Vector.add(rigidbody.position, Matrix.transformVector(mat, collider.a));
+            let b = Vector.add(rigidbody.position, Matrix.transformVector(mat, collider.b));
 
-            var s = Vector.fill(collider.radius * 10);
-            var center = Vector.average(a, b);
-            var q = physicsEngine.octree.queryAABB(new AABB(
+            let s = Vector.fill(collider.radius * 10);
+            let center = Vector.average(a, b);
+            let q = physicsEngine.octree.queryAABB(new AABB(
               Vector.subtract(center, s),
               Vector.add(center, s)
             ))?.triangles;
 
             if (q) {
-              for (var k = 0; k < q.length; k++) {
-                var col = capsuleToTriangle(a, b, collider.radius, q[k][0], q[k][1], q[k][2], true);
+              for (let k = 0; k < q.length; k++) {
+                let col = capsuleToTriangle(a, b, collider.radius, q[k][0], q[k][1], q[k][2], true);
                 if (col) {
                   // bruh getTriangleNormal(q[k]) is good for character controller maybe
-                  var dp = Vector.dot(Vector.up(), col.normal);
-                  var normal = Vector.length(Vector.projectOnPlane(rigidbody.velocity, col.normal)) < 2 && dp > 0.8 ? new Vector(0, 1, 0) : col.normal;
+                  // let dp = Vector.dot(Vector.up(), col.normal);
+                  // let normal = Vector.length(Vector.projectOnPlane(rigidbody.velocity, col.normal)) < 2 && dp > 0.8 ? new Vector(0, 1, 0) : col.normal;
                   
-                  var normal = col.normal;
+                  let normal = col.normal;
 
-                  var depth = col.depth / Vector.dot(normal, col.normal);
-                  var pA = Vector.add(col.point, Vector.multiply(col.normal, -col.depth));
+                  let depth = col.depth / Vector.dot(normal, col.normal);
+                  let pA = Vector.add(col.point, Vector.multiply(col.normal, -col.depth));
 
                   constraintsToSolve.push({
                     C: -depth,
@@ -1276,40 +1275,379 @@ function PhysicsEngine(scene, settings = {}) {
                     rigidbody.groundNormal = normal;
                   }
 
-                  Debug.Vector(pA, normal, depth);
+                  window.Debug.Vector(pA, normal, depth);
                 }
               }
             }
           }
 
-          // Box to plane
-          var boxColliders = rigidbody.gameObject.findComponents("BoxCollider");
-          for (let collider of boxColliders) {
-            hasConstraints = true;
+          let _tmpConstraintsToSolve = [];
 
-            var planeY = collider.planeY;
+          // // Box to plane
+          // var boxColliders = rigidbody.gameObject.findComponents("BoxCollider");
+          // for (let collider of boxColliders) {
+          //   hasConstraints = true;
 
-            var m = collider.gameObject.transform.worldMatrix;
-            for (var point of collider.aabb.getVertices()) {
-              var transformedPoint = Matrix.transformVector(m, point);
+          //   var planeY = -0.5;//collider.planeY;
+
+          //   var m = collider.gameObject.transform.worldMatrix;
+          //   for (var point of collider.aabb.getVertices()) {
+          //     var transformedPoint = Matrix.transformVector(m, point);
               
-              if (transformedPoint.y < planeY) {
-                constraintsToSolve.push({
-                  C: transformedPoint.y - planeY,
-                  bodies: [
-                    {
-                      collider: collider,
-                      body: rigidbody,
-                      normal: Vector.up(),
-                      p: transformedPoint
-                    }
-                  ]
-                });
-              }
+          //     if (transformedPoint.y < planeY) {
+          //       constraintsToSolve.push({
+          //         C: transformedPoint.y - planeY,
+          //         bodies: [
+          //           {
+          //             collider: collider,
+          //             body: rigidbody,
+          //             normal: Vector.up(),
+          //             p: transformedPoint
+          //           }
+          //         ]
+          //       });
+          //     }
+          //   }
+          // }
+
+          // VClip collision
+          const boxColliders = rigidbody.gameObject.findComponents("BoxCollider");
+          for (const boxCollider of boxColliders) {
+            if (!boxCollider.vclipGeometry) {
+              throw new Error("Missing vclip geometry in boxcollider");
+              // continue;
             }
+
+            // Draw bounds of BoxCollider
+            window.Debug.Bounds(boxCollider.aabb, rigidbody.gameObject.transform.worldMatrix);
+
+            this.scene.root.traverseCondition(otherGameObject => {
+              // Don't collide with self
+              if (otherGameObject === gameObject) {
+                return;
+              }
+
+              /**
+               * @type {MeshCollider[]}
+               */
+              const otherMeshColliders = otherGameObject.findComponents("MeshCollider");
+              for (const otherMeshCollider of otherMeshColliders) {
+                if (!otherMeshCollider.vclipGeometry) {
+                  throw new Error("Missing vclip geometry in meshcollider");
+                  // continue;
+                }
+
+                if (!otherMeshCollider.convex) {
+                  continue;
+                }
+
+                // const boxGeometry = new CubeGeometry(rigidbody.gameObject.transform.matrix, Vector.fill(2));
+                // const boxGeometry = new MeshGeometry(rigidbody.gameObject.transform.matrix, rigidbody.gameObject.meshRenderer.meshData[0]);
+                // const otherGeometry = new CubeGeometry(Matrix.translate(new Vector(0, -10.5, 0)), new Vector(50, 20, 50));
+                // const otherGeometry = new MeshGeometry(otherGameObject.transform.matrix, otherGameObject.meshRenderer.meshData[0]);
+                const otherGeometry = otherMeshCollider.vclipGeometry;//new MeshGeometry(otherGameObject.transform.matrix, otherGameObject.meshRenderer.meshData[0]);
+                otherGeometry.updateMatrix(otherGameObject.transform.matrix);
+
+                const getDeepestPenetration = (matrix) => {
+                  const maxIterations = 20;
+
+                  let penetration = false;
+                  const point = new Vector();
+                  const totalTranslation = Vector.zero();
+                  const newBoxGeometry = new MeshGeometry(matrix, rigidbody.gameObject.meshRenderer.meshData[0]);
+
+                  for (let depth = 0; depth < maxIterations; depth++) {
+                    const intersectionData = VClip(otherGeometry, newBoxGeometry);
+                    if (intersectionData.status !== 2) { // 2 = intersection
+                      break;
+                    }
+    
+                    if (!intersectionData.penetrationPoint || !intersectionData.penetrationDepth || !intersectionData.penetrationNormal) {
+                      break;
+                    }
+
+                    intersectionData.featureA.render();
+                    intersectionData.featureB.render();
+                    window.Debug.Vector(intersectionData.penetrationPoint, intersectionData.penetrationNormal, -intersectionData.penetrationDepth, [0, 1, 0]);
+                    window.Debug.Point(intersectionData.penetrationPoint, 0.03, [0, 1, 0.2]);
+
+                    penetration = true;
+
+                    Vector.set(point, Vector.subtract(intersectionData.penetrationPoint, totalTranslation));
+
+                    const translate = Vector.multiply(intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001);
+                    for (const vertex of newBoxGeometry.vertices) {
+                      Vector.addTo(vertex.position, translate);
+                    }
+
+                    Vector.addTo(totalTranslation, translate);
+
+                    // window.Debug.Point(point, 0.02);
+                    // window.Debug.Vector(point, intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001);
+
+                    // return;
+
+                    if (depth == maxIterations - 1) {
+                      console.warn("max");
+                    }
+                  }
+
+                  if (!penetration) {
+                    return null;
+                  }
+
+                  const diff = Vector.copy(totalTranslation);
+                  const normal = Vector.normalize(diff);
+                  const depth = Vector.length(diff);
+
+                  window.Debug.Vector(point, normal, depth, [0, 0, 1]);
+                  window.Debug.Point(point, 0.03, [0, 0.2, 1]);
+
+                  return {
+                    normal,
+                    depth,
+                    point
+                  };
+                };
+
+                // const getContact = (matrix) => {
+                //   return getDeepestPenetration(matrix);
+                // };
+
+                const getContact = (matrix) => {
+                  // const newBoxGeometry = new MeshGeometry(matrix, rigidbody.gameObject.meshRenderer.meshData[0]);
+                  // const newBoxGeometry = new CubeGeometry(matrix, boxCollider.aabb.getSize());
+                  const newBoxGeometry = boxCollider.vclipGeometry;
+                  newBoxGeometry.updateMatrix(matrix);
+
+                  const vclipData = VClip(otherGeometry, newBoxGeometry);
+                  if (vclipData.status !== 1) { // 1 = Not intersecting
+                    return null;
+                  }
+
+                  vclipData.featureA.render();
+                  vclipData.featureB.render();
+
+                  const { pointA, pointB, distance, vector } = computeDistance(vclipData.featureA, vclipData.featureB);
+
+                  const margin = 0.1;
+
+                  if (distance > margin * 2) {
+                    return null;
+                  }
+
+                  const point = pointB;
+                  const normal = Vector.normalize(vector);
+                  const depth = -(distance - margin * 2);
+
+                  // Vector.set(normal, new Vector(0, 1, 0));
+                  // console.log(normal);
+
+                  // if (normal.y < 0) {
+                  //   Vector.negateTo(normal);
+                  //   Vector.set(point, pointB);
+                  // }
+
+                  window.Debug.Point(pointA, 0.05);
+                  window.Debug.Point(pointB, 0.05);
+                  window.Debug.Vector(pointA, vector, 1, [0, 1, 0]);
+                  window.Debug.Vector(point, normal, 1, [1, 1, 0]);
+                  // console.log(point, normal, depth);
+
+                  return {
+                    point,
+                    normal,
+                    depth
+                  };
+                };
+
+                const perturbationAngle = Math.PI * 0.004 * 0.1;
+
+                const getPerturbationMatrix = (baseMatrix, x, z) => {
+                  const matrix = Matrix.copy(baseMatrix);
+                  Matrix.applyRotationX(perturbationAngle * x, matrix);
+                  Matrix.applyRotationZ(perturbationAngle * z, matrix);
+                  return matrix;
+                };
+
+                const matrices = [
+                  // getPerturbationMatrix(rigidbody.gameObject.transform.matrix, 0, 0),
+                  getPerturbationMatrix(rigidbody.gameObject.transform.matrix, 1, 1),
+                  getPerturbationMatrix(rigidbody.gameObject.transform.matrix, 1, -1),
+                  getPerturbationMatrix(rigidbody.gameObject.transform.matrix, -1, 1),
+                  getPerturbationMatrix(rigidbody.gameObject.transform.matrix, -1, -1),
+                ];
+
+                for (const matrix of matrices) {
+                  const penetrationData = getContact(matrix);
+                  if (!penetrationData) {
+                    continue;
+                  }
+
+                  // window.Debug.Point(penetrationData.point, 0.04);
+  
+                  if (this.dt !== 0) {
+                    _tmpConstraintsToSolve.push({
+                      C: -penetrationData.depth,
+                      bodies: [
+                        {
+                          collider: boxCollider,
+                          body: rigidbody,
+                          normal: penetrationData.normal,
+                          p: penetrationData.point,
+                        }
+                      ]
+                    });
+                  }
+                }
+
+                // this.dt = 0;
+                // return;
+
+                // const penetrationData = getDeepestPenetration(rigidbody.gameObject.transform.matrix);
+                // if (!penetrationData) {
+                //   continue;
+                // }
+
+                // _tmpConstraintsToSolve.push({
+                //   C: -penetrationData.depth,
+                //   bodies: [
+                //     {
+                //       collider: boxCollider,
+                //       body: rigidbody,
+                //       normal: penetrationData.normal,
+                //       p: penetrationData.point,
+                //     }
+                //   ]
+                // });
+
+
+
+
+
+                // // const intersectionData = VClip(otherGeometry, boxGeometry);
+                // // if (intersectionData.status !== 2) { // 2 = intersection
+                // //   continue;
+                // // }
+
+                // // // console.log(intersectionData);
+
+                // // if (!intersectionData.penetrationPoint || !intersectionData.penetrationDepth || !intersectionData.penetrationNormal) {
+                // //   continue;
+                // // }
+
+                // // const originalPosition = Vector.copy(rigidbody.gameObject.transform.position);
+                // const point = new Vector();//Vector.copy(intersectionData.penetrationPoint);
+                // let intersection = false;
+
+                // // Vector.addTo(rigidbody.gameObject.transform.position, Vector.multiply(intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001));
+
+                // // window.Debug.Point(point, 0.07);
+                // // window.Debug.Vector(point, intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001);
+
+                // // _tmpConstraintsToSolve.push({
+                // //   C: -(-intersectionData.penetrationDepth + 0.001),
+                // //   bodies: [
+                // //     {
+                // //       collider: boxCollider,
+                // //       body: rigidbody,
+                // //       normal: intersectionData.penetrationNormal,
+                // //       p: Vector.copy(point),
+                // //     }
+                // //   ]
+                // // });
+
+                // // this.dt = 0;
+                // // return;
+
+                // // console.log("---");
+
+                // const totalTranslation = Vector.zero();
+                // const newBoxGeometry = new MeshGeometry(rigidbody.gameObject.transform.matrix, rigidbody.gameObject.meshRenderer.meshData[0]);
+
+                // for (let depth = 0; depth < 40; depth++) {
+                //   // const newBoxGeometry = new CubeGeometry(rigidbody.gameObject.transform.matrix, Vector.fill(2));
+                //   // const newBoxGeometry = new MeshGeometry(rigidbody.gameObject.transform.matrix, rigidbody.gameObject.meshRenderer.meshData[0]);
+                  
+                //   const intersectionData = VClip(otherGeometry, newBoxGeometry);
+                //   if (intersectionData.status !== 2) { // 2 = intersection
+                //     break;
+                //   }
+  
+                //   if (!intersectionData.penetrationPoint || !intersectionData.penetrationDepth || !intersectionData.penetrationNormal) {
+                //     break;
+                //   }
+
+                //   intersection = true;
+
+                //   // window.Debug.Point(intersectionData.featureA.a.position, 0.05);
+                //   // window.Debug.Point(intersectionData.featureA.b.position, 0.05);
+
+                //   Vector.set(point, Vector.subtract(intersectionData.penetrationPoint, totalTranslation));
+                //   // Vector.set(point, Vector.subtract(intersectionData.penetrationPoint, Vector.subtract(rigidbody.gameObject.transform.position, originalPosition)));
+                  
+                //   const translate = Vector.multiply(intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001);
+                //   for (const vertex of newBoxGeometry.vertices) {
+                //     Vector.addTo(vertex.position, translate);
+                //   }
+
+                //   Vector.addTo(totalTranslation, translate);
+                //   // Vector.addTo(rigidbody.gameObject.transform.position, translate);
+                
+                //   // window.Debug.Point(point, 0.02);
+                //   // window.Debug.Vector(point, intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001);
+
+                //   // _tmpConstraintsToSolve.push({
+                //   //   C: -(-intersectionData.penetrationDepth + 0.001),
+                //   //   bodies: [
+                //   //     {
+                //   //       collider: boxCollider,
+                //   //       body: rigidbody,
+                //   //       normal: intersectionData.penetrationNormal,
+                //   //       p: Vector.copy(point),
+                //   //     }
+                //   //   ]
+                //   // });
+
+                //   if (depth == 39) {
+                //     console.log("max");
+                //   }
+                // }
+
+                // if (!intersection) {
+                //   continue;
+                // }
+
+                // // console.log("+++");
+
+                // const diff = Vector.copy(totalTranslation);//Vector.subtract(rigidbody.gameObject.transform.position, originalPosition);
+                // const normal = Vector.normalize(diff);
+                // const depth = Vector.length(diff);
+
+                // // rigidbody.gameObject.transform.position = point;
+
+                // // window.Debug.Point(point, 0.02);
+                // window.Debug.Vector(point, normal, depth);
+                // // console.log(point, normal, depth);
+
+                // // this.dt = 0; 
+                // // return;
+
+                // _tmpConstraintsToSolve.push({
+                //   C: -depth,
+                //   bodies: [
+                //     {
+                //       collider: boxCollider,
+                //       body: rigidbody,
+                //       normal: normal,
+                //       p: point,
+                //     }
+                //   ]
+                // });
+              }
+            });
           }
 
-          let _tmpConstraintsToSolve = [];
           // Mesh to Mesh
           let meshColliders = rigidbody.gameObject.findComponents("MeshCollider");
           for (let collider of meshColliders) {
@@ -1577,26 +1915,33 @@ function PhysicsEngine(scene, settings = {}) {
       // Components constraints
       
       for (let compIndex = 0; compIndex < components.length; compIndex++) {
-        let component = components[compIndex];
+        const component = components[compIndex];
         component.solveConstraint?.(this.dt, lambdaAccumulatedComponents, compIndex);
       }
 
-      for (var constraintIndex = 0; constraintIndex < constraintsToSolve.length; constraintIndex++) {
-        var constraint = constraintsToSolve[constraintIndex];
-        var C = constraint.C ?? 0;
+      for (let constraintIndex = 0; constraintIndex < constraintsToSolve.length; constraintIndex++) {
+        const constraint = constraintsToSolve[constraintIndex];
+        const C = constraint.C ?? 0;
+        const slop = -0.01;
 
-        if (C < -0.007 * 0) {
-          var jacobian = [];
-          var tangentJacobian = [];
-          var bitangentJacobian = [];
-          var velocities = [];
-          var masses = [];
+        if (C < 0/*-0.007 * 0*/) {
+          // const jacobian = [];
+          // const tangentJacobian = [];
+          // const bitangentJacobian = [];
+          // const velocities = [];
+          // const masses = [];
 
           if (constraint.bodies.length > 0) {
-            for (var body of constraint.bodies) {
-              var m = body.collider.disableRotationImpulse ? 0 : 1;
+            const jacobian = [];
+            const tangentJacobian = [];
+            const bitangentJacobian = [];
+            const velocities = [];
+            const masses = [];
 
-              var pc = Vector.cross(Vector.subtract(body.p, body.body.position), body.normal);
+            for (const body of constraint.bodies) {
+              const m = body.collider.disableRotationImpulse ? 0 : 1;
+
+              let pc = Vector.cross(Vector.subtract(body.p, body.body.position), body.normal);
               jacobian.push(
                 body.normal.x,
                 body.normal.y,
@@ -1606,9 +1951,15 @@ function PhysicsEngine(scene, settings = {}) {
                 pc.z * m
               );
 
-              var [ tangent, bitangent ] = Vector.formOrthogonalBasis(body.normal);
+              const [ tangent, bitangent ] = Vector.formOrthogonalBasis(body.normal);
 
-              var pc = Vector.cross(Vector.subtract(body.p, body.body.position), tangent);
+              // if (i == 0) {
+              //   window.Debug.Vector(body.p, tangent, 1, [0, 0, 1]);
+              //   window.Debug.Vector(body.p, bitangent, 1, [1, 0, 0]);
+              // }
+
+              pc = Vector.cross(Vector.subtract(body.p, body.body.position), tangent);
+              // Vector.negateTo(pc);
               tangentJacobian.push(
                 tangent.x,
                 tangent.y,
@@ -1618,7 +1969,8 @@ function PhysicsEngine(scene, settings = {}) {
                 pc.z * m
               );
 
-              var pc = Vector.cross(Vector.subtract(body.p, body.body.position), bitangent);
+              pc = Vector.cross(Vector.subtract(body.p, body.body.position), bitangent);
+              // Vector.negateTo(pc);
               bitangentJacobian.push(
                 bitangent.x,
                 bitangent.y,
@@ -1637,7 +1989,7 @@ function PhysicsEngine(scene, settings = {}) {
                 body.body.angularVelocity.z
               );
 
-              var it = body.body.inverseWorldInertia;
+              const it = body.body.inverseWorldInertia;
 
               masses.push(
                 body.body.mass,
@@ -1652,11 +2004,12 @@ function PhysicsEngine(scene, settings = {}) {
               );
             }
 
-            var { impulses, lambda } = getConstraintImpulse(jacobian, velocities, masses, C, this.dt, this.constraintBias, lambdaAccumulated, constraintIndex);
+            // const { impulses, lambda } = getConstraintImpulse(jacobian, velocities, masses, C, this.dt, this.constraintBias, undefined, undefined, slop);
+            const { impulses, lambda } = getConstraintImpulse(jacobian, velocities, masses, C, this.dt, this.constraintBias, lambdaAccumulated, constraintIndex, slop);
 
             if (!impulses.some(item => isNaN(item))) {
-              var ind = 0;
-              for (var body of constraint.bodies) {
+              let ind = 0;
+              for (const body of constraint.bodies) {
                 body.body.velocity.x += impulses[ind + 0] / masses[ind + 0];
                 body.body.velocity.y += impulses[ind + 1] / masses[ind + 1];
                 body.body.velocity.z += impulses[ind + 2] / masses[ind + 2];
@@ -1670,26 +2023,48 @@ function PhysicsEngine(scene, settings = {}) {
                 ind += 6;
               }
             }
+            else {
+              throw new Error("NaN in impulses");
+            }
 
             // Friction
-            var bias = 0;
-            var friction = getCombinedFriction(constraint.bodies);
+            const bias = 0;
+            const friction = getCombinedFriction(constraint.bodies);
 
-            if (friction > 0.0001) {
-              var jacobians = [ tangentJacobian, bitangentJacobian ];
-              for (var jacobian of jacobians) {
-                var effectiveMass = getEffectiveMass(jacobian, masses);
-                var frictionLambda = getLambda(effectiveMass, jacobian, velocities, bias);
-                frictionLambda = clamp(frictionLambda, -friction * lambda, friction * lambda);
-              
-                var impulses = [];
-                for (var _i = 0; _i < jacobian.length; _i++) {
+            if (friction > 0.0001 && lambda > 0) {
+              const jacobians = [ tangentJacobian, bitangentJacobian ];
+
+              for (let jacobian of jacobians) {
+                // Recalculate velocities (better stability)
+                velocities.length = 0;
+                for (const body of constraint.bodies) {
+                  velocities.push(
+                    body.body.velocity.x,
+                    body.body.velocity.y,
+                    body.body.velocity.z,
+                    body.body.angularVelocity.x,
+                    body.body.angularVelocity.y,
+                    body.body.angularVelocity.z
+                  );
+                }
+
+                const effectiveMass = getEffectiveMass(jacobian, masses);
+                let frictionLambda = getLambda(effectiveMass, jacobian, velocities, bias);
+
+                const f = Math.max(1e-4, Math.abs(friction) * Math.abs(lambda));
+                frictionLambda = clamp(frictionLambda, -f, f);
+
+                // if (Math.abs(lambda) > 1e-4)
+                //   console.log(lambda);
+
+                const impulses = [];
+                for (let _i = 0; _i < jacobian.length; _i++) {
                   impulses[_i] = jacobian[_i] * frictionLambda;
                 }
 
                 if (!impulses.some(item => isNaN(item))) {
-                  var ind = 0;
-                  for (var body of constraint.bodies) {
+                  let ind = 0;
+                  for (const body of constraint.bodies) {
                     body.body.velocity.x += impulses[ind + 0] / masses[ind + 0];
                     body.body.velocity.y += impulses[ind + 1] / masses[ind + 1];
                     body.body.velocity.z += impulses[ind + 2] / masses[ind + 2];
@@ -1703,11 +2078,9 @@ function PhysicsEngine(scene, settings = {}) {
                     ind += 6;
                   }
                 }
-                // else {
-                //   console.warn("NaN in impulses", {
-                //     constraint, impulses, lambda, frictionLambda, jacobian, velocities, masses, C, dt: this.dt
-                //   });
-                // }
+                else {
+                  throw new Error("NaN in impulses");
+                }
               }
             }
           }
@@ -1935,11 +2308,14 @@ class Collider {
 
 class MeshCollider extends Collider {
   #_octree = null;
+  #_vclipGeometry = null;
 
   constructor() {
     super();
     this.componentType = "MeshCollider";
     this.type = "MeshCollider";
+
+    this.convex = false;
   }
 
   get octree() {
@@ -1947,6 +2323,13 @@ class MeshCollider extends Collider {
       this.#setup();
     }
     return this.#_octree;
+  }
+
+  get vclipGeometry() {
+    if (this.convex && !this.#_vclipGeometry) {
+      this.#setup();
+    }
+    return this.#_vclipGeometry;
   }
 
   clear() {
@@ -1961,6 +2344,17 @@ class MeshCollider extends Collider {
       var aabb = new AABB(Vector.fill(Infinity), Vector.fill(-Infinity));
 
       var nrTriangles = 0;
+
+      console.error("Mesh to mesh collision is off!");
+      // if (!this.gameObject.meshRenderer.isConvex()) {
+      //   console.warn("Mesh is not convex!");
+      //   console.log(this.gameObject.name, this.gameObject.meshRenderer.meshData.length, this.gameObject);
+      
+      //   this.convex = false;
+      // }
+      // else {
+      //   this.convex = true;
+      // }
 
       for (let j = 0; j < this.gameObject.meshRenderer.meshData.length; j++) {
         let md = this.gameObject.meshRenderer.meshData[j].data;
@@ -2005,11 +2399,16 @@ class MeshCollider extends Collider {
       aabb.addPadding(0.1);
 
       const trianglesPerSection = 1000;
-      const d = nrTriangles <= 0 ? 0 : Math.floor(Math.log(nrTriangles / trianglesPerSection) / Math.log(8) + 1);
+      const d = nrTriangles <= 0 ? 0 : Math.max(0, Math.floor(Math.log(nrTriangles / trianglesPerSection) / Math.log(8) + 1));
       this.#_octree = new Octree(aabb, d);
       // this.#_octree = new Octree(aabb, 4 - 3);
       this.#_octree.addTriangles(trianglesArray, gameObjectLookup, gameObjects);
       this.aabb = aabb;
+
+      // bruh allow for multiple meshdatas
+      if (this.convex) {
+        this.#_vclipGeometry = new MeshGeometry(this.gameObject.transform.matrix, this.gameObject.meshRenderer.meshData[0]);
+      }
     }
     else {
       this.#_octree = null;
@@ -2038,11 +2437,13 @@ class CapsuleCollider extends Collider {
 }
 
 class BoxCollider extends Collider {
-  constructor(aabb = new AABB(Vector.fill(-1), Vector.fill(1)), planeY = -5) {
+  constructor(aabb = new AABB(Vector.fill(-1), Vector.fill(1))) {
     super();
     this.componentType = "BoxCollider";
     this.aabb = aabb;
-    this.planeY = planeY;
+    // this.planeY = planeY;
+
+    this.vclipGeometry = new CubeGeometry(Matrix.identity(), this.aabb.getSize());
   }
 }
 
@@ -2086,6 +2487,14 @@ class Rigidbody {
     this.lastVelocity = new Vector();
   }
 
+  /**
+   * @param {GameObject} gameObject 
+   */
+  onAdd(gameObject) {
+    Vector.set(this.position, gameObject.transform.worldPosition);
+    Quaternion.set(this.rotation, gameObject.transform.worldRotation);
+  }
+
   set inertia(inertia) {
     Vector.set(this._inertia, inertia);
     Matrix.set(this._inverseLocalInertiaMatrix,
@@ -2111,9 +2520,12 @@ class Rigidbody {
   _updateInverseWorldInertiaMatrix() {
     // bruh
     if (this.gameObject) {
+      // Get rotation-only matrix (called R below)
       Matrix.copy(this.gameObject.transform.worldMatrix, this.#mat);
       Matrix.removeTranslation(this.#mat);
+      Matrix.setScale(this.#mat, Vector.one());
 
+      // Iwi = R * Ili * R^T
       Matrix.identity(this.inverseWorldInertia);
       Matrix.multiply(this.#mat, this._inverseLocalInertiaMatrix, this.inverseWorldInertia);
 
@@ -2320,7 +2732,7 @@ function DistanceConstraint(rbA, offsetA, rbB, offsetB, distance = 0) {
   this.offsetB = offsetB;
   this.distance = distance;
 
-  let bias = 0.5;
+  let bias = 0.4 * 0.1;
 
   this.debugSphereA = null;
   this.debugSphereB = null;
@@ -2342,18 +2754,6 @@ function DistanceConstraint(rbA, offsetA, rbB, offsetB, distance = 0) {
 
     let difference = Vector.subtract(worldOffsetA, worldOffsetB);
     let distance = Vector.length(difference);
-
-    // let velocityA = this.rbA.GetPointVelocity(worldOffsetA);
-    // let velocityB = this.rbA.GetPointVelocity(worldOffsetB);
-    // let velocityDiff = Vector.subtract(velocityA, velocityB);
-
-    // let springForce = Vector.multiply(difference, 1);
-    // let totalForce = springForce;
-
-    // this.rbA.AddForceAtPosition(Vector.multiply(totalForce, -1), worldOffsetA);
-    // this.rbB.AddForceAtPosition(Vector.multiply(totalForce, 1), worldOffsetB);
-
-    
 
     let normal = Vector.normalize(difference);
     let pcA = Vector.cross(Vector.subtract(worldOffsetA, this.rbA.position), normal);
@@ -2379,7 +2779,7 @@ function DistanceConstraint(rbA, offsetA, rbB, offsetB, distance = 0) {
 
     let velocities = [
       this.rbA.velocity.x,
-      this.rbA.velocity.y,
+      this.rbA.velocity.y ,
       this.rbA.velocity.z,
       this.rbA.angularVelocity.x,
       this.rbA.angularVelocity.y,
@@ -2419,7 +2819,7 @@ function DistanceConstraint(rbA, offsetA, rbB, offsetB, distance = 0) {
 
     // console.log(C);
 
-    let { impulses, lambda } = getConstraintImpulse(jacobian, velocities, masses, C, dt, bias, lambdaAccumulated, lambdaAccumulatedIndex, slop);
+    let { impulses } = getConstraintImpulse(jacobian, velocities, masses, C, dt, bias, lambdaAccumulated, lambdaAccumulatedIndex, slop);
 
     // console.log(impulses);
 
@@ -2488,11 +2888,21 @@ function getConstraintImpulse(jacobian, velocities, masses, C, dt, biasFactor = 
   // bruh not recommended
   // lambda = Math.max(lambda, 0);
 
+  // Clamp lambda
   if (Array.isArray(lambdaAccumulated)) {
-    if (lambdaAccumulated[index] + lambda < 0) {
-      lambda = -lambdaAccumulated[index];
-    }
+    // if (lambdaAccumulated[index] + lambda < 0) {
+    //   lambda = -lambdaAccumulated[index];
+    // }
+    // lambdaAccumulated[index] += lambda;
+
+    // use this instead
+    const clampFunction = l => Math.max(l, 0);
+
+    const oldLambda = lambdaAccumulated[index];
     lambdaAccumulated[index] += lambda;
+    lambdaAccumulated[index] = clampFunction(lambdaAccumulated[index]);
+    const delta = lambdaAccumulated[index] - oldLambda;
+    lambda = delta;
   }
 
   var output = [];
@@ -2506,11 +2916,18 @@ function getConstraintImpulse(jacobian, velocities, masses, C, dt, biasFactor = 
 }
 
 function getLambda(effectiveMass, jacobian, velocities, bias) {
-  var sum = 0;
-  for (var i = 0; i < jacobian.length; i++) {
+  let sum = 0;
+  for (let i = 0; i < jacobian.length; i++) {
     sum += jacobian[i] * velocities[i];
   }
-  return -effectiveMass * (sum + bias);
+  const lambda = -effectiveMass * (sum + bias);
+
+  if (!isFinite(lambda) || isNaN(lambda)) {
+    console.error(lambda, effectiveMass, jacobian, velocities, bias, sum);
+    throw new Error("Lambda is NaN");
+  }
+
+  return lambda;
 }
 
 function getEffectiveMass(jacobian, masses) {
@@ -2533,8 +2950,6 @@ function getCombinedFriction(bodies) {
 //
 
 export {
-  CreateCubeCollider,
-  AABBCollider,
   GetMeshAABB,
   Octree,
   AABB,

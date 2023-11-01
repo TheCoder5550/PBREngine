@@ -1,4 +1,5 @@
 import { createRequire } from 'module';
+import Matrix from '../public/engine/matrix.mjs'; // Most import matrix before quaternion...
 import Quaternion from '../public/engine/quaternion.mjs';
 import Vector from '../public/engine/vector.mjs';
 const require = createRequire(import.meta.url);
@@ -45,6 +46,11 @@ wss.on("connection", ws => {
     rotation: Quaternion.identity(),
     velocity: Vector.zero(),
     angularVelocity: Vector.zero(),
+    steerInput: 0,
+    driveInput: 0,
+    ebrakeInput: 0,
+    brakeInput: 0,
+    clutchInput: 0,
   };
 
   console.log(ws.id);
@@ -67,10 +73,11 @@ wss.on("connection", ws => {
 
       if (parsed.hasOwnProperty("type") && parsed.hasOwnProperty("data")) {
         if (parsed.type == "updatePlayer") {
-          ws.gameData.position = parsed.data.position;
-          ws.gameData.rotation = parsed.data.rotation;
-          ws.gameData.velocity = parsed.data.velocity;
-          ws.gameData.angularVelocity = parsed.data.angularVelocity;
+          for (const key in ws.gameData) {
+            if (key in parsed.data) {
+              ws.gameData[key] = parsed.data[key];
+            }
+          }
         }
         else if (parsed.type == "getAllPlayers") {
           var data = [];
@@ -80,12 +87,7 @@ wss.on("connection", ws => {
               data.push({
                 clientID: client.id,
                 name: client.name,
-                data: {
-                  position: client.gameData.position,
-                  rotation: client.gameData.rotation,
-                  velocity: client.gameData.velocity,
-                  angularVelocity: client.gameData.angularVelocity,
-                }
+                data: client.gameData
               });
             }
 

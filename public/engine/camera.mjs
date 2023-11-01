@@ -1,7 +1,22 @@
 import { Transform } from "./transform.mjs";
 import Matrix from "./matrix.mjs";
 import Vector from "./vector.mjs";
+import Quaternion from "./quaternion.mjs";
 
+/**
+ * @description Creates a camera
+ * @param {{
+ *  position?: Vector,
+ *  rotation?: Quaternion,
+ *  layer?: number,
+ *  renderTexture?: unknown,
+ *  fov?: number,
+ *  near?: number,
+ *  far?: number,
+ *  size?: number,
+ *  type?: keyof Camera.Type
+ * }} settings 
+ */
 function Camera(settings = {}) {
   var _this = this;
   
@@ -18,23 +33,7 @@ function Camera(settings = {}) {
   var _near = settings.near ?? 0.3;
   var _far = settings.far ?? 100;
   var _size = settings.size ?? 20;
-  this.type = settings.type ?? Camera.Type.Perspective;
-
-  if (this.type == Camera.Type.Perspective) {
-    this.projectionMatrix = Matrix.perspective({
-      fov: _fov * Math.PI / 180,
-      aspect: this.aspect,
-      near: _near,
-      far: _far,
-    });
-  }
-  else if (this.type == Camera.Type.Orthographic) {
-    this.projectionMatrix = Matrix.orthographic({
-      size: _size,
-      near: _near,
-      far: _far,
-    });
-  }
+  let _type = null;
 
   this.updateFrustum = function() {
     Matrix.getPosition(this.transform.matrix, cameraPosition);
@@ -168,15 +167,44 @@ function Camera(settings = {}) {
     }
   });
 
+  Object.defineProperty(this, "type", {
+    get: function() {
+      return _type;
+    },
+    set: function(type) {
+      _type = type;
+  
+      if (this.type == Camera.Type.Perspective) {
+        this.projectionMatrix = Matrix.perspective({
+          fov: _fov * Math.PI / 180,
+          aspect: this.aspect,
+          near: _near,
+          far: _far,
+        });
+      }
+      else if (this.type == Camera.Type.Orthographic) {
+        this.projectionMatrix = Matrix.orthographic({
+          size: _size,
+          near: _near,
+          far: _far,
+        });
+      }
+  
+      this.updateFrustum();
+    }
+  });
+
   this.setAspect = function(aspect) {
     if (this.type == Camera.Type.Perspective) {
       this.aspect = aspect;
+
       Matrix.perspective({
         fov: _fov * Math.PI / 180,
         aspect: this.aspect,
         near: _near,
         far: _far
       }, this.projectionMatrix);
+
       this.updateFrustum();
     }
     else {
@@ -204,7 +232,56 @@ function Camera(settings = {}) {
     return _fov;
   };
 
+  /**
+   * @description Converts a point on the screen to a ray in world-space
+   * @param {number} x x position on screen (from 0 to 1)
+   * @param {number} y y position on screen (from 0 to 1)
+   * @returns {{origin: Vector, direction: Vector}}
+   */
+  this.screenToWorldRay = function(x, y) {
+    const u = x - 0.5;
+    const v = y - 0.5;
+
+    if (this.type === Camera.Type.Orthographic) {
+      const worldUnits = new Vector(
+        u * _size * 2/* * this.aspect*/, // bruh aspect ratio is currently NOT used with ortho camera
+        -v * _size * 2,
+        0
+      );
+
+      const origin = Matrix.transformDirection(this.transform.rotationMatrix, worldUnits);
+      Vector.addTo(origin, this.transform.position);
+
+      const direction = this.transform.forward;
+
+      return {
+        origin,
+        direction
+      };
+    }
+    else if (this.type === Camera.Type.Perspective) {
+      const verticalAngle = this.getFOV() * Math.PI / 180;
+      const worldHeight = 2 * Math.tan(verticalAngle);
+      const worldUnits = new Vector(u * worldHeight * this.aspect, -v * worldHeight, -1);
+
+      console.log(this.aspect);
+
+      const direction = Matrix.transformDirection(this.transform.rotationMatrix, worldUnits);
+      Vector.normalizeTo(direction);
+
+      const origin = Vector.copy(this.transform.position);
+
+      return {
+        origin,
+        direction
+      };
+    }
+
+    throw new Error("Can't find ray with camera type " + this.type);
+  };
+
   // Init
+  this.type = settings.type ?? Camera.Type.Perspective;
   this.transform.onUpdateMatrix = onUpdateMatrix;
   onUpdateMatrix();
   //

@@ -51,6 +51,7 @@ body {
 }
 
 .isSelectable {
+  cursor: pointer;
   transition: outline 100ms, outline-offset 100ms !important;
 }
 
@@ -150,7 +151,7 @@ canvas {
   right: 0;
 
   background: black;
-  background: url(../../jeepPhoto.PNG);
+  background: url(../../lowpolyDesert.PNG);
   background-size: cover;
   background-position: center;
 }
@@ -397,6 +398,10 @@ a {
 }
 
 .garage > .info {
+  position: absolute;
+  top: 30px;
+  right: 30px;
+
   display: flex;
   flex-direction: column;
   /* background: rgba(0, 0, 0, 0.5); */
@@ -408,21 +413,84 @@ a {
 }
 
 .garage > .info > .stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 20px;
 }
 
-.garage > .info > .stats > div {
-  padding: 10px;
-  margin-bottom: 10px;
-  /* background: rgba(0, 0, 0, 0.5); */
-  border-radius: 5px;
-
+.garage > .info > .stats .item {
   display: flex;
-  flex-direction: row;
-  justify-content: space-between;
+  flex-direction: column;
 }
 
 .garage > .info > .stats > div > .name {
   font-weight: bold;
+}
+
+.card {
+  aspect-ratio: 4 / 5;
+  padding: 0;
+  overflow: hidden;
+
+  display: flex;
+  flex-direction: column;
+
+  border: 3px solid rgb(49, 49, 49);
+  background: rgba(49, 49, 49, 0.3);
+}
+
+.card .title {
+  overflow: hidden;
+  display: -webkit-box;
+   -webkit-line-clamp: 1;
+           line-clamp: 1; 
+   -webkit-box-orient: vertical;
+}
+
+.card img {
+  width: 100%;
+}
+
+.card > div {
+  flex: 1;
+  padding-left: 5px;
+}
+
+#carList {
+  position: absolute;
+  bottom: 30px;
+  left: 0;
+  right: 0;
+
+  height: 150px;
+  padding: 10px;
+
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+
+  background: rgba(0, 0, 0, 0.5);
+}
+
+#carList > .item {
+  pointer-events: all;
+
+  aspect-ratio: 3 / 2;
+
+  background: black;
+  border-radius: 8px;
+  
+  overflow: hidden;
+  position: relative;
+}
+
+#carList > .item .name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  padding: 5px;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
 }
 
 .garage > .selectCar {
@@ -434,18 +502,18 @@ a {
   left: 30px;
 
   border: none;
-  background: lime;
-  color: darkgreen;
+  background: rgb(16, 216, 16);
+  color: rgb(39, 102, 39);
   font-size: 2em;
   font-weight: bold;
-  font-style: italic;
   border-radius: 5px;
 
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 10px;
-  padding-right: 15px;
+  gap: 10px;
+  padding: 5px;
+  padding-right: 10px;
 }
 
 .garage > .selectCar:not(:disabled):hover,
@@ -464,7 +532,7 @@ a {
 }
 
 .garage > .selectCar > img {
-  height: 50px;
+  height: 30px;
 }
 
 .garage > .selectCar:disabled > img {

@@ -72,8 +72,8 @@ var output = {
         uniform vec4 fogColor;
         uniform float fogIntensity;
 
-        float _SkyboxSpeed = 0.01;
-        vec3 _SkyboxDirection = vec3(1, -0.3, 0);
+        uniform float _SkyboxSpeed;
+        uniform vec3 _SkyboxDirection;
         uniform float iTime;
 
         vec4 flowUVW(vec3 dir, vec3 curl, float t, bool flowB) {

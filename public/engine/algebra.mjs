@@ -510,22 +510,22 @@ var coords = ["x", "y", "z"];
 // This function might be correct...
 function AABBToTriangle(box, triangle) {
   // Triangle vertices
-  for (var i = 0; i < 3; i++) {
+  for (let i = 0; i < 3; i++) {
     if (pointInsideAABB(box, triangle[i])) {
     // if (box.pointInside(triangle[i])) {
       return true;
     }
   }
 
-  var triangleMin, triangleMax;
-  var boxMin, boxMax;
+  // var triangleMin, triangleMax;
+  // var boxMin, boxMax;
 
   // var boxVertices = box.getVertices();
   var boxVertices = getAABBVertices(box);
 
   // Test the box normals (x-, y- and z-axes)
-  for (var i = 0; i < 3; i++) {
-    var [triangleMin, triangleMax] = Project(triangle, boxNormals[i]);
+  for (let i = 0; i < 3; i++) {
+    let [triangleMin, triangleMax] = Project(triangle, boxNormals[i]);
 
     if (triangleMax < box.bl[coords[i]] || triangleMin > box.tr[coords[i]]) // check <<
       return false; // No intersection possible.
@@ -544,12 +544,12 @@ function AABBToTriangle(box, triangle) {
     Vector.subtract(triangle[1], triangle[2]),
     Vector.subtract(triangle[2], triangle[0])
   ];
-  for (var i = 0; i < 3; i++) {
-    for (var j = 0; j < 3; j++) {
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
       // The box normals are the same as it's edge tangents
-      var axis = Vector.cross(triangleEdges[i], boxNormals[i]);
-      var [boxMin, boxMax] = Project(boxVertices, axis);
-      var [triangleMin, triangleMax] = Project(triangle, axis);
+      let axis = Vector.cross(triangleEdges[i], boxNormals[i]);
+      let [boxMin, boxMax] = Project(boxVertices, axis);
+      let [triangleMin, triangleMax] = Project(triangle, axis);
       if (boxMax < triangleMin || boxMin > triangleMax)
       // if (boxMax <= triangleMin || boxMin >= triangleMax)
         return false; // No intersection possible
@@ -602,20 +602,20 @@ function getAABBVertices(aabb) {
   ];
 }
 
-var aabbEdges = [
-  [0, 1],
-  [1, 2],
-  [2, 3],
-  [3, 0],
-  [4, 5],
-  [5, 6],
-  [6, 7],
-  [7, 4],
-  [0, 4],
-  [1, 5],
-  [2, 6],
-  [3, 7]
-];
+// var aabbEdges = [
+//   [0, 1],
+//   [1, 2],
+//   [2, 3],
+//   [3, 0],
+//   [4, 5],
+//   [5, 6],
+//   [6, 7],
+//   [7, 4],
+//   [0, 4],
+//   [1, 5],
+//   [2, 6],
+//   [3, 7]
+// ];
 
 /* Bruh - Slow? Prolly */
 // function AABBToTriangle(box, triangle) {
@@ -855,7 +855,7 @@ function capsuleToTriangle(A, B, radius, p0, p1, p2, doubleSided = false) {
     // Edge 2:
     var point2 = ClosestPointOnLineSegment(p1, p2, line_plane_intersection);
     var v2 = Vector.subtract(line_plane_intersection, point2);
-    var distsq = Vector.dot(v2, v2);
+    distsq = Vector.dot(v2, v2);
     if (distsq < best_distsq) {
       reference_point = point2;
       best_distsq = distsq;
@@ -864,7 +864,7 @@ function capsuleToTriangle(A, B, radius, p0, p1, p2, doubleSided = false) {
     // Edge 3:
     var point3 = ClosestPointOnLineSegment(p2, p0, line_plane_intersection);
     var v3 = Vector.subtract(line_plane_intersection, point3);
-    var distsq = Vector.dot(v3, v3);
+    distsq = Vector.dot(v3, v3);
     if (distsq < best_distsq) {
       reference_point = point3;
       best_distsq = distsq;
@@ -892,16 +892,24 @@ function ClosestDistanceToLineSegment(a, b, point) {
   return Vector.distance(ClosestPointOnLineSegment(a, b, point), point);
 }
 
-function ClosestPointOnLineSegment(A, B, Point) {
+function ClosestPointOnLineSegment(A, B, Point, dst) {
+  dst = dst || new Vector();
   var AB = Vector.subtract(B, A);
   var t = Vector.dot(Vector.subtract(Point, A), AB) / Vector.dot(AB, AB);
-  return Vector.add(A, Vector.multiply(AB, saturate(t))); // saturate(t) can be written as: min((max(t, 0), 1)
+  Vector.add(A, Vector.multiply(AB, saturate(t)), dst); // saturate(t) can be written as: min((max(t, 0), 1)
+  
+  return dst;
 }
 
 function distanceBetweenRayAndPoint(ray, point) {
   var RP = Vector.subtract(point, ray.origin);
   var p = Vector.dot(ray.direction, RP);
   return Math.sqrt(Vector.lengthSqr(RP) - p * p);
+}
+
+const _tempVector = new Vector();
+export function getSignedDistanceToPlane(point, origin, normal) {
+  return Vector.dot(normal, Vector.subtract(point, origin, _tempVector));
 }
 
 export {

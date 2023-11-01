@@ -41,6 +41,7 @@
     // import OrbitCamera from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/orbitCamera.mjs";
     // import Vector from "https://raw.githack.com/TheCoder5550/PBREngine/main/public/engine/vector.mjs";
 
+    import * as ENUMS from "./engine/constants.mjs";
     import Renderer, { GameObject, Scene, Light, LOD } from "./engine/renderer.mjs";
     import OrbitCamera from "./engine/orbitCamera.mjs";
     import Vector from "./engine/vector.mjs";
@@ -68,7 +69,7 @@
     var camera;
 
     (async function() {
-      renderer = new Renderer({ debug: true, renderScale: 1 });
+      renderer = new Renderer({ debug: true, renderScale: 1, renderpipeline: ENUMS.RENDERPIPELINE.FORWARD });
       renderer.settings.enableShadows = false;
 
       scene = new Scene();
@@ -119,7 +120,8 @@
       physicsEngine.setupMeshCollider();
 
       var car = new Car(scene, physicsEngine, {
-        ...carSettings.drift.settings
+        ...carSettings.drift.settings,
+        ABS: true
       });
       car.resetPosition = new Vector(5, 5, 0);
       await car.setup("./assets/models/skyline.glb");
@@ -171,7 +173,7 @@
       terrain.chunkRes = 21;
       await terrain.loadMaterials(terrainMat);
 
-      var simpleFoliageProgram = new renderer.CustomProgram(simpleFoliage);
+      var simpleFoliageProgram = new renderer.CustomProgram(simpleFoliage.basic);
 
       var mat = new renderer.LitMaterial();
       var mat2 = new renderer.LitMaterial({albedo: [1, 0, 0, 1]});
