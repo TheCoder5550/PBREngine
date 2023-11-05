@@ -10,6 +10,8 @@ ${lit.litAttributesAndUniforms}
 
 ${lit.litBase}
 
+${lit.fogBase}
+
 uniform float ditherAmount;
 uniform sampler2D ditherTexture;
 
@@ -54,7 +56,13 @@ void main() {
   vec3 diffuse = albedo.rgb * sunIntensity * max(dot(sunDirection, worldNormal), 0.) * 0.5;
   vec3 ambient = vec3(0.1, 0.03, 0.);
 
-  fragColor = vec4(diffuse + iblDiffuse + ambient * 0., 1);
+  vec4 litColor = vec4(diffuse + iblDiffuse + ambient * 0., 1);
+
+  #ifdef USEFOG
+    litColor = applyFog(litColor);
+  #endif
+
+  fragColor = litColor;
 }
 `;
 // bruh

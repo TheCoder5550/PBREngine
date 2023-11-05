@@ -23,6 +23,7 @@ import GLDebugger from "../engine/GLDebugger.mjs";
 
 // import * as roadSource from "../assets/shaders/custom/road.glsl.mjs";
 import * as carPaintShader from "../assets/shaders/custom/carPaint.glsl.mjs";
+import * as litTerrainSource from "../assets/shaders/custom/litTerrain.glsl.mjs";
 import * as terrainShader from "./terrain.glsl.mjs";
 import * as simpleFoliage from "../assets/shaders/custom/simpleFoliage.glsl.mjs";
 // import createInspector from "../engine/inspector/inspector.mjs";
@@ -382,10 +383,9 @@ document.addEventListener("DOMContentLoaded", async function () {
     debug: true,
     renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
 
-    shadowResolution: 256 * 4,
-    // shadowSizes: [4, 12],
-    shadowSizes: [6, 64],
-    shadowBiases: [-0.0003, -0.001],
+    shadowResolution: 1024 * 2,
+    shadowSizes: [32 * 2, 256],
+    shadowBiases: [1, 1],
   });
   renderer.disableContextMenu();
   renderer.canvas.style.position = "fixed";
@@ -638,15 +638,6 @@ document.addEventListener("DOMContentLoaded", async function () {
     Matrix.applyRotationY(rotationY, instance);
     
     treeHandler.addTree(instance);
-  }
-
-  for (const child of treeHandler.treeParent.children) {
-    child.forceAABBUpdate();
-    // console.log(child.getAABB());
-
-    const aabb = child.getAABB();
-    new Vector(-500, -20, -500, aabb.bl);
-    new Vector(500, 20, 500, aabb.tr);
   }
 
   setProgress(currentTask++, totalTasks, "Finalizing physics colliders");
@@ -1397,7 +1388,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     let snowAlbedo = renderer.loadTexture(snowAlbedoImage, { ...SRGBFormat });
     let snowNormal = renderer.loadTexture(snowNormalImage);
 
-    const litTerrain = new renderer.ProgramContainer(await renderer.createProgramFromFile(renderer.path + "assets/shaders/custom/webgl2/litTerrain"));
+    const litTerrain = new renderer.CustomProgram(litTerrainSource);
     const terrainMat = renderer.CreateLitMaterial({}, litTerrain);
     terrainMat.setUniform("roughness", 1);
     terrainMat.setUniform("albedoTextures[0]", [ grassAlbedo, stoneAlbedo, snowAlbedo ]);
@@ -1964,7 +1955,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     let snowAlbedo = renderer.loadTexture(snowAlbedoImage, { ...SRGBFormat });
     let snowNormal = renderer.loadTexture(snowNormalImage);
   
-    const litTerrain = new renderer.ProgramContainer(await renderer.createProgramFromFile(renderer.path + "assets/shaders/custom/webgl2/litTerrain"));
+    const litTerrain = new renderer.CustomProgram(litTerrainSource);
     let terrainMat = renderer.CreateLitMaterial({}, litTerrain);
     terrainMat.setUniform("roughness", 1);
     terrainMat.setUniform("albedoTextures[0]", [ grassAlbedo, stoneAlbedo, snowAlbedo ]);

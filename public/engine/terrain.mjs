@@ -1,3 +1,5 @@
+import * as litTerrainSource from "../assets/shaders/custom/litTerrain.glsl.mjs";
+
 import { Scene, Transform, GameObject, LOD } from "./renderer.mjs";
 import Vector from "./vector.mjs";
 import Perlin from "./perlin.mjs";
@@ -9,6 +11,11 @@ import JSONfn from "../jsonfnModule.mjs";
 
 var perlin = new Perlin();
 
+/**
+ * 
+ * @param {Scene} scene 
+ * @param {*} settings 
+ */
 function Terrain(scene, settings = {}) {
   var _terrain = this;
   this.scene = scene;
@@ -40,7 +47,7 @@ function Terrain(scene, settings = {}) {
       return;
     }
 
-    var litTerrain = new renderer.ProgramContainer(await renderer.createProgramFromFile(renderer.path + "assets/shaders/custom/webgl2/litTerrain"));
+    var litTerrain = new renderer.CustomProgram(litTerrainSource);
 
     var SRGBFormat = renderer.getSRGBFormats();
 
@@ -218,27 +225,31 @@ function Terrain(scene, settings = {}) {
   var chunkLookup = new Map();
 
   let hasSentHeight = false;
-  const myWorker = new Worker("../engine/terrainDataWorker.js");
+  const myWorker = new Worker(renderer.path + "engine/terrainDataWorker.js");
+  const MessageTypes = { TERRAIN_DATA: "TERRAIN_DATA", INIT: "INIT" };
   myWorker.onmessage = (e) => {
-    // console.log(e);
+    if (e.data.messageType === MessageTypes.TERRAIN_DATA) {
+      let chunk = chunkLookup.get(e.data.id);
+      let terrainData = e.data.data;
+      terrainData.indices.target = this.scene.renderer.gl.ELEMENT_ARRAY_BUFFER;
 
-    let chunk = chunkLookup.get(e.data.id);
-    let terrainData = e.data.data;
-    terrainData.indices.target = this.scene.renderer.gl.ELEMENT_ARRAY_BUFFER;
+      if (!chunk.terrain.meshRenderer) {
+        chunk.terrain.meshRenderer = new this.scene.renderer.MeshRenderer(
+          this.terrainMat,
+          new renderer.MeshData(terrainData),
+        );
+      }
+      else {
+        chunk.terrain.meshRenderer.meshData[0].updateData(terrainData);
+      }
 
-    if (!chunk.terrain.meshRenderer) {
-      chunk.terrain.meshRenderer = new this.scene.renderer.MeshRenderer(
-        this.terrainMat,
-        new renderer.MeshData(terrainData),
-      );
+      chunk.terrain.visible = true;
+      chunk.terrain.isGenerated = true;
+      chunk.whenDone();
     }
-    else {
-      chunk.terrain.meshRenderer.meshData[0].updateData(terrainData);
-    }
+    else if (e.data.messageType === MessageTypes.INIT) {
 
-    chunk.terrain.visible = true;
-    chunk.terrain.isGenerated = true;
-    chunk.whenDone();
+    }
   };
   // console.log("posting!");
   // myWorker.postMessage({
@@ -251,6 +262,15 @@ function Terrain(scene, settings = {}) {
   //   uvOffset: Vector.zero(),
   //   uvScale: 1,
   // });
+
+  this.makeDataAccessible = function(data) {
+    myWorker.postMessage({
+      messageType: MessageTypes.INIT,
+      initData: JSONfn.stringify(data)
+    });
+  };
+
+  this.getHeightInit = function() {};
 
   this.getHeight = function(i, j) {
     var power = 1.5;
@@ -269,6 +289,7 @@ function Terrain(scene, settings = {}) {
 
     if (!hasSentHeight) {
       myWorker.postMessage({
+        messageType: MessageTypes.TERRAIN_DATA,
         // eslint-disable-next-line no-undef
         getHeight: JSONfn.stringify(this.getHeight),
       });
@@ -324,6 +345,8 @@ function Terrain(scene, settings = {}) {
           var id = Math.floor(Math.random() * 1e7);
 
           myWorker.postMessage({
+            messageType: MessageTypes.TERRAIN_DATA,
+
             w: chunk.chunkSize,
             h: chunk.chunkSize,
             res: chunk.chunkRes,

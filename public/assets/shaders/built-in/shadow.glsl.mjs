@@ -1,7 +1,18 @@
-// import { trimStrings } from "./lit.glsl.mjs";
-import * as lit from "./lit.glsl.mjs";
-
-var output = {
+const output = {
+  webgl1: {
+    shadow: {
+      vertex: null,
+      fragment: null
+    },
+    shadowInstanced: {
+      vertex: null,
+      fragment: null
+    },
+    shadowSkinned: {
+      vertex: null,
+      fragment: null
+    },
+  },
   webgl2: {
     shadow: {
       // vertex: `
@@ -72,7 +83,17 @@ var output = {
         uniform bool useTexture;
         uniform float alphaCutoff;
 
+        uniform float ditherAmount;
+        uniform sampler2D ditherTexture;
+
         void main() {
+          // Dither
+          float dither = texture2D(ditherTexture, gl_FragCoord.xy / 8.).r;
+          float d = 1. - ditherAmount;
+          if (d + (d < 0. ? dither : -dither) < 0.) {
+            discard;
+          }
+
           if (useTexture && texture2D(albedoTexture, vUV).a < alphaCutoff) {
             discard;
           }
@@ -92,13 +113,43 @@ var output = {
 
         varying vec2 vUV;
 
+        attribute float ditherAmount;
+        varying float vDitherAmount;
+
         void main() {
           vUV = uv;
+          vDitherAmount = ditherAmount;
           
           gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
         }
       `,
-      fragment: null
+      fragment: `
+        precision highp float;
+
+        varying vec2 vUV;
+
+        uniform sampler2D albedoTexture;
+        uniform bool useTexture;
+        uniform float alphaCutoff;
+
+        varying float vDitherAmount;
+        uniform sampler2D ditherTexture;
+
+        void main() {
+          // Dither
+          float dither = texture2D(ditherTexture, gl_FragCoord.xy / 8.).r;
+          float d = 1. - vDitherAmount;
+          if (d + (d < 0. ? dither : -dither) < 0.) {
+            discard;
+          }
+
+          if (useTexture && texture2D(albedoTexture, vUV).a < alphaCutoff) {
+            discard;
+          }
+
+          gl_FragColor = vec4(1, 0, 0, 1);
+        }
+      `
     },
     shadowSkinned: {
       vertex: `
@@ -150,20 +201,21 @@ var output = {
   }
 };
 
-output.webgl2.shadowInstanced.fragment = output.webgl2.shadow.fragment;
+// output.webgl2.shadowInstanced.fragment = output.webgl2.shadow.fragment;
 output.webgl2.shadowSkinned.fragment = output.webgl2.shadow.fragment;
 
-output.webgl1 = {
-  shadow: {
-    vertex: output.webgl2.shadow.vertex,
-    fragment: output.webgl2.shadow.fragment
-  }
-};
+// WebGL 1
+output.webgl1.shadow.vertex = output.webgl2.shadow.vertex;
+output.webgl1.shadow.fragment = output.webgl2.shadow.fragment;
 
-lit.trimStrings(output);
+output.webgl1.shadowInstanced.vertex = output.webgl2.shadowInstanced.vertex;
+output.webgl1.shadowInstanced.fragment = output.webgl2.shadowInstanced.fragment;
 
-var webgl1 = output.webgl1;
-var webgl2 = output.webgl2;
+output.webgl1.shadowSkinned.vertex = output.webgl2.shadowSkinned.vertex;
+output.webgl1.shadowSkinned.fragment = output.webgl2.shadowSkinned.fragment;
+
+const webgl1 = output.webgl1;
+const webgl2 = output.webgl2;
 
 export {
   webgl1,

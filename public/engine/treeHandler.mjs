@@ -30,6 +30,7 @@ export default function TreeHandler(scene, camera, treePath = [
   const meshRenderers = [];
   const trees = [];
   const grid = new Map();
+  const bounds = new AABB();
 
   this.crossFadeDistance = 15;
 
@@ -197,6 +198,10 @@ export default function TreeHandler(scene, camera, treePath = [
       meshRenderers.push(batchedTree.meshRenderer);
     }
 
+    for (const child of treeParent.children) {
+      child.forceAABBUpdate(); // Make sure child has a AABB when later accessing it
+    }
+
     hasRunSetup = true;
   };
   
@@ -233,6 +238,13 @@ export default function TreeHandler(scene, camera, treePath = [
     }
     else {
       grid.set(`${cellIndex.x}@${cellIndex.y}@${cellIndex.z}`, [ tree ]);
+    }
+
+    bounds.extend(tree.position);
+    for (const child of treeParent.children) {
+      const aabb = child.getAABB();
+      Vector.copy(bounds.bl, aabb.bl);
+      Vector.copy(bounds.tr, aabb.tr);
     }
   };
 }

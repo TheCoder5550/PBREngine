@@ -35,12 +35,13 @@ uniform float environmentMinLight;
 // vec4 projectedTexcoords[levels];
 // uniform float biases[levels];
 // uniform sampler2D projectedTextures[levels];
-// uniform mat4 textureMatrices[levels];
+uniform mat4 textureMatrices[levels];
+uniform float shadowSizes[levels];
 
 uniform int shadowQuality;
 const bool blurShadows = true;
-const int shadowSamples = 8 * 2;
-const float shadowSampleRadius = 3.;
+const int shadowSamples = 16;
+const float shadowSampleRadius = 96. * 2.;
 
 float shadowDarkness = 0.;
 const float shadowKernalSize = 2.;
@@ -84,33 +85,65 @@ float fadeToNextShadowMap(float v1, float v2, vec3 proj) {
   return mix(v1, v2, clamp(pow(length(proj.xy - vec2(0.5, 0.5)) * 2., 30.), 0., 1.));
 }
 
-// float random(vec3 seed, int i){
-//   vec4 seed4 = vec4(seed,i);
-//   float dot_product = dot(seed4, vec4(12.9898,78.233,45.164,94.673));
-//   return fract(sin(dot_product) * 43758.5453);
-// }
+vec2 VogelDiskSample(int sampleIndex, int samplesCount, float phi)
+{
+  float GoldenAngle = 2.4;
+
+  float fSampleIndex = float(sampleIndex);
+  float fSamplesCount = float(samplesCount);
+
+  float r = sqrt(fSampleIndex + 0.5) / sqrt(fSamplesCount);
+  float theta = fSampleIndex * GoldenAngle + phi;
+
+  float sine = sin(theta);
+  float cosine = cos(theta);
+  
+  return vec2(r * cosine, r * sine);
+}
+
+float InterleavedGradientNoise(vec2 position_screen)
+{
+  vec3 magic = vec3(0.06711056f, 0.00583715f, 52.9829189f);
+  return fract(magic.z * fract(dot(position_screen, magic.xy)));
+}
+
+float random(vec3 seed, int i){
+  vec4 seed4 = vec4(seed,i);
+  float dot_product = dot(seed4, vec4(12.9898,78.233,45.164,94.673));
+  return fract(sin(dot_product) * 43758.5453);
+}
 
 vec2 hash( vec2 p ) { // replace this by something better
   p = vec2( dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)) );
   return -1.0 + 2.0*fract(sin(p)*43758.5453123);
 }
 
-float getBias(float bias, float cosTheta) {
-  bias = -bias * (cosTheta > 0. ? 1. : 0.);
-  bias = bias * tan(acos(cosTheta));
-  bias = clamp(bias, 0.0, 0.1);
+float getBias(float bias, vec2 shadowStepSize, float cosTheta) {
+  // bias = -bias * (cosTheta > 0. ? 1. : 0.);
+  // bias = bias * tan(acos(cosTheta));
+  // bias = clamp(bias, 0.0, 0.1);
+
+  // return bias;
+
+  bias *= shadowStepSize.x;
+  // bias = bias * tan(acos(cosTheta));
+  // bias = clamp(bias, 0.0, 0.001);
 
   return bias;
 }
 
 float getShadowAmount(vec3 worldPosition, float cosTheta) {
+  // vec4 projectedTexcoords[levels];
+  
   // for (int i = 0; i < levels; i++) {
-  //   projectedTexcoords[i] = textureMatrices[i] * vec4(worldPosition, 1);
+  //   projectedTexcoords[i] = textureMatrices[i] * vec4(worldPosition + worldNormal * 0.1, 1);
   // }
 
   if (shadowQuality == 0) {
     return 1.;
   }
+
+  cosTheta = clamp(cosTheta, 0., 1.);
 
   if (shadowQuality == 1) {
     vec3 proj = projectedTexcoords[0].xyz / projectedTexcoords[0].w;
@@ -143,7 +176,12 @@ float getShadowAmount(vec3 worldPosition, float cosTheta) {
     vec4 ShadowCoord = projectedTexcoords[0];
     vec3 proj = ShadowCoord.xyz / ShadowCoord.w;
 
-    float bias = -biases[0];//getBias(biases[0], cosTheta);
+    // float bias = getBias(biases[0], shadowStepSize, cosTheta);
+
+    float bias = biases[0];
+    bias *= shadowStepSize.x;
+    // bias = bias * tan(acos(cosTheta));
+    // bias = clamp(bias, 0.0, 0.001);
 
     float currentDepth = proj.z - bias;
     bool inside = inRange(proj);
@@ -155,20 +193,29 @@ float getShadowAmount(vec3 worldPosition, float cosTheta) {
         float visibility = 1.;
         for (int i = 0; i < shadowSamples; i++) {
           // int index = int(16.0*random(gl_FragCoord.xyy + float(i) * vec3(1, 0.4, -0.5), i))%16;
-          // int index = int(16.0*random(floor(worldPosition.xyz*500.0), i))%16;
+          // int index = int(16.0 * random(floor(worldPosition.xyz * 50000.0) + vec3(i), 0)) % 16;
           
-          // if (texture(projectedTextures[0], proj.xy + poissonDisk[index] * shadowStepSize * 4.).r < currentDepth) {
-          //   visibility -= 1. / 64.;
+          // if (texture(projectedTextures[0], proj.xy + poissonDisk[index] * shadowStepSize * shadowSampleRadius).r < currentDepth) {
+          //   visibility -= 1. / float(shadowSamples);
           // }
 
-          if (texture(projectedTextures[0], proj.xy + hash(worldPosition.xz + worldPosition.zy + float(i) * vec2(1, -.9)) * shadowStepSize * shadowSampleRadius).r < currentDepth) {
-            visibility -= 1. / float(shadowSamples);
-          }
+          // if (texture(projectedTextures[0], proj.xy + (hash(worldPosition.xz + worldPosition.zy + float(i) * vec2(1, -.9)) * 2. - 1.) * shadowStepSize * shadowSampleRadius).r < currentDepth) {
+          //   visibility -= 1. / float(shadowSamples);
+          // }
 
           // visibility -= 0.01*(1.0-textureProj(projectedTextures[0], vec3(ShadowCoord.xy + poissonDisk[index]/700.0, (ShadowCoord.z-bias * 3.) / ShadowCoord.w)).r);
+        
+          float phi = InterleavedGradientNoise(gl_FragCoord.xy) * 2. * PI;
+
+          if (texture(
+            projectedTextures[0],
+            proj.xy + VogelDiskSample(i, shadowSamples, phi) * shadowStepSize * shadowSampleRadius / float(shadowSizes[0])
+          ).r < currentDepth) {
+            visibility -= 1. / float(shadowSamples);
+          }
         }
 
-        outShadow =  visibility;
+        outShadow = visibility;
       }
       else {
         float sum = 0.0;
@@ -187,7 +234,7 @@ float getShadowAmount(vec3 worldPosition, float cosTheta) {
       // bruh double calc
       vec3 projNext = projectedTexcoords[1].xyz / projectedTexcoords[1].w;
 
-      float bias = getBias(biases[1], cosTheta);
+      float bias = getBias(biases[1], shadowStepSize, cosTheta);
 
       float depthNext = projNext.z - bias;
       float projectedDepthNext = texture(projectedTextures[1], projNext.xy).r;
@@ -199,7 +246,7 @@ float getShadowAmount(vec3 worldPosition, float cosTheta) {
     inside = inRange(proj);
 
     if (inside) {
-      float bias = getBias(biases[1], cosTheta);
+      float bias = getBias(biases[1], shadowStepSize, cosTheta);
       currentDepth = proj.z - bias;
       
       if (shadowQuality == 2) {

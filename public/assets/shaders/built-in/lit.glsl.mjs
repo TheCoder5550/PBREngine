@@ -402,9 +402,8 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 
   vec3 R = reflect(-V, N);
 
-  vec3 L = normalize(sunDirection.xyz);
-  vec3 H = normalize(V + L);
-
+  // vec3 L = normalize(sunDirection.xyz);
+  // vec3 H = normalize(V + L);
   // return vec4(vec3(dot(N, V) < 0. ? 1. : 0.), 1);
   // return vec4(vec3(dot(N, H) < 0. ? 1. : 0.), 1);
   // return vec4(vec3(dot(N, L) < 0. ? 1. : 0.), 1);
@@ -414,6 +413,8 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 
   float shadowAmount = getShadowAmount(vPosition, dot(sunDirection.xyz, N));
   // float environmentMinLight = 0.25;
+
+  // return vec4(vec3(shadowAmount), 1);
 
   vec3 col = vec3(0);
 
@@ -542,8 +543,13 @@ void main() {
   vTBN = mat3(_T, _B, _N);
 
   vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+  // for (int i = 0; i < levels; i++) {
+  //   projectedTexcoords[i] = textureMatrices[i] * worldPosition;
+  // }
+
+  vec4 wp = modelMatrix * vec4(position, 1.0) + normalize(modelMatrix * vec4(normal, 0)) * 0.05 * 0.;
   for (int i = 0; i < levels; i++) {
-    projectedTexcoords[i] = textureMatrices[i] * worldPosition;
+    projectedTexcoords[i] = textureMatrices[i] * wp;
   }
 
   vPosition = vec3(worldPosition);

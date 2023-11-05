@@ -99,12 +99,12 @@
       // scene.add(renderer.BatchGameObject(test1)).transform.position.y = 3;
       // scene.add(renderer.BatchGameObject(test2)).transform.position.y = 3;
 
-      var model = await renderer.loadGLTF("./assets/models/toyota_ae86.glb");
-      model.transform.position.y = -0.07;
-      var batched = scene.add(renderer.BatchGameObject(model));
-      batched.meshRenderer.materials[2].setUniform("albedo", [1, 1, 1, 1]);
-      batched.meshRenderer.materials[2].setUniform("metallic", 0);
-      batched.meshRenderer.materials[2].setUniform("roughness", 0.35);
+      // var model = await renderer.loadGLTF("./assets/models/toyota_ae86.glb");
+      // model.transform.position.y = -0.07;
+      // var batched = scene.add(renderer.BatchGameObject(model));
+      // batched.meshRenderer.materials[2].setUniform("albedo", [1, 1, 1, 1]);
+      // batched.meshRenderer.materials[2].setUniform("metallic", 0);
+      // batched.meshRenderer.materials[2].setUniform("roughness", 0.35);
 
       var roadProgram = new renderer.CustomProgram(roadSource);
       // var road = scene.add(await renderer.loadGLTF("./cardemo/road.glb"));
@@ -124,7 +124,7 @@
         ABS: true
       });
       car.resetPosition = new Vector(5, 5, 0);
-      await car.setup("./assets/models/skyline.glb");
+      await car.setup("./assets/models/toyota_ae86.glb");
       window.car = car;
 
       await scene.loadEnvironment({

@@ -1159,7 +1159,7 @@ function Car(scene, physicsEngine, settings = {}) {
 
     const grassMat = renderer.CreateLitMaterial({
       // albedo: [0.1, 0.5, 0, 1]
-      albedoTexture: await renderer.loadTexture("leaves5.png")
+      albedoTexture: await renderer.loadTexture(renderer.path + "/cardemo/leaves5.png")
     }, renderer.programContainers.particle);
     grassParticles.material = grassMat;
 

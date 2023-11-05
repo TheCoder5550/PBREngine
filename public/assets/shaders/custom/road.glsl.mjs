@@ -9,6 +9,8 @@ ${lit.litAttributesAndUniforms}
 
 ${lit.litBase}
 
+${lit.fogBase}
+
 void main() {
   ${lit.motionBlurMain}
 
@@ -44,7 +46,13 @@ void main() {
   vec3 _tangentNormal = texture(normalTexture, vUV).rgb * 2. - 1.;
   _tangentNormal = setNormalStrength(_tangentNormal, 2.);
 
-  fragColor = lit(currentAlbedo, 0.5, _emission, _tangentNormal, _metallic, _roughness, _ao);
+  vec4 litColor = lit(currentAlbedo, 0.5, _emission, _tangentNormal, _metallic, _roughness, _ao);
+
+  #ifdef USEFOG
+    litColor = applyFog(litColor);
+  #endif
+
+  fragColor = litColor;
 }
 `;
 

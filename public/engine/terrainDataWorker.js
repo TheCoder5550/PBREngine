@@ -1,8 +1,34 @@
 importScripts("../jsonfnWorker.min.js");
 
+const MessageTypes = { TERRAIN_DATA: "TERRAIN_DATA", INIT: "INIT" };
+
 let getHeight = () => 0;
 
-self.onmessage = function(e) {
+self.onmessage = async function(e) {
+  if (e.data.messageType === MessageTypes.INIT) {
+    // eslint-disable-next-line no-undef
+    const data = JSONfn.parse(e.data.initData);
+
+    for (const entry in data) {
+      if (!(entry in self)) {
+        self[entry] = data[entry];
+      }
+      else {
+        console.error(`Can't set init data: initData["${entry}"]. ${entry} already exists`);
+      }
+    }
+
+    self.initData = { ...data };
+
+    console.log("Init done");
+
+    return;
+  }
+
+  // if (!self.initData) {
+  //   return;
+  // }
+
   const perlin = new Perlin();
 
   self.LayeredNoise = (x, y, octaves = 4) => {
@@ -29,6 +55,7 @@ self.onmessage = function(e) {
   }
 
   self.postMessage({
+    messageType: MessageTypes.TERRAIN_DATA,
     id: e.data.id,
     data: createTerrainData({
       ...e.data,

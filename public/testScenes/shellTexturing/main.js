@@ -4,9 +4,10 @@ import OrbitCamera from "../../engine/orbitCamera.mjs";
 import Vector from "../../engine/vector.mjs";
 import GUI from "./lil-gui.mjs";
 
-const renderer = new Renderer({ renderpipeline: 0, path: "./" });
+const renderer = new Renderer({ renderpipeline: 0, path: "../../" });
+
 const scene = window.scene = renderer.add(new Scene());
-await scene.loadEnvironment({ hdrFolder: "./assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k_precomputed" });
+await scene.loadEnvironment({ hdrFolder: renderer.path + "assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k_precomputed" });
 
 const orbitCamera = new OrbitCamera(renderer, { fov: 30, near: 0.1, far: 1000 });
 orbitCamera.rotation = new Vector(-0.6, 0, 0);

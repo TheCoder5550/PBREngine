@@ -120,26 +120,26 @@ function Renderer(settings = {}) {
 
   var _programContainers = {};
   this.programContainers = {
-    get skybox() { return _getProgramContainer("skybox", skyboxSource); },
+    get skybox() { return _getProgramContainer(skyboxSource, "skybox"); },
 
-    get shadow() { return _getProgramContainer("shadow", shadowSource); },
-    get shadowInstanced() { return _getProgramContainer("shadowInstanced", shadowSource); },
-    get shadowSkinned() { return _getProgramContainer("shadowSkinned", shadowSource); },
+    get shadow() { return _getProgramContainer(shadowSource, "shadow"); },
+    get shadowInstanced() { return _getProgramContainer(shadowSource, "shadowInstanced"); },
+    get shadowSkinned() { return _getProgramContainer(shadowSource, "shadowSkinned"); },
 
-    get postprocessing() { return _getProgramContainer("postprocessing", postprocessingSource); },
-    get bloom() { return _getProgramContainer("bloom", bloomSource); },
-    get equirectangularToCubemap() { return _getProgramContainer("equirectangularToCubemap", equirectangularToCubemapSource); },
-    get diffuseCubemap() { return _getProgramContainer("diffuseCubemap", diffuseCubemapSource); },
-    get specularCubemap() { return _getProgramContainer("specularCubemap", specularCubemapSource); },
+    get postprocessing() { return _getProgramContainer(postprocessingSource, "postprocessing"); },
+    get bloom() { return _getProgramContainer(bloomSource, "bloom"); },
+    get equirectangularToCubemap() { return _getProgramContainer(equirectangularToCubemapSource, "equirectangularToCubemap"); },
+    get diffuseCubemap() { return _getProgramContainer(diffuseCubemapSource, "diffuseCubemap"); },
+    get specularCubemap() { return _getProgramContainer(specularCubemapSource, "specularCubemap"); },
 
-    get lit() { return _getProgramContainer("lit", litSource); },
-    get litSkinned() { return _getProgramContainer("litSkinned", litSource); },
-    get litInstanced() { return _getProgramContainer("litInstanced", litSource); },
-    get litTrail() { return _getProgramContainer("litTrail", litSource); },
-    get unlit() { return _getProgramContainer("unlit", unlitSource); },
-    get unlitInstanced() { return _getProgramContainer("unlitInstanced", unlitSource); },
-    get particle() { return _getProgramContainer("particle", particleSource); },
-    get billboard() { return _getProgramContainer("billboard", billboardSource); },
+    get lit() { return _getProgramContainer(litSource, "lit"); },
+    get litSkinned() { return _getProgramContainer(litSource, "litSkinned"); },
+    get litInstanced() { return _getProgramContainer(litSource, "litInstanced"); },
+    get litTrail() { return _getProgramContainer(litSource, "litTrail"); },
+    get unlit() { return _getProgramContainer(unlitSource, "unlit"); },
+    get unlitInstanced() { return _getProgramContainer(unlitSource, "unlitInstanced"); },
+    get particle() { return _getProgramContainer(particleSource, "particle"); },
+    get billboard() { return _getProgramContainer(billboardSource, "billboard"); },
   };
 
   var currentProgram = null;
@@ -408,7 +408,8 @@ function Renderer(settings = {}) {
       }
     }
     else {
-      this.renderpipeline = new DeferredPBRRenderpipeline(this);
+      // this.renderpipeline = new DeferredPBRRenderpipeline(this);
+      this.renderpipeline = new ForwardPBRRenderpipeline(this);
     }
 
     this.shadowCascades = new ShadowCascades(
@@ -417,8 +418,8 @@ function Renderer(settings = {}) {
         instanced: this.programContainers.shadowInstanced,
         skinned: this.programContainers.shadowSkinned,
       },
-      settings.shadowSizes ?? [4, 16],
-      settings.shadowBiases ?? [-0.0003, -0.0005],
+      settings.shadowSizes ?? [32, 128],
+      settings.shadowBiases ?? [2, 2],
       settings.shadowResolution ?? 1024
     );
     logGLError("Shadow cascades");
@@ -702,6 +703,9 @@ function Renderer(settings = {}) {
 
   this.createCubemapFromHDR = async function(path, res = 1024, gamma = 1) {
     var hdr = await LoadHDR(path, 1, gamma);
+    if (hdr === null) {
+      throw new Error("Could not load HDR: " + path);
+    }
 
     var pixelData = hdr.data;
     if (!this.floatTextures) {
@@ -968,6 +972,7 @@ function Renderer(settings = {}) {
   this.getSpecularCubemap = async function(cubemap, res = 128) {
     // bruh
     if (!renderer.floatTextures && !renderer.textureHalfFloatExt) {
+      console.warn("No support for float textures, returning same cubemap");
       return cubemap;
     }
   
@@ -1689,19 +1694,37 @@ function Renderer(settings = {}) {
     return "";
   }
 
-  function _getProgramContainer(name, source = litSource) {
+  function _getProgramContainer(source, name) {
+    if (!source) {
+      throw new Error("Source cannot be undefined");
+    }
+
+    if (name == null) {
+      throw new Error("Programcontainers must have a name");
+    }
+
     if (!(name in _programContainers)) {
       console.log("Loading program:", name);
 
-      var p = source["webgl" + renderer.version][name];
+      let vertex;
+      let fragment;
 
-      if (!p || !p.vertex || !p.fragment) {
-        console.error(`Program ${name} not found for version ${renderer.version}!`);
+      if (source.vertex && source.fragment) {
+        vertex = source.vertex;
+        fragment = source.fragment;
+      }
+      else if (source["webgl" + renderer.version][name]) {
+        const p = source["webgl" + renderer.version][name];
+        vertex = p.vertex;
+        fragment = p.fragment;
+      }
+      else {
+        console.error(`Program '${name}' not found for version ${renderer.version}!`);
         _programContainers[name] = undefined;
         return;
       }
 
-      var program = renderer.createProgram(p.vertex, p.fragment);
+      const program = renderer.createProgram(vertex, fragment);
       _programContainers[name] = new ProgramContainer(program);
     }
     
@@ -2866,7 +2889,11 @@ function Renderer(settings = {}) {
         return;
       }
   
-      var fragment = "#version 300 es\n";
+      var fragment = "";
+
+      if (renderer.version > 1) {
+        fragment += "#version 300 es\n";
+      }
 
       if (renderer.version > 1 && postprocessing.motionBlurStrength.value > 1e-6) {
         fragment += "#define ENABLE_MOTIONBLUR\n";
@@ -3079,6 +3106,8 @@ function Renderer(settings = {}) {
   function ShadowCascades(programContainers, levelSizes = [50, 8], levelBiases = [-0.0025, -0.0005], res = 1024) {
     var _this = this;
 
+    const originalLevelSizes = [...levelSizes];
+
     levelSizes.reverse();
     levelBiases.reverse();
 
@@ -3189,6 +3218,7 @@ function Renderer(settings = {}) {
         gl.uniformMatrix4fv(l, false, textureMatrices);
         gl.uniform1iv(material.getUniformLocation("projectedTextures[0]"), projectedTextures);
         gl.uniform1fv(material.getUniformLocation("biases[0]"), biases);
+        gl.uniform1fv(material.getUniformLocation("shadowSizes[0]"), originalLevelSizes);
       }
     };
   }
@@ -4407,6 +4437,7 @@ function Renderer(settings = {}) {
 
       this.ditherBuffer = gl.createBuffer();
       this.ditherAmount = new WeakMap();
+      this.ditherData = null;
     }
 
     // bruh bounding box does not take into account the size of each mesh, only its origin
@@ -4511,13 +4542,13 @@ function Renderer(settings = {}) {
     }
 
     updateDitherBuffer() {
-      const ditherData = new Float32Array(this.matrices.length);
+      this.ditherData = new Float32Array(this.matrices.length);
       for (var i = 0; i < this.matrices.length; i++) {
-        ditherData[i] = this.ditherAmount.get(this.matrices[i]) ?? 0;
+        this.ditherData[i] = this.ditherAmount.get(this.matrices[i]) ?? 0;
       }
   
       gl.bindBuffer(gl.ARRAY_BUFFER, this.ditherBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, ditherData, gl.STREAM_DRAW);
+      gl.bufferData(gl.ARRAY_BUFFER, this.ditherData, gl.STREAM_DRAW);
     }
   
     render(camera, baseMatrix, shadowPass = false, opaquePass = true, prevMatrix, settings = {}) {
@@ -4530,9 +4561,9 @@ function Renderer(settings = {}) {
         this.updateMatrixData();
         this.needsBufferUpdate = false;
       }
-      if (!shadowPass) {
+      // if (!shadowPass) {
         this.updateDitherBuffer();
-      }
+      // }
 
       if (this.matrices.length > 0) {
         for (var i = 0; i < this.meshData.length; i++) {
@@ -4565,15 +4596,13 @@ function Renderer(settings = {}) {
           }
 
           // Dithering
-          // if (!shadowPass) {
-            const loc = mat.programContainer.getAttribLocation("ditherAmount");
-            if (loc) {
-              gl.bindBuffer(gl.ARRAY_BUFFER, this.ditherBuffer);
-              gl.enableVertexAttribArray(loc);
-              gl.vertexAttribPointer(loc, 1, gl.FLOAT, false, 0, 0);
-              vertexAttribDivisor(loc, 1);
-            }
-          // }
+          const loc = mat.programContainer.getAttribLocation("ditherAmount");
+          if (loc) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.ditherBuffer);
+            gl.enableVertexAttribArray(loc);
+            gl.vertexAttribPointer(loc, 1, gl.FLOAT, false, 0, 0);
+            vertexAttribDivisor(loc, 1);
+          }
 
           if (mat instanceof NewMaterial) {
             bindMaterial(mat, {
@@ -5623,6 +5652,9 @@ function Renderer(settings = {}) {
       var image = new Image();
       image.crossOrigin = "Anonymous";
       image.src = url;
+      image.addEventListener("error", () => {
+        console.error(`Failed to load image's URL: ${url}`);
+      });
       image.onload = function() {
         setupTexture(texture, image, settings);
       };

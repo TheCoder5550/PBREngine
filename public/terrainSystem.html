@@ -3,7 +3,7 @@
 <head>
   <meta charset='utf-8'>
   <meta http-equiv='X-UA-Compatible' content='IE=edge'>
-  <title>PBR demo</title>
+  <title>Terrain system demo</title>
   <meta name='viewport' content='width=device-width, initial-scale=1'>
   <meta name="apple-mobile-web-app-capable" content="yes" />
 
@@ -107,6 +107,8 @@
   <script src="./gameCanvas-5.0.js"></script>
   <script  type="module">
 
+    import * as roadSource from "./assets/shaders/custom/road.glsl.mjs";
+
     import Renderer, { Scene, GameObject, Transform, Camera, FindMaterials } from "./engine/renderer.mjs";
     import OrbitCamera from "./engine/orbitCamera.mjs";
     import FlyCamera from "./engine/flyCamera.mjs";
@@ -120,10 +122,10 @@
     import { getTriangleNormal } from "./engine/algebra.mjs";
     import Perlin from "./engine/perlin.mjs";
     import { NewMaterial } from "./engine/material.mjs";
-
-    import * as roadSource from "./assets/shaders/custom/road.glsl.mjs";
     import { PhysicsEngine, MeshCollider, Rigidbody } from "./engine/physics.mjs";
     import { Car, Wing } from "./car.js";
+    import PRNG from "./PRNG.mjs";
+    import TreeHandler from "./engine/treeHandler.mjs";
 
     document.addEventListener("DOMContentLoaded", function () {
       var physicsEngine;
@@ -210,51 +212,17 @@
 
         var roadProgram = new renderer.ProgramContainer(await renderer.createProgram(roadSource.webgl2.vertex, roadSource.webgl2.fragment));
 
-        var car = new Car(scene, physicsEngine, {
-          drivetrain: "RWD",
-          torque: 800,
-          gearChangeTime: 0.15,
-
-          friction: 1.2,
-          forwardFriction: 1,
-          sidewaysFriction: 1.05,
-
-          maxSteerAngle: 40,
-          steerVelocity: 100,
-
-          suspensionForce: 90_000,
-          suspensionDamping: 3000,
-          suspensionTravel: 0.1,
-          rideHeightOffset: 0.08,
-
-          controlScheme: Car.ControlScheme.Controller,
-          activateAutoCountersteer: true,
-
-          ABS: true,
-          differential: Car.ENUMS.DIFFERENTIAL.LSD,
-
-          wings: [
-            new Wing(new Vector(0, 0.5, -2.3), 0.4),
-            new Wing(new Vector(0, -0.4, 2.2), 0.42),
-          ]
-        });
-        car.resetPosition = new Vector(0, 15, 0);
-        await car.setup("./assets/models/aventador.glb");
-        // await car.setup("./assets/models/ford_ranger_police.glb");
-        // await car.setup("./assets/models/PH_orange.glb");
-        // await car.setup("./assets/models/toyota_ae86.glb");
-        // await car.setup("./assets/models/audi_rs6.glb");
-        // await car.setup("./cargame/porsche.glb");
-
-
-        
         // var car = new Car(scene, physicsEngine, {
         //   drivetrain: "RWD",
-        //   friction: 1,
+        //   torque: 800,
+        //   gearChangeTime: 0.15,
+
+        //   friction: 1.2,
         //   forwardFriction: 1,
         //   sidewaysFriction: 1.05,
-        //   maxSteerAngle: 40 * 1.2,
-        //   torque: 400 * 2.5,
+
+        //   maxSteerAngle: 40,
+        //   steerVelocity: 100,
 
         //   suspensionForce: 90_000,
         //   suspensionDamping: 3000,
@@ -264,12 +232,52 @@
         //   controlScheme: Car.ControlScheme.Controller,
         //   activateAutoCountersteer: true,
 
-        //   ABS: false,
+        //   ABS: true,
         //   differential: Car.ENUMS.DIFFERENTIAL.LSD,
+
+        //   wings: [
+        //     new Wing(new Vector(0, 0.5, -2.3), 0.4),
+        //     new Wing(new Vector(0, -0.4, 2.2), 0.42),
+        //   ],
+
+        //   camera: {
+        //     followDistance: 4.5,
+        //     followHeight: 0.35,
+        //     pitch: 0.1,
+        //   },
         // });
-        // await car.setup("./assets/models/volvov70.glb");
-        // car.rb.COMOffset.y -= 0.2;
+        // car.resetPosition = new Vector(0, 15, 0);
+        // await car.setup("./assets/models/aventador.glb");
+        // // await car.setup("./assets/models/ford_ranger_police.glb");
+        // // await car.setup("./assets/models/PH_orange.glb");
         // // await car.setup("./assets/models/toyota_ae86.glb");
+        // // await car.setup("./assets/models/audi_rs6.glb");
+        // // await car.setup("./cargame/porsche.glb");
+
+
+        
+        var car = new Car(scene, physicsEngine, {
+          drivetrain: "RWD",
+          friction: 1,
+          forwardFriction: 1,
+          sidewaysFriction: 1.05,
+          maxSteerAngle: 40 * 1.2,
+          torque: 400 * 2.5,
+
+          suspensionForce: 90_000,
+          suspensionDamping: 3000,
+          suspensionTravel: 0.1,
+          rideHeightOffset: 0.08,
+
+          controlScheme: Car.ControlScheme.Controller,
+          activateAutoCountersteer: true,
+
+          ABS: false,
+          differential: Car.ENUMS.DIFFERENTIAL.LSD,
+        });
+        await car.setup("./assets/models/volvov70.glb");
+        car.rb.COMOffset.y -= 0.2;
+        // await car.setup("./assets/models/toyota_ae86.glb");
 
 
 
@@ -309,6 +317,8 @@
         // car.rb.COMOffset.z += 0.3;
         // car.rb.velocity.z = -30;
         
+        car.resetPosition = new Vector(0, 15, 0);
+
         car.wheels.map(w => {
           w.model.setLayer(0b10, true);
         });
@@ -337,40 +347,48 @@
           }
         }
 
-        var terrain = new Terrain(scene);
-
-        var maxHeight = 400;
-        var imageRes = 1024;
+        const maxHeight = 400;
+        const imageRes = 1024;
         const imageData = getImagePixelData(await loadImage("./assets/textures/terrainHeightmap.png"), imageRes, imageRes);
 
-        function getHeightFromImage(u, v) {
-          u = clamp(u, 0, imageRes - 1);
-          v = clamp(v, 0, imageRes - 1);
+        var terrain = new Terrain(scene);
 
-          var indexOffset = (u + v * imageRes) * 4;
-          var remappedHeight = imageData[indexOffset + 0] + imageData[indexOffset + 1] / 255;
-          var height = remappedHeight * maxHeight / 255;
-
-          return height;
-        }
-
-        function bilinear(u, v, f) {
-          var fu = Math.floor(u);
-          var fv = Math.floor(v);
-
-          var a = f(fu, fv);
-          var b = f(fu + 1, fv);
-          var c = f(fu, fv + 1);
-          var d = f(fu + 1, fv + 1);
-
-          var e = lerp(a, b, u % 1);
-          var f = lerp(c, d, u % 1);
-          var g = lerp(e, f, v % 1);
-
-          return g;
-        }
+        terrain.makeDataAccessible({
+          clamp,
+          lerp,
+          imageData,
+          imageRes,
+          maxHeight
+        });
 
         terrain.getHeight = (i, j) => {
+          function getHeightFromImage(u, v) {
+            u = clamp(u, 0, imageRes - 1);
+            v = clamp(v, 0, imageRes - 1);
+
+            var indexOffset = (u + v * imageRes) * 4;
+            var remappedHeight = imageData[indexOffset + 0] + imageData[indexOffset + 1] / 255;
+            var height = remappedHeight * maxHeight / 255;
+
+            return height;
+          }
+
+          function bilinear(u, v, f) {
+            var fu = Math.floor(u);
+            var fv = Math.floor(v);
+
+            var a = f(fu, fv);
+            var b = f(fu + 1, fv);
+            var c = f(fu, fv + 1);
+            var d = f(fu + 1, fv + 1);
+
+            var e = lerp(a, b, u % 1);
+            var f = lerp(c, d, u % 1);
+            var g = lerp(e, f, v % 1);
+
+            return g;
+          }
+
           var u = mapValue(i, -500, 500, 0, imageRes - 1);
           var v = mapValue(j, -500, 500, 0, imageRes - 1);
 
@@ -399,8 +417,8 @@
         renderer.on("renderloop", function(frameTime, totalTime) {
           camera.update?.(frameTime);
 
-          // terrain.update(mainCamera.transform);
-          terrain.update();
+          terrain.update(mainCamera.transform);
+          // terrain.update();
           
 
           physicsEngine.update();
@@ -565,13 +583,13 @@
             vertices.push(e2.x, e2.y, e2.z);
             vertices.push(m2.x, m2.y, m2.z);
 
-            var v = distanceAlongPath / width;
-            uvs.push(-0.5, v);
+            var v = distanceAlongPath / width * 3;
+            uvs.push(-1, v);
             uvs.push(0, v);
             uvs.push(0, v);
-            uvs.push(1, v);
-            uvs.push(1, v);
-            uvs.push(3.5, v);
+            uvs.push(3, v);
+            uvs.push(3, v);
+            uvs.push(4, v);
 
             distanceAlongPath += Vector.length(diff);
           }
@@ -631,19 +649,51 @@
         }
 
         async function initTrees() {
-          var tree = scene.add(await renderer.loadGLTF("./assets/models/treePbr.glb"));
-          tree.children[0].meshRenderer = tree.children[0].meshRenderer.getInstanceMeshRenderer();
+          const prng = new PRNG();
 
-          for (var i = 0; i < 100; i++) {
-            var pos = new Vector((Math.random() - 0.5) * 100, 0, (Math.random() - 0.5) * 100);
-            pos.y = terrain.getHeight(pos.x, pos.z);
+          const treeHandler = new TreeHandler(scene, car.mainCamera, renderer.path + "assets/models/trees/myFirstTreeLOD/myFirstTreeLOD.glb", [
+            40,
+            80,
+            Infinity
+          ]);
+          await treeHandler.setup();
+
+          const area = 500;
+          for (let i = 0; i < 1_000; i++) {
+            const x = (prng.random() - 0.5) * 2 * area;
+            const z = (prng.random() - 0.5) * 2 * area;
+            const y = terrain.getHeight(x, z);
+
+            const position = { x, y, z };
+            const scale = Vector.fill(2 + prng.random());
+            const rotationY = prng.random() * Math.PI * 2;
+
+            const instance = Matrix.identity();
+            Matrix.applyTranslation(position, instance);
+            Matrix.applyScale(scale, instance);
+            Matrix.applyRotationY(rotationY, instance);
             
-            tree.children[0].meshRenderer.addInstance(Matrix.transform([
-              ["translate", pos],
-              ["scale", Vector.fill(0.8 + Math.random() * 0.4)],
-              ["ry", Math.random() * Math.PI * 2]
-            ]));
+            treeHandler.addTree(instance);
           }
+
+          // var tree = scene.add(await renderer.loadGLTF("./assets/models/treePbr.glb"));
+          // tree.children[0].meshRenderer = tree.children[0].meshRenderer.getInstanceMeshRenderer();
+
+          // for (var i = 0; i < 100; i++) {
+          //   var pos = new Vector((Math.random() - 0.5) * 100, 0, (Math.random() - 0.5) * 100);
+          //   try {
+          //     pos.y = terrain.getHeight(pos.x, pos.z);
+          //   }
+          //   catch {
+          //     pos.y = 0;
+          //   }
+            
+          //   tree.children[0].meshRenderer.addInstance(Matrix.transform([
+          //     ["translate", pos],
+          //     ["scale", Vector.fill(0.8 + Math.random() * 0.4)],
+          //     ["ry", Math.random() * Math.PI * 2]
+          //   ]));
+          // }
         }
 
         function initSnow() {

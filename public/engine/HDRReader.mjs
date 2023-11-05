@@ -88,6 +88,11 @@ function frexp (arg) {
 
 export async function LoadHDR(path) {
   const res = await fetch(path);
+  if (!res.ok) {
+    console.error(res.statusText);
+    return null;
+  }
+
   const arrayBuffer = await res.arrayBuffer();
 
   console.time("Load hdr");

@@ -6,6 +6,7 @@ import { BloomSettings } from "./bloomSettings.mjs";
 import { NewMaterial } from "./material.mjs";
 
 export function Scene(name) {
+  /** @type {Renderer} */
   this.renderer = null;
   this.name = name;
   this.root = new GameObject("root");
@@ -58,64 +59,65 @@ export function Scene(name) {
   };
 
   this.loadEnvironment = async function(settings = {}) {
-    if (this.renderer) {
-      this.specularCubemap = null;
+    if (!this.renderer) {
+      console.error("Add scene to renderer before loading environment");
+      return false;
+    }
 
-      var res = settings.res ?? 1024;
-      if (settings.hdr) {
-        this.skyboxCubemap = await this.renderer.createCubemapFromHDR(settings.hdr, res);
-          
+    this.specularCubemap = null;
+
+    var res = settings.res ?? 1024;
+    if (settings.hdr) {
+      this.skyboxCubemap = await this.renderer.createCubemapFromHDR(settings.hdr, res);
+        
+      console.warn("No prebaked diffuse map. Generating one...");
+      this.diffuseCubemap = await this.renderer.getDiffuseCubemap(this.skyboxCubemap);
+    }
+    else if (settings.hdrFolder) {
+      var hdrFolder = settings.hdrFolder;
+
+      this.skyboxCubemap = await this.renderer.createCubemapFromHDR(hdrFolder + "/skybox.hdr", res);
+    
+      try {
+        // bruh res should be 32
+        this.diffuseCubemap = await this.renderer.createCubemapFromHDR(hdrFolder + "/diffuse.hdr", 32/*res*/);
+      }
+      catch (e) {
         console.warn("No prebaked diffuse map. Generating one...");
         this.diffuseCubemap = await this.renderer.getDiffuseCubemap(this.skyboxCubemap);
       }
-      else if (settings.hdrFolder) {
-        var hdrFolder = settings.hdrFolder;
 
-        this.skyboxCubemap = await this.renderer.createCubemapFromHDR(hdrFolder + "/skybox.hdr", res);
-      
-        try {
-          // bruh res should be 32
-          this.diffuseCubemap = await this.renderer.createCubemapFromHDR(hdrFolder + "/diffuse.hdr", 32/*res*/);
+      try {
+        if (this.renderer.version <= 1) {
+          // throw new Error("Version 1 can't use prebaked specular map!");
         }
-        catch (e) {
-          console.warn("No prebaked diffuse map. Generating one...");
-          this.diffuseCubemap = await this.renderer.getDiffuseCubemap(this.skyboxCubemap);
-        }
-
-        try {
-          if (this.renderer.version <= 1) {
-            // throw new Error("Version 1 can't use prebaked specular map!");
-          }
-          this.specularCubemap = await this.renderer.createSpecularCubemapFromHDR(hdrFolder, res);
-        }
-        catch (e) {
-          console.error(e);
-          console.warn("No prebaked specular map. Generating one...");
-        }
+        this.specularCubemap = await this.renderer.createSpecularCubemapFromHDR(hdrFolder, res);
       }
-      else if (settings.cubemap) {
-        this.skyboxCubemap = settings.cubemap;
-        this.diffuseCubemap = await this.renderer.getDiffuseCubemap(this.skyboxCubemap);
+      catch (e) {
+        console.error(e);
+        console.warn("No prebaked specular map. Generating one...");
       }
-      else {
-        var program = new this.renderer.ProgramContainer(await this.renderer.createProgramFromFile(this.renderer.path + `assets/shaders/built-in/webgl${this.renderer.version}/procedualSkybox`));
-        var mat = new NewMaterial(program, { sunDirection: Vector.toArray(this.sunDirection) });
-        this.skyboxCubemap = await this.renderer.createCubemapFromCube(mat, res);
-        this.diffuseCubemap = await this.renderer.getDiffuseCubemap(this.skyboxCubemap);
-      }
-
-      if (!this.specularCubemap) {
-        this.specularCubemap = await this.renderer.getSpecularCubemap(this.skyboxCubemap);
-      }
-
-      if (this.smoothSkybox) {
-        this.skyboxCubemap = this.diffuseCubemap;
-      }
-
-      return true;
     }
-    console.error("Add scene to renderer before loading environment");
-    return false;
+    else if (settings.cubemap) {
+      this.skyboxCubemap = settings.cubemap;
+      this.diffuseCubemap = await this.renderer.getDiffuseCubemap(this.skyboxCubemap);
+    }
+    else {
+      var program = new this.renderer.ProgramContainer(await this.renderer.createProgramFromFile(this.renderer.path + `assets/shaders/built-in/webgl${this.renderer.version}/procedualSkybox`));
+      var mat = new NewMaterial(program, { sunDirection: Vector.toArray(this.sunDirection) });
+      this.skyboxCubemap = await this.renderer.createCubemapFromCube(mat, res);
+      this.diffuseCubemap = await this.renderer.getDiffuseCubemap(this.skyboxCubemap);
+    }
+
+    if (!this.specularCubemap) {
+      this.specularCubemap = await this.renderer.getSpecularCubemap(this.skyboxCubemap);
+    }
+
+    if (this.smoothSkybox) {
+      this.skyboxCubemap = this.diffuseCubemap;
+    }
+
+    return true;
   };
 
   /**

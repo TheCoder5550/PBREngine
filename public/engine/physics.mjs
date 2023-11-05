@@ -1275,7 +1275,7 @@ function PhysicsEngine(scene, settings = {}) {
                     rigidbody.groundNormal = normal;
                   }
 
-                  window.Debug.Vector(pA, normal, depth);
+                  window.Debug?.Vector(pA, normal, depth);
                 }
               }
             }
@@ -1319,7 +1319,7 @@ function PhysicsEngine(scene, settings = {}) {
             }
 
             // Draw bounds of BoxCollider
-            window.Debug.Bounds(boxCollider.aabb, rigidbody.gameObject.transform.worldMatrix);
+            window.Debug?.Bounds(boxCollider.aabb, rigidbody.gameObject.transform.worldMatrix);
 
             this.scene.root.traverseCondition(otherGameObject => {
               // Don't collide with self
@@ -1368,8 +1368,8 @@ function PhysicsEngine(scene, settings = {}) {
 
                     intersectionData.featureA.render();
                     intersectionData.featureB.render();
-                    window.Debug.Vector(intersectionData.penetrationPoint, intersectionData.penetrationNormal, -intersectionData.penetrationDepth, [0, 1, 0]);
-                    window.Debug.Point(intersectionData.penetrationPoint, 0.03, [0, 1, 0.2]);
+                    window.Debug?.Vector(intersectionData.penetrationPoint, intersectionData.penetrationNormal, -intersectionData.penetrationDepth, [0, 1, 0]);
+                    window.Debug?.Point(intersectionData.penetrationPoint, 0.03, [0, 1, 0.2]);
 
                     penetration = true;
 
@@ -1400,8 +1400,8 @@ function PhysicsEngine(scene, settings = {}) {
                   const normal = Vector.normalize(diff);
                   const depth = Vector.length(diff);
 
-                  window.Debug.Vector(point, normal, depth, [0, 0, 1]);
-                  window.Debug.Point(point, 0.03, [0, 0.2, 1]);
+                  window.Debug?.Vector(point, normal, depth, [0, 0, 1]);
+                  window.Debug?.Point(point, 0.03, [0, 0.2, 1]);
 
                   return {
                     normal,
@@ -1448,10 +1448,10 @@ function PhysicsEngine(scene, settings = {}) {
                   //   Vector.set(point, pointB);
                   // }
 
-                  window.Debug.Point(pointA, 0.05);
-                  window.Debug.Point(pointB, 0.05);
-                  window.Debug.Vector(pointA, vector, 1, [0, 1, 0]);
-                  window.Debug.Vector(point, normal, 1, [1, 1, 0]);
+                  window.Debug?.Point(pointA, 0.05);
+                  window.Debug?.Point(pointB, 0.05);
+                  window.Debug?.Vector(pointA, vector, 1, [0, 1, 0]);
+                  window.Debug?.Vector(point, normal, 1, [1, 1, 0]);
                   // console.log(point, normal, depth);
 
                   return {
