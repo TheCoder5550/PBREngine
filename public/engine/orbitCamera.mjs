@@ -1,6 +1,7 @@
 import Vector from "./vector.mjs";
 import Matrix from "./matrix.mjs";
-import Renderer, { Camera } from "./renderer.mjs";
+import Renderer from "./renderer.mjs";
+import { Camera } from "./camera.mjs";
 import Quaternion from "./quaternion.mjs";
 
 /**

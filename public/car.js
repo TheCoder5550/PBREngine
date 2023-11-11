@@ -1,11 +1,14 @@
 import Vector from "./engine/vector.mjs";
 import Matrix from "./engine/matrix.mjs";
 import Quaternion from "./engine/quaternion.mjs";
-import { GameObject, FindMaterials, flyCamera, Scene } from "./engine/renderer.mjs";
+import { FindMaterials } from "./engine/material.mjs";
+import { GameObject } from "./engine/gameObject.mjs";
+import { flyCamera } from "./engine/flyCamera.mjs";
+import { Scene } from "./engine/scene.mjs";
 import { Rigidbody, BoxCollider, AABB, GetMeshAABB, PhysicsEngine } from "./engine/physics.mjs";
 import { clamp, clamp01, smoothstep } from "./engine/helper.mjs";
 import Keybindings from "./keybindingsController.mjs";
-import { Camera } from "./engine/renderer.mjs";
+import { Camera } from "./engine/camera.mjs";
 import GamepadManager, { deadZone, quadraticCurve } from "./gamepadManager.js";
 import Perlin from "./engine/perlin.mjs";
 import GameCanvas from "./gameCanvas-5.0-module.mjs";
@@ -1244,12 +1247,13 @@ function Car(scene, physicsEngine, settings = {}) {
   };
 
   this.renderUI = function(ui) {
+    const font = "Oswald, Tahoma";
+    ui.font = font;
+
     const rpm = this.engine.getRPM();
     const center = {x: ui.width - 140, y: ui.height - 120};
     const radius = 100;
     const inactiveColor = "rgba(255, 255, 255, 0.3)";
-
-    ui.font = "Oswald";
 
     const backgroundRadius = radius * 1.04;
     const gradient = ui.ctx.createLinearGradient(center.x, center.y - backgroundRadius, center.x, center.y + backgroundRadius);
@@ -1268,7 +1272,7 @@ function Car(scene, physicsEngine, settings = {}) {
     // rpmText = rpmText.padStart(4, "0");
     ui.text(rpmText.padStart(4, "0"), center.x, center.y - 60, 20, inactiveColor);
     ui.text(rpmText.padStart(4, " "), center.x, center.y - 60, 20, "white");
-    ui.font = "Oswald";
+    ui.font = font;
 
     // Gear
     ui.roundedRectangle(center.x - 25, center.y - 10 - 30, 50, 55, "rgba(0, 0, 0, 0.25)", 10);

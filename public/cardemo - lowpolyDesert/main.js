@@ -1,7 +1,9 @@
 import Stats from "../statsModule.mjs";
 import GameCanvas from "../gameCanvas-6.0-module.mjs";
 import * as ENUMS from "../engine/constants.mjs";
-import Renderer, { Scene, GameObject, Camera } from "../engine/renderer.mjs";
+import Renderer from "../engine/renderer.mjs";
+import { GameObject } from "../engine/gameObject.mjs";
+import { Scene } from "../engine/scene.mjs";
 import Vector from "../engine/vector.mjs";
 import Matrix from "../engine/matrix.mjs";
 import Quaternion from "../engine/quaternion.mjs";

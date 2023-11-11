@@ -89,9 +89,6 @@ const basic = {
   }
 };
 
-lit.trimStrings(instanced);
-lit.trimStrings(basic);
-
 export {
   instanced,
   basic

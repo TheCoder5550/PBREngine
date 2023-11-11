@@ -1,7 +1,10 @@
 import Stats from "../statsModule.mjs";
 import GameCanvas from "../gameCanvas-6.0-module.mjs";
 import * as ENUMS from "../engine/constants.mjs";
-import Renderer, { Scene, GameObject, Camera } from "../engine/renderer.mjs";
+import Renderer from "../engine/renderer.mjs";
+import { Scene } from "../engine/scene.mjs";
+import { GameObject } from "../engine/gameObject.mjs";
+import { Camera } from "../engine/camera.mjs";
 import Vector from "../engine/vector.mjs";
 import Matrix from "../engine/matrix.mjs";
 import Quaternion from "../engine/quaternion.mjs";
@@ -428,7 +431,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   scene.environmentMinLight = 0.5;
   scene.skyboxAnimation.speed = 0.01;
 
-  scene.postprocessing.exposure = -5;//-1;
+  scene.postprocessing.exposure = -1;
   scene.postprocessing.vignette.amount = 0.3;
   scene.postprocessing.vignette.falloff = 0.3;
   // scene.postprocessing.saturation = 0.4;
@@ -438,14 +441,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   isDay(true);
 
-  await scene.loadEnvironment({ hdrFolder: "cubemaps/lowpolyDesert" });
+  // lowpolyDesert has artifacts in diffuse.hdr
+  // await scene.loadEnvironment({ hdrFolder: "cubemaps/lowpolyDesert" });
 
-  // await scene.loadEnvironment({
-  //   // hdr: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr",
-  //   hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k_precomputed",
-  //   // hdrFolder: "../assets/hdri/snowy_field_1k",
-  //   // res: 1024
-  // });
+  await scene.loadEnvironment({
+    // hdr: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr",
+    hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k_precomputed",
+    // hdrFolder: "../assets/hdri/snowy_field_1k",
+    // res: 1024
+  });
 
   // Garage scene
   setProgress(currentTask++, totalTasks, "Generating garage");
@@ -529,25 +533,6 @@ document.addEventListener("DOMContentLoaded", async function () {
     }),
   };
 
-  // Load map
-  setProgress(currentTask++, totalTasks, "Loading map");
-
-  // const { terrain } = await generateCity();
-  // const { terrain, checkChunks } = await generateLowpolyForest();
-  // const { terrain, checkChunks } = await generateForest();
-  // const { terrain } = await generateTerrain();
-  const { terrain } = await generatePlayground();
-  // const { terrain } = await generateTouge();
-
-  // // Reflection probe
-  // await sleep(6000);
-  // setProgress(currentTask++, totalTasks, "Generating cubemap");
-  // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 1, 0));
-  // var oldSkybox = scene.skyboxCubemap;
-  // await scene.loadEnvironment({ cubemap });
-  // scene.skyboxCubemap = oldSkybox;
-  // scene.environmentIntensity = 1;
-
   // Load all car models
   setProgress(currentTask++, totalTasks, "Loading car models");
   var models = {};
@@ -615,30 +600,40 @@ document.addEventListener("DOMContentLoaded", async function () {
   let car;
   car = await loadCar(carSettings[carKey].settings, carModel);
 
-  const treeHandler = new TreeHandler(scene, car.mainCamera, "../assets/models/trees/myFirstTreeLOD/myFirstTreeLOD.glb", [
-    40,
-    80,
-    Infinity
-  ]);
-  await treeHandler.setup();
+  // Load map
+  setProgress(currentTask++, totalTasks, "Loading map");
 
-  const area = 500;
-  for (let i = 0; i < 3_000; i++) {
-    const x = (prng.random() - 0.5) * 2 * area;
-    const z = (prng.random() - 0.5) * 2 * area;
-    const y = 0;
+  // const { terrain } = await generateCity();
+  // const { terrain, checkChunks } = await generateLowpolyForest();
+  const { terrain, checkChunks } = await generateForest();
+  // const { terrain } = await generateTerrain();
+  // const { terrain } = await generatePlayground();
+  // const { terrain } = await generateTouge();
 
-    const position = { x, y, z };
-    const scale = Vector.fill(2 + prng.random());
-    const rotationY = prng.random() * Math.PI * 2;
+  // Re-set spawnpoint since maps changes it
+  // Spawn position
+  Vector.set(car.resetPosition, spawnPosition);
+  car.resetPosition.y -= car.bottomOffset.y;
 
-    const instance = Matrix.identity();
-    Matrix.applyTranslation(position, instance);
-    Matrix.applyScale(scale, instance);
-    Matrix.applyRotationY(rotationY, instance);
-    
-    treeHandler.addTree(instance);
-  }
+  const longestSuspension = Math.max(...car.wheels.map(w => w.suspensionTravel));
+  car.resetPosition.y += longestSuspension * 0.5;
+
+  Vector.set(car.rb.position, car.resetPosition);
+  car.gameObject.transform.position = Vector.copy(car.rb.position);
+
+  // Spawn rotation
+  Quaternion.set(car.resetRotation, spawnRotation);
+  Quaternion.set(car.rb.rotation, car.resetRotation);
+  car.gameObject.transform.rotation = Quaternion.copy(car.rb.rotation);
+
+  // // Reflection probe
+  // await sleep(6000);
+  // setProgress(currentTask++, totalTasks, "Generating cubemap");
+  // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 1, 0));
+  // var oldSkybox = scene.skyboxCubemap;
+  // await scene.loadEnvironment({ cubemap });
+  // scene.skyboxCubemap = oldSkybox;
+  // scene.environmentIntensity = 1;
 
   setProgress(currentTask++, totalTasks, "Finalizing physics colliders");
   physicsEngine.setupMeshCollider();
@@ -1226,6 +1221,11 @@ document.addEventListener("DOMContentLoaded", async function () {
   // Maps
   // Touge road map
   async function generateTouge() {
+    scene.postprocessing.exposure = -0.5;
+    scene.environmentIntensity = 1;
+    scene.environmentMinLight = 0.2;
+    scene.sunIntensity = Vector.fill(10);
+
     const mapPath = "./touge.glb";
     const colliderPath = "./tougeCollider.glb";
 
@@ -1306,6 +1306,31 @@ document.addEventListener("DOMContentLoaded", async function () {
     scene.add(roadSign);
     roadSign.transform.position.y = 1;
     roadSign.transform.position.z = -10;
+
+    const treeHandler = new TreeHandler(scene, car.mainCamera, "../assets/models/trees/myFirstTreeLOD/myFirstTreeLOD.glb", [
+      40,
+      80,
+      Infinity
+    ]);
+    await treeHandler.setup();
+  
+    const area = 500;
+    for (let i = 0; i < 3_000; i++) {
+      const x = (prng.random() - 0.5) * 2 * area;
+      const z = (prng.random() - 0.5) * 2 * area;
+      const y = 0;
+  
+      const position = { x, y, z };
+      const scale = Vector.fill(2 + prng.random());
+      const rotationY = prng.random() * Math.PI * 2;
+  
+      const instance = Matrix.identity();
+      Matrix.applyTranslation(position, instance);
+      Matrix.applyScale(scale, instance);
+      Matrix.applyRotationY(rotationY, instance);
+      
+      treeHandler.addTree(instance);
+    }
 
     // const simpleFoliageProgram = new renderer.CustomProgram(simpleFoliage.basic);
 

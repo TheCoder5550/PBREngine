@@ -630,9 +630,20 @@ export default class Matrix {
   }
   
   static applyScale(scale, dst) {
-    const sx = scale.x ?? 1;
-    const sy = scale.y ?? 1;
-    const sz = scale.z ?? 1;
+    let sx = 1;
+    let sy = 1;
+    let sz = 1;
+
+    if (!Vector.isVectorIsh(scale)) {
+      sx = scale;
+      sy = scale;
+      sz = scale;
+    }
+    else {
+      sx = scale.x ?? 1;
+      sy = scale.y ?? 1;
+      sz = scale.z ?? 1;
+    }
 
     dst[0] *= sx;  
     dst[1] *= sx;

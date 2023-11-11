@@ -1,4 +1,5 @@
-import { GameObject, FindMaterials, Transform } from "./renderer.mjs";
+import { GameObject } from "./gameObject.mjs";
+import { Transform } from "./transform.mjs";
 import Matrix from "./matrix.mjs";
 import Vector from "./vector.mjs";
 import { NewMaterial } from "./material.mjs";
@@ -104,7 +105,7 @@ function GLDebugger(scene, maxShapes = 50) {
     }
   };
 
-  this.Vector = function(p, normal, size = 1, color) {
+  this.Vector = function(p, normal, size = 1/*, color*/) {
     const len = Vector.length(normal);
     if (len * size <= 1e-6) {
       return;
@@ -122,7 +123,7 @@ function GLDebugger(scene, maxShapes = 50) {
     // }
   };
 
-  this.Point = function(p, size = 0.2, color) {
+  this.Point = function(p, size = 0.2/*, color*/) {
     const c = this.getCube();
     tempTransform.rotation = Quaternion.identity();
     tempTransform.position = p;

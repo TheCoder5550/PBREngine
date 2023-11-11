@@ -25,7 +25,8 @@ import {
   triangleTriangleIntersection,
   AABBTriangleToAABBTriangle,
 } from "./algebra.mjs";
-import { EventHandler, GameObject, Scene } from "./renderer.mjs";
+import { Scene } from "./scene.mjs";
+import { EventHandler } from "./eventHandler.mjs";
 import { CubeGeometry, MeshGeometry, VClip, computeDistance } from "./vclip.mjs";
 
 // export function CreateCubeCollider(pos, scale, rot) {

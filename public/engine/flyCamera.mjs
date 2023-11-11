@@ -1,6 +1,6 @@
 import Vector from "./vector.mjs";
 import Quaternion from "./quaternion.mjs";
-import { Camera } from "./renderer.mjs";
+import { Camera } from "./camera.mjs";
 
 export default function FlyCamera(renderer, cameraSettings) {
   var _this = this;

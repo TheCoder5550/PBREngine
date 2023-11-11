@@ -1,12 +1,13 @@
-import { createRequire } from 'module'
-const require = createRequire(import.meta.url)
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
 
-import Vector from '../public/engine/vector.mjs';
-import Matrix from '../public/engine/matrix.mjs';
-import { GameObject, Transform } from '../public/engine/renderer.mjs';
-import { Octree, AABB } from '../public/engine/physics.mjs';
-import { Uint8ToUint32 } from '../public/engine/helper.mjs';
-const fs = require('fs');
+import Vector from "../public/engine/vector.mjs";
+import Matrix from "../public/engine/matrix.mjs";
+import { GameObject } from "../public/engine/gameObject.mjs";
+import { Transform } from "../public/engine/transform.mjs";
+import { Octree, AABB } from "../public/engine/physics.mjs";
+import { Uint8ToUint32 } from "../public/engine/helper.mjs";
+const fs = require("fs");
 
 export default async function LoadCollider(path) {
   var gameObject = (await CreateGameObjectFromGLTF(path))[0];

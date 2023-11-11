@@ -1,5 +1,3 @@
-import { trimStrings } from "./lit.glsl.mjs";
-
 var output = {
   webgl1: {
     diffuseCubemap: {
@@ -125,8 +123,6 @@ var output = {
     }
   }
 };
-
-trimStrings(output);
 
 var webgl1 = output.webgl1;
 var webgl2 = output.webgl2;

@@ -1,6 +1,6 @@
 import Renderer from "./renderer.mjs";
 
-class NewMaterial {
+export class NewMaterial {
   constructor(programContainer, uniforms = {}) {
     if (typeof uniforms !== "object" || uniforms === null || Array.isArray(uniforms)) {
       throw new Error("Uniforms is not a dictionary (object)");
@@ -59,7 +59,7 @@ class NewMaterial {
   }
 }
 
-class NewLitMaterial extends NewMaterial {
+export class NewLitMaterial extends NewMaterial {
   constructor(programContainer, uniforms = {}) {
     super(programContainer, uniforms);
 
@@ -111,6 +111,22 @@ class NewLitMaterial extends NewMaterial {
   }
 }
 
+export function FindMaterials(name, obj, exactMatch = false, output = []) {
+  if (obj.meshRenderer) {
+    for (var mat of obj.meshRenderer.materials) {
+      if ((!exactMatch && mat.name.indexOf(name) !== -1) || (exactMatch && mat.name == name)) {
+        output.push(mat);
+      }
+    }
+  }
+
+  for (var child of obj.children) {
+    FindMaterials(name, child, exactMatch, output);
+  }
+
+  return output;
+}
+
 function copy(constr) {
   var newUniforms = {};
   for (var uniformName in this.uniforms) {
@@ -132,8 +148,3 @@ function copy(constr) {
 
   return m;
 }
-
-export {
-  NewMaterial,
-  NewLitMaterial,
-};

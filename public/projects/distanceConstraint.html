@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+  <title>Distance constraint test</title>
+  <!-- <meta name='viewport' content='width=device-width, initial-scale=1'> -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;400&display=swap" rel="stylesheet">
+
+  <script src="../Stats.js"></script>
+
+  <style>
+
+    :root {
+      font-family: 'Oswald', sans-serif;
+    }
+
+    body {
+      background: white;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+    }
+
+  </style>
+</head>
+<body>
+  <script type="module">
+
+    import * as ENUMS from "../engine/constants.mjs";
+    import Renderer from "../engine/renderer.mjs";
+    import { GameObject } from "../engine/gameObject.mjs";
+    import { Scene } from "../engine/scene.mjs";
+    import { Light } from "../engine/light.mjs";
+    import OrbitCamera from "../engine/orbitCamera.mjs";
+    import Vector from "../engine/vector.mjs";
+    import Quaternion from "../engine/quaternion.mjs";
+    import Matrix from "../engine/matrix.mjs";
+
+    import { PhysicsEngine, Rigidbody, DistanceConstraint } from "../engine/physics.mjs";
+    import { Car } from "../car.js";
+
+    var stats = new Stats();
+    document.body.appendChild(stats.dom);
+
+    var renderer;
+    var scene;
+    var camera;
+
+    (async function() {
+      renderer = new Renderer({ 
+        debug: true,
+        path: "../",
+        renderScale: 1,
+        shadowResolution: 2048,
+        // renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
+        // version: 1,
+      });
+
+      scene = new Scene();
+      renderer.add(scene);
+
+      scene.environmentIntensity = 0.5;
+      scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(5200, 20));
+      scene.sunDirection.z *= -1;
+      scene.bloom.intensity = 0.01;
+
+      await scene.loadEnvironment({
+        hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k_precomputed",
+        // res: 512
+      });
+
+      camera = new OrbitCamera(renderer, {near: 0.1, far: 300, fov: 30});
+
+      var physicsEngine = new PhysicsEngine(scene);
+
+      let p = scene.add(renderer.CreateShape("sphere"));
+      p.transform.scale = Vector.fill(0.01);
+      let rbP = new Rigidbody();
+      rbP.frozen = true;
+      p.addComponent(rbP);
+
+      let c1 = scene.add(renderer.CreateShape("cube"));
+      let rb1 = new Rigidbody();
+      rb1.position = new Vector(1, -1, 1);
+      c1.addComponent(rb1);
+
+      let c2 = scene.add(renderer.CreateShape("cube"));
+      let rb2 = new Rigidbody();
+      rb2.position = new Vector(3, -3, 3);
+      c2.addComponent(rb2);
+
+      let dc = physicsEngine.add(new DistanceConstraint(rb1, new Vector(-1, 1, -1), rbP, Vector.zero()));
+      // let dc = physicsEngine.add(new DistanceConstraint(rbP, Vector.zero(), rb1, new Vector(-1, 1, -1)));
+      let debugSphere = scene.add(renderer.CreateShape("sphere"));
+      debugSphere.transform.scale = Vector.fill(0.02);
+      dc.debugSphere = debugSphere;
+
+      physicsEngine.add(new DistanceConstraint(rb1, new Vector(1, -1, 1), rb2, new Vector(-1, 1, -1)));
+
+      window.renderer = renderer;
+      window.scene = scene;
+      window.camera = camera;
+
+      renderer.on("renderloop", function(frameTime, totalTime) {
+        physicsEngine.update(frameTime);
+        renderer.update(frameTime);
+        renderer.render(camera.camera);
+
+        stats.update();
+      });
+
+    })();
+
+  </script>
+</body>
+</html>

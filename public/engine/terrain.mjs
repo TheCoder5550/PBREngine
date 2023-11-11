@@ -1,10 +1,12 @@
 import * as litTerrainSource from "../assets/shaders/custom/litTerrain.glsl.mjs";
 
-import { Scene, Transform, GameObject, LOD } from "./renderer.mjs";
+import { Scene } from "./scene.mjs";
+import { Transform } from "./transform.mjs";
+import { GameObject } from "./gameObject.mjs";
 import Vector from "./vector.mjs";
 import Perlin from "./perlin.mjs";
 import { MeshCollider } from "./physics.mjs";
-import { mapValue, lerp, clamp, smoothstep } from "./helper.mjs";
+import { mapValue, lerp } from "./helper.mjs";
 import { getTriangleNormal } from "./algebra.mjs";
 import Matrix from "./matrix.mjs";
 import JSONfn from "../jsonfnModule.mjs";

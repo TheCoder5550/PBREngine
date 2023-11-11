@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+  <title>World position test</title>
+  <!-- <meta name='viewport' content='width=device-width, initial-scale=1'> -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;400&display=swap" rel="stylesheet">
+
+  <script src="../Stats.js"></script>
+
+  <style>
+
+    :root {
+      font-family: 'Oswald', sans-serif;
+    }
+
+    body {
+      background: white;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+    }
+
+  </style>
+</head>
+<body>
+  <script type="module">
+
+    import * as ENUMS from "../engine/constants.mjs";
+    import Renderer from "../engine/renderer.mjs";
+    import { GameObject } from "../engine/gameObject.mjs";
+    import { Scene } from "../engine/scene.mjs";
+    import OrbitCamera from "../engine/orbitCamera.mjs";
+    import Vector from "../engine/vector.mjs";
+    import Quaternion from "../engine/quaternion.mjs";
+    import Matrix from "../engine/matrix.mjs";
+
+    var stats = new Stats();
+    document.body.appendChild(stats.dom);
+
+    var renderer;
+    var scene;
+    var camera;
+
+    (async function() {
+      renderer = new Renderer({ 
+        debug: true,
+        path: "../",
+        renderScale: 1,
+        shadowResolution: 2048,
+        renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
+      });
+
+      scene = new Scene();
+      renderer.add(scene);
+
+      await scene.loadEnvironment({
+        hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k_precomputed",
+        // res: 512
+      });
+
+      camera = new OrbitCamera(renderer, {near: 0.1, far: 300, fov: 30});
+      camera.distance = 10;
+      camera.center.x = 5;
+
+      const compare = scene.add(renderer.CreateShape("cube"));
+      compare.transform.position = new Vector(8, 0, 0);
+      compare.meshRenderer.materials[0].setUniform("albedo", [1, 0, 0, 1]);
+
+      const parent = scene.add(renderer.CreateShape("cube"));
+      parent.transform.rotation = Quaternion.euler(0, 0, 0.3);
+      parent.meshRenderer.materials[0].setUniform("albedo", [0.5, 0.5, 1, 1]);
+
+      const parent2 = parent.add(renderer.CreateShape("cube"));
+      parent2.transform.position.x = 5;
+      parent2.transform.position.y = 2;
+      parent2.meshRenderer.materials[0].setUniform("albedo", [0.5, 1, 1, 1]);
+
+      const child = parent2.add(renderer.CreateShape("cube"));
+      child.transform.position.x = 3;
+
+      window.child = child;
+
+      renderer.on("renderloop", function(frameTime, totalTime) {
+        renderer.update(frameTime);
+        renderer.render(camera.camera);
+
+        stats.update();
+      });
+
+    })();
+
+  </script>
+</body>
+</html>

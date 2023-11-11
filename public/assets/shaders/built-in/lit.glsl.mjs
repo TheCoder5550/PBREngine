@@ -6,18 +6,6 @@
 
 import { shadowBase } from "./base.mjs";
 
-function trimStrings(obj) {
-  for (var key in obj) {
-    var e = obj[key];
-    if (typeof e === "object") {
-      trimStrings(e);
-    }
-    else if (typeof e === "string") {
-      obj[key] = obj[key].trim();
-    }
-  }
-}
-
 var shaderBase = `
 #version 300 es
 precision highp float;
@@ -402,12 +390,23 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 
   vec3 R = reflect(-V, N);
 
-  // vec3 L = normalize(sunDirection.xyz);
-  // vec3 H = normalize(V + L);
+  vec3 L = normalize(sunDirection.xyz);
+  vec3 H = normalize(V + L);
+  // return vec4(
+  //   dot(N, V) < 0. ? 1. : 0., // r
+  //   dot(N, H) < 0. ? 1. : 0., // g
+  //   dot(N, L) < 0. ? 1. : 0., // b
+  //   1
+  // );
+  // return vec4(vec3(dot(H, V) < 0. ? 1. : 0.), 1);
+
   // return vec4(vec3(dot(N, V) < 0. ? 1. : 0.), 1);
   // return vec4(vec3(dot(N, H) < 0. ? 1. : 0.), 1);
   // return vec4(vec3(dot(N, L) < 0. ? 1. : 0.), 1);
   // return vec4(vec3(dot(H, V) < 0. ? 1. : 0.), 1);
+
+  // return vec4(max(N, vec3(0)), 1);
+  // return vec4(max(N.x, 0.), 0, 0, 1);
 
   float f0 = 0.04;
 
@@ -729,9 +728,28 @@ webgl2VertexTrail = webgl2VertexTrail.replace("//#in", "in float alpha;");
 webgl2VertexTrail = webgl2VertexTrail.replace("//#out", "out float vAlpha;");
 webgl2VertexTrail = webgl2VertexTrail.replace("//#main", "vAlpha = alpha;");
 
+const checkerboard = (fragColorName) => `
+const float checkerSize = 50.;
+bool square = mod(floor(gl_FragCoord.x / checkerSize) + floor(gl_FragCoord.y / checkerSize), 2.0) == 0.0;
+
+motionVector = vec2(0.5);
+${fragColorName} = square ? vec4(1, 0, 1, 1) : vec4(0.5, 0, 0.5, 1);
+`;
+
 // Fragment
 var webgl2Fragment = `
 ${shaderBase}
+
+// #define DEBUG_OUTPUT
+// #define DEBUG_FOG
+// #define DEBUG_ALBEDO_TEXTURE
+// #define DEBUG_VERTEX_COLOR
+// #define DEBUG_WORLD_NORMAL
+// #define DEBUG_MAPPED_WORLD_NORMAL
+// #define DEBUG_MAPPED_TANGENT_NORMAL
+// #define DEBUG_EMISSION
+// #define DEBUG_AO
+// #define DEBUG_METAL_ROUGHNESS
 
 ${litAttributesAndUniforms}
 
@@ -745,18 +763,48 @@ uniform sampler2D ditherTexture;
 void main() {
   ${motionBlurMain}
 
+  // Debug
+  #ifdef DEBUG_OUTPUT
+  ${checkerboard("fragColor")}
+  return;
+  #endif
+
+  #ifdef DEBUG_FOG
+  fragColor = applyFog(vec4(1));
+  return;
+  #endif
+
+  #ifdef DEBUG_ALBEDO_TEXTURE
+  if (useTexture) {
+    fragColor = texture(albedoTexture, vUV);
+  }
+  else {
+    ${checkerboard("fragColor")}
+  }
+  return;
+  #endif
+
+  #ifdef DEBUG_VERTEX_COLOR
+  if (useVertexColor) {
+    fragColor = vec4(vec3(1) - vColor, 1);
+  }
+  else {
+    ${checkerboard("fragColor")}
+  }
+  return;
+  #endif
+
+  #ifdef DEBUG_WORLD_NORMAL
+  fragColor = vec4(vNormal * 0.5 + 0.5, 1);
+  return;
+  #endif
+
   // Dither
   float dither = texture(ditherTexture, gl_FragCoord.xy / 8.).r;
   float d = 1. - ditherAmount;
   if (d + (d < 0. ? dither : -dither) < 0.) {
     discard;
   }
-  
-  // fragColor = vec4(1, 0, 0, 1);
-  // return;
-
-  // fragColor = vec4(vNormal, 1);
-  // return;
 
   vec4 currentAlbedo = useTexture ? sampleTexture(albedoTexture, vUV) : vec4(1);
   currentAlbedo *= albedo;
@@ -765,22 +813,25 @@ void main() {
   }
   //#currentAlbedo
 
-  // if (doNoTiling) {
-  //   currentAlbedo.rgb *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(vUV / 40.), 0., 1.));
-  // }
-
-  // fragColor = currentAlbedo + vec4(emissiveFactor, 0.);
-  // return;
-
   vec3 _emission = emissiveFactor;
   if (useEmissiveTexture) {
     _emission *= sampleTexture(emissiveTexture, vUV).rgb;
   }
 
+  #ifdef DEBUG_EMISSION
+  fragColor = vec4(_emission, 1);
+  return;
+  #endif
+
   float _ao = ao;
   if (useOcclusionTexture) {
     _ao *= sampleTexture(occlusionTexture, vUV).r;
   }
+
+  #ifdef DEBUG_AO
+  fragColor = vec4(vec3(_ao), 1);
+  return;
+  #endif
 
   float _metallic = metallic;
   float _roughness = roughness;
@@ -790,22 +841,34 @@ void main() {
     _roughness *= ts.g;
   }
 
+  #ifdef DEBUG_METAL_ROUGHNESS
+  fragColor = vec4(0, _roughness, _metallic, 1);
+  return;
+  #endif
+
   vec3 _tangentNormal = vec3(0, 0, 1);
   if (useNormalTexture) {
     _tangentNormal = sampleTexture(normalTexture, vUV).rgb;
-    
-    // Accoring to GLTF NormalTangentTest, it's correct to flip none of the channels here! Update: yup, should not flip anything here
-    // _tangentNormal.r = 1. - _tangentNormal.r;
-    // _tangentNormal.g = 1. - _tangentNormal.g; // Convert from DirectX to OpenGL normal map format (remove this line if the normal map looks inverted)
-
-    // _tangentNormal.rg = _tangentNormal.gr;
-
     _tangentNormal = _tangentNormal * 2. - 1.;
     _tangentNormal = setNormalStrength(_tangentNormal, normalStrength);
   }
 
-  // fragColor = vec4(_tangentNormal, 1);
-  // return;
+  #ifdef DEBUG_MAPPED_TANGENT_NORMAL
+  fragColor = vec4(_tangentNormal * 0.5 + 0.5, 1);
+  return;
+  #endif
+
+  #ifdef DEBUG_MAPPED_WORLD_NORMAL
+  vec3 N;
+  if (vTangent.xyz != vec3(0)) {
+    N = normalize(vTBN * _tangentNormal);
+  }
+  else {
+    N = normalize(mat3(modelMatrix) * vNormal);
+  }
+  fragColor = vec4(N * 0.5 + 0.5, 1);
+  return;
+  #endif
 
   vec4 litColor = lit(currentAlbedo, alphaCutoff, _emission, _tangentNormal, _metallic, _roughness, _ao);
  
@@ -1558,19 +1621,6 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
 
 */
 
-webgl2Vertex = webgl2Vertex.trim();
-webgl2VertexInstanced = webgl2VertexInstanced.trim();
-webgl2VertexSkinned = webgl2VertexSkinned.trim();
-webgl2VertexTrail = webgl2VertexTrail.trim();
-
-webgl2Fragment = webgl2Fragment.trim();
-webgl2FragmentInstanced = webgl2FragmentInstanced.trim();
-webgl2FragmentSkinned = webgl2FragmentSkinned.trim();
-webgl2FragmentTrail = webgl2FragmentTrail.trim();
-
-webglVertex = webglVertex.trim();
-webglFragment = webglFragment.trim();
-
 var webgl1 = {
   lit: {
     vertex: webglVertex,
@@ -1597,7 +1647,6 @@ var webgl2 = {
 };
 
 export {
-  trimStrings,
   shaderBase,
   litBase,
   fogBase,

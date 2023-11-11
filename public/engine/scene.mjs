@@ -23,6 +23,7 @@ export function Scene(name) {
   this.fogDensity = 0.0035;
   this.fogColor = [0.23, 0.24, 0.26, 1];
   this.shadowQuality = 2;
+  this.shadowSampleRadius = 150;
 
   this.postprocessing = new PostProcessingSettings();
   this.bloom = new BloomSettings();

@@ -1,6 +1,13 @@
 "use strict";
 
-import Renderer, { GameObject, Scene, Camera, AudioListener3D, FindMaterials, flyCamera, Light } from "../engine/renderer.mjs";
+import Renderer from "../engine/renderer.mjs";
+import { FindMaterials } from "../engine/material.mjs";
+import { GameObject } from "../engine/gameObject.mjs";
+import { Scene } from "../engine/scene.mjs";
+import { Camera } from "../engine/camera.mjs";
+import { AudioListener3D } from "../engine/audioListener3D.mjs";
+import { flyCamera } from "../engine/flyCamera.mjs";
+import { Light } from "../engine/light.mjs";
 import { PhysicsEngine, Rigidbody, SphereCollider, AABB, BoxCollider } from "../engine/physics.mjs";
 import FlyCamera from "../engine/flyCamera.mjs";
 import Vector from "../engine/vector.mjs";
@@ -122,7 +129,6 @@ async function setup() {
     path: "../",
     clearColor: [0, 0, 0, 1],
     shadowSizes: [7, 56],
-    shadowBiases: [-0.0001, -0.001],
     // shadowResolution: 4096,
 
     // Mobile

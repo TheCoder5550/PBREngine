@@ -41,11 +41,8 @@ void main() {
   float _roughness = 1.;
   float _ao = 1.;
 
-  vec3 _tangentNormal = mix(grassNormal, stoneNormal, mixFactor);
+  vec3 _tangentNormal = normalize(mix(grassNormal, stoneNormal, mixFactor));
   _tangentNormal = setNormalStrength(_tangentNormal, 3.);
-
-  // vec3 _tangentNormal = textureNoTile(normalTextures[0], vUV, 1.) * 2. - 1.;
-  // _tangentNormal = setNormalStrength(_tangentNormal, 2.);
 
   vec4 litColor = lit(currentAlbedo, 0.5, _emission, _tangentNormal, _metallic, _roughness, _ao);
 
@@ -61,8 +58,6 @@ var webgl2 = {
   vertex,
   fragment
 };
-
-lit.trimStrings(webgl2);
 
 export {
   webgl2

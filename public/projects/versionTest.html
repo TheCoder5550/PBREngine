@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+  <title>PBR demo</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;400&display=swap" rel="stylesheet">
+
+  <script src="Stats.js"></script>
+
+  <style>
+
+    :root {
+      font-family: 'Oswald', sans-serif;
+    }
+
+    body {
+      background: white;
+      margin: 0;
+      overflow: hidden;
+
+      display: flex;
+      flex-direction: row;
+    }
+
+    .canvas1Container,
+    .canvas2Container {
+      user-select: none;
+      position: relative;
+      flex-grow: 1;
+    }
+
+    .canvas1Container > span,
+    .canvas2Container > span {
+      pointer-events: none;
+      position: absolute;
+      left: 50%;
+      transform: translate(-50%, 0);
+      margin-top: 1em;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="canvas1Container">
+    <span>WebGL</span>
+  </div>
+  <div class="canvas2Container">
+    <span>WebGL 2</span>
+  </div>
+
+  <script type="module">
+
+    import * as ENUMS from "../engine/constants.mjs";
+    import Renderer from "../engine/renderer.mjs";
+    import { GameObject } from "../engine/gameObject.mjs";
+    import { Scene } from "../engine/scene.mjs";
+    import OrbitCamera from "../engine/orbitCamera.mjs";
+    import Vector from "../engine/vector.mjs";
+
+    (async function() {
+      /*
+        Version 1
+      */
+
+      const envPath = "assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k_precomputed";
+
+      var renderer = new Renderer({
+        version: 1,
+        renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
+        path: "../"
+      });
+      renderer.setCanvasSize(innerWidth / 2, innerHeight);
+      document.querySelector(".canvas1Container").appendChild(renderer.canvas);
+
+      var scene = new Scene();
+      scene.environmentIntensity = 1.25;
+      scene.sunIntensity = Vector.fill(4);
+      renderer.add(scene);
+
+      // await scene.loadEnvironment();
+      await scene.loadEnvironment({
+        hdrFolder: renderer.path + envPath, 
+        res: 512
+      });
+
+      var camera = new OrbitCamera(renderer, {near: 0.1, far: 300, fov: 20});
+      camera.distance = 4;
+
+      var model = await renderer.loadGLTF(renderer.path + "assets/models/DamagedHelmet.glb");
+      scene.add(model);
+
+      renderer.on("renderloop", function(frameTime) {
+        renderer.update(frameTime);
+        renderer.render(camera.camera);
+      });
+
+      /*
+        Version 2
+      */
+
+      var renderer2 = new Renderer({
+        version: 2,
+        renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
+        path: "../"
+      });
+      renderer2.setCanvasSize(innerWidth / 2, innerHeight);
+      document.querySelector(".canvas2Container").appendChild(renderer2.canvas);
+
+      var scene2 = new Scene();
+      scene2.environmentIntensity = 1.25;
+      scene2.sunIntensity = Vector.fill(4);
+      renderer2.add(scene2);
+
+      // await scene2.loadEnvironment();
+      await scene2.loadEnvironment({
+        hdrFolder: renderer2.path + envPath,
+        res: 512
+      });
+
+      var model2 = await renderer2.loadGLTF(renderer2.path + "assets/models/DamagedHelmet.glb");
+      scene2.add(model2);
+
+      renderer2.on("renderloop", function(frameTime) {
+        renderer2.update(frameTime);
+        renderer2.render(camera.camera);
+      });
+    })();
+
+  </script>
+</body>
+</html>

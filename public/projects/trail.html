@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+  <title>Trail test</title>
+  <!-- <meta name='viewport' content='width=device-width, initial-scale=1'> -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;400&display=swap" rel="stylesheet">
+
+  <script src="../Stats.js"></script>
+
+  <style>
+
+    :root {
+      font-family: 'Oswald', sans-serif;
+    }
+
+    body {
+      background: white;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+    }
+
+  </style>
+</head>
+<body>
+  <script type="module">
+
+    import * as ENUMS from "../engine/constants.mjs";
+    import Renderer from "../engine/renderer.mjs";
+    import { GameObject } from "../engine/gameObject.mjs";
+    import { Scene } from "../engine/scene.mjs";
+    import { Light } from "../engine/light.mjs";
+    import OrbitCamera from "../engine/orbitCamera.mjs";
+    import Vector from "../engine/vector.mjs";
+    import Quaternion from "../engine/quaternion.mjs";
+    import Matrix from "../engine/matrix.mjs";
+
+    var stats = new Stats();
+    document.body.appendChild(stats.dom);
+
+    var renderer;
+    var scene;
+    var camera;
+
+    (async function() {
+      renderer = new Renderer({ 
+        debug: true,
+        path: "../",
+        renderScale: 1,
+        shadowResolution: 2048,
+        // renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
+      });
+
+      scene = new Scene();
+      renderer.add(scene);
+
+      scene.environmentIntensity = 0.5;
+      scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(5200, 20));
+      scene.sunDirection.z *= -1;
+      scene.postprocessing.motionBlurStrength = 0;
+      scene.bloom.intensity = 0.01;
+      scene.shadowQuality = 0;
+
+      await scene.loadEnvironment({
+        hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k_precomputed",
+        // res: 512
+      });
+
+      camera = new OrbitCamera(renderer, {near: 0.1, far: 300, fov: 30});
+      camera.distance = 4;
+
+      // var spheres = [];
+      // for (let i = 0; i < 300; i++) {
+      //   let sphere = renderer.CreateShape(ENUMS.SHAPES.SPHERE);
+      //   sphere.transform.scale = Vector.fill(0.15);
+      //   sphere.transform.position.x = i / 3;
+      //   sphere.transform.position.z = Math.sin(i) * 3;
+      //   scene.add(sphere);
+
+      //   let trail = sphere.addComponent(new renderer.TrailRenderer());
+
+      //   spheres.push(sphere);
+      // }
+
+      let sphere = renderer.CreateShape(ENUMS.SHAPES.SPHERE);
+      sphere.transform.scale = Vector.fill(0.15);
+      scene.add(sphere);
+
+      // (new renderer.TrailRenderer()).render();
+      // setTimeout(function() {
+        let trail = sphere.addComponent(new renderer.TrailRenderer());
+      // }, 2000);
+
+      renderer.on("renderloop", function(frameTime, totalTime) {
+        sphere.transform.position = new Vector(Math.cos(totalTime * 1.5) * 4, 0, Math.sin(totalTime) * 3);
+        trail.emit = Math.abs(Math.sin(totalTime * 3));
+
+        // for (var i = 0; i < spheres.length; i++) {
+        //   var sphere = spheres[i];
+        //   sphere.transform.position.z = Math.sin(totalTime + i) * 3;
+        // }
+
+        renderer.update(frameTime);
+        renderer.render(camera.camera);
+
+        stats.update();
+      });
+
+    })();
+
+  </script>
+</body>
+</html>

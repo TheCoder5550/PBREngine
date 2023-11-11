@@ -61,8 +61,6 @@ var webgl2 = {
   fragment
 };
 
-lit.trimStrings(webgl2);
-
 export {
   webgl2
 };

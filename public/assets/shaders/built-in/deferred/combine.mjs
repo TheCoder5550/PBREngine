@@ -7,6 +7,7 @@ ${shaderBase}
 
 // #define DEBUG_NORMAL
 // #define DEBUG_ALBEDO
+// #define DEBUG_POSITION
 
 layout (location = 0) out vec4 fragColor;
 layout (location = 1) out vec4 motionVector;
@@ -60,76 +61,17 @@ vec3 applyFog(vec3 color, vec3 worldPosition) {
 
 //
 
-
-bool doNoTiling = false;
-
 const float PI = 3.141592;
-
-// No tiling
-vec4 hash4( vec2 p ) {
-  return fract(sin(vec4(1.0+dot(p,vec2(37.0,17.0)), 
-                        2.0+dot(p,vec2(11.0,47.0)),
-                        3.0+dot(p,vec2(41.0,29.0)),
-                        4.0+dot(p,vec2(23.0,31.0))))*103.0);
-}
-
-vec3 textureNoTile( sampler2D samp, in vec2 uv, float v ) {
-    vec2 p = floor( uv );
-    vec2 f = fract( uv );
-  
-    // derivatives (for correct mipmapping)
-    vec2 ddx = dFdx( uv );
-    vec2 ddy = dFdy( uv );
-    
-  vec3 va = vec3(0.0);
-  float w1 = 0.0;
-    float w2 = 0.0;
-    for( int j=-1; j<=1; j++ )
-    for( int i=-1; i<=1; i++ )
-    {
-        vec2 g = vec2( float(i),float(j) );
-    vec4 o = hash4( p + g );
-    vec2 r = g - f + o.xy;
-    float d = dot(r,r);
-        float w = exp(-5.0*d );
-        vec3 c = textureGrad( samp, uv + v*o.zw, ddx, ddy ).xyz;
-    va += w*c;
-    w1 += w;
-        w2 += w*w;
-    }
-    
-    // normal averaging --> lowers contrasts
-    return va/w1;
-
-    // contrast preserving average
-    float mean = 0.3;// textureGrad( samp, uv, ddx*16.0, ddy*16.0 ).x;
-    vec3 res = mean + (va-w1*mean)/sqrt(w2);
-    return mix( va/w1, res, v );
-}
-
-// Texture sampling
-vec4 sampleTexture(sampler2D samp, vec2 uv) {
-  if (doNoTiling) {
-    return vec4(textureNoTile(samp, uv, 1.), 1);
-  }
-  else {
-    return texture(samp, uv);
-  }
-}
 
 //Normal map
 vec3 setNormalStrength(vec3 normal, float strength) {
   return vec3(normal.xy * strength, mix(1., normal.z, clamp(strength, 0., 1.)));
 }
 
-// vec3 sampleNormalTexture(sampler2D texture, vec2 uv) {
-//   return sampleTexture(texture, uv).rgb * 2. - 1.
-// }
-
 // PBR
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
-  return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0); // trying this
-  // return F0 + (1.0 - F0) * pow(max(1.0 - cosTheta, 0.0), 5.0);
+  // return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0); // trying this
+  return F0 + (1.0 - F0) * pow(max(1.0 - cosTheta, 0.0), 5.0);
 }
 
 vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
@@ -153,10 +95,9 @@ float GeometrySchlickGGX(float NdotV, float roughness) {
   float r = (roughness + 1.0);
   float k = (r*r) / 8.0;
 
-  float num   = NdotV;
   float denom = NdotV * (1.0 - k) + k;
 
-  return num / denom;
+  return 1. / denom;
 }
 
 float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
@@ -196,23 +137,32 @@ vec3 IBL (vec3 N, vec3 V, vec3 R, vec3 albedo, float metallic, float roughness, 
 
 vec3 DirectionalLight (vec3 worldPos, vec3 N, vec3 V, vec3 lightDir, vec3 lightColor, vec3 albedo, float metallic, float roughness, float scalarF0) {
   vec3 L = normalize(lightDir);  
-  vec3 H = normalize(V + L);  
-  vec3 radiance     = lightColor;     
-  vec3 F0 = vec3(scalarF0); 
-  F0      = mix(F0, albedo, metallic);
-  vec3 F  = fresnelSchlick(max(dot(H, V), 0.0), F0);    
-  float NDF = DistributionGGX(N, H, roughness);       
-  float G   = GeometrySmith(N, V, L, roughness);     
-  vec3 nominator    = NDF * G * F;
-  float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001;
-  vec3 specular     = nominator / denominator;
-  vec3 kS = F;
-  vec3 kD = vec3(1.0) - kS;
+  vec3 H = normalize(V + L);
 
-  kD *= 1.0 - metallic;
+  vec3 radiance = lightColor;
   float NdotL = max(dot(N, L), 0.0);
 
+  vec3 F0 = vec3(scalarF0); 
+  F0 = mix(F0, albedo, metallic);
+  vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);    
+
+  // Specular
+  float NDF = DistributionGGX(N, H, roughness);
+  vec3 specular = vec3(0);
+
+  float G = GeometrySmith(N, V, L, roughness);     
+  vec3 numerator = NDF * G * F;
+  float denominator = 4.0;
+  specular = numerator / denominator;
+
+  // Diffuse
+  vec3 kS = F;
+  vec3 kD = vec3(1.0) - kS;
+  kD *= 1.0 - metallic;
+
+  // Combine
   vec3 finalColor = (kD * albedo / PI + specular) * radiance * NdotL;
+
   return finalColor;
 }
 
@@ -228,7 +178,7 @@ vec3 PositionalLight (vec3 worldPos, vec3 N, vec3 V, vec3 lightPos, vec3 lightCo
   float NDF = DistributionGGX(N, H, roughness);       
   float G   = GeometrySmith(N, V, L, roughness);     
   vec3 nominator    = NDF * G * F;
-  float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001; 
+  float denominator = 4.0;
   vec3 specular     = nominator / denominator;       
   vec3 kS = F;
   vec3 kD = vec3(1.0) - kS;
@@ -255,13 +205,15 @@ vec3 Spotlight (vec3 worldPos, vec3 N, vec3 V, vec3 lightPos, vec3 dir, float an
   float NDF = DistributionGGX(N, H, roughness);       
   float G   = GeometrySmith(N, V, L, roughness);     
   vec3 nominator    = NDF * G * F;
-  float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001; 
+  float denominator = 4.0;
   vec3 specular     = nominator / denominator;       
   vec3 kS = F;
   vec3 kD = vec3(1.0) - kS;
     
   kD *= 1.0 - metallic;     
   float NdotL = max(dot(N, L), 0.0);
+
+  // return vec3(NDF * 0.05);
   
   return (kD * albedo / PI + specular) * radiance * NdotL;  
 }
@@ -304,6 +256,11 @@ void main() {
 
   #ifdef DEBUG_NORMAL
   fragColor = vec4(normal, 1);
+  return;
+  #endif
+
+  #ifdef DEBUG_POSITION
+  fragColor = vec4(mod(abs(position), 1.), 1);
   return;
   #endif
 

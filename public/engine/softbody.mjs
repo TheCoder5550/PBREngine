@@ -1,7 +1,7 @@
 import { clamp } from "./helper.mjs";
 import Vector from "./vector.mjs";
 
-function Softbody(physicsEngine, md) {
+function Softbody(physicsEngine, md, texture) {
   physicsEngine.on("fixedUpdate", (dt) => {
     this.update(dt);
   });
@@ -9,7 +9,7 @@ function Softbody(physicsEngine, md) {
   this.pressure = 2 * 0.2;
   this.constraintIterations = 10;//5;
 
-  var colliders = [
+  const colliders = [
     new CapsuleCollider(new Vector(0, 5, 0), new Vector(0, 1.1, 0), 0.3),
     new CapsuleCollider(new Vector(0, 5, 0), new Vector(0, 1.1, 0), 0.3),
 
@@ -32,11 +32,14 @@ function Softbody(physicsEngine, md) {
   // colliders[1].a = new Vector(0, 1, 10);
   // colliders[1].b = new Vector(0, 1, -10);
 
-  let scene = physicsEngine.scene;
-  let renderer = scene.renderer;
-  let visualMesh = scene.add(renderer.CreateShape("sphere", null, 0));
+  const scene = physicsEngine.scene;
+  const renderer = scene.renderer;
+
+  const visualMesh = scene.add(renderer.CreateShape("sphere", null, 0));
   visualMesh.castShadows = false;
-  visualMesh.meshRenderer.materials[0].setUniform("albedo", [0.4, 0, 0, 1]);
+  // visualMesh.meshRenderer.materials[0].setUniform("albedo", [0.4, 0, 0, 1]);
+  visualMesh.meshRenderer.materials[0].setUniform("normalTexture", texture);
+  visualMesh.meshRenderer.materials[0].setUniform("roughness", 0.3);
 
   var pointMasses = [];
   var springs = [];
@@ -124,11 +127,12 @@ function Softbody(physicsEngine, md) {
     }
 
     for (let _ = 0; _ < this.constraintIterations; _++) {
-      // Reset forces
-      for (let i in pointMasses) {
-        let pointMass = pointMasses[i];
-        Vector.zero(pointMass.forceToAdd);
-      }
+      // // Reset forces
+      // for (let i in pointMasses) {
+      //   let pointMass = pointMasses[i];
+      //   Vector.zero(pointMass.forceToAdd);
+      // }
+
       // var reactionForce = Vector.zero();
 
       // var volume = getMeshVolume(md);
@@ -206,10 +210,13 @@ function Softbody(physicsEngine, md) {
         }
       }
 
-      // Apply all forces for current iteration
       for (let i in pointMasses) {
         let pointMass = pointMasses[i];
+        // Apply all forces for current iteration
         Vector.addTo(pointMass.position, pointMass.forceToAdd);
+
+        // Reset forces
+        Vector.zero(pointMass.forceToAdd);
       }
     }
 
@@ -233,8 +240,10 @@ function Softbody(physicsEngine, md) {
     visualMeshData.vaos = new WeakMap();
     visualMeshData.setAttribute("indices", subdivided.indices);
     visualMeshData.setAttribute("position", subdivided.position);
+    visualMeshData.setAttribute("uv", subdivided.uv);
 
     visualMeshData.recalculateNormals();
+    visualMeshData.recalculateTangents();
     // this.recalculateTangents();
   };
 
@@ -269,7 +278,7 @@ function Softbody(physicsEngine, md) {
     this.update = function(dt) {
       if (!this.fixed) {
         this.getVelocity(velocity);
-        // Vector.multiplyTo(velocity, 0.99);
+        Vector.multiplyTo(velocity, 0.95); // Dampen velocity
 
         Vector.copy(this.position, this.oldPosition);
 
@@ -427,12 +436,12 @@ function getMeshVolume(meshData) {
   return volume;
 }
 
-function shuffleArray(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-}
+// function shuffleArray(array) {
+//   for (let i = array.length - 1; i > 0; i--) {
+//     const j = Math.floor(Math.random() * (i + 1));
+//     [array[i], array[j]] = [array[j], array[i]];
+//   }
+// }
 
 function shuffleArrayChunks(array, chunkSize = 1) {
   for (let i = floorNearest(array.length - 1, chunkSize); i > 0; i -= chunkSize) {

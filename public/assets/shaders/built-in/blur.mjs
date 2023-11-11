@@ -18,10 +18,10 @@ void main() {
   vec4 col = vec4(0);
 
   for (int i = -radius; i <= radius; i++) {
-    col += texture(imageTexture, uv + texelSize * float(i) * vec2(horizontal, 1 - int(horizontal)));
+    col += (1. - float(abs(i)) / float(radius)) * texture(imageTexture, uv + texelSize * float(i) * vec2(horizontal, 1 - int(horizontal)));
   }
 
-  col /= float(radius * 2 + 1);
+  col /= float(radius * 2 + 1) / 2.;
 
   fragColor = col;
   // fragColor = vec4(col.rgb, texture(imageTexture, uv).a);

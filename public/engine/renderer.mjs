@@ -22,25 +22,25 @@ import { getSignedDistanceToPlane, getTriangleNormal } from "./algebra.mjs";
 import { LerpCurve } from "./curves.mjs";
 import { AABB } from "./physics.mjs";
 import { GameObject } from "./gameObject.mjs";
-import { Transform } from "./transform.mjs";
 import { Scene } from "./scene.mjs";
 import { Light } from "./light.mjs";
 import { Camera } from "./camera.mjs";
-import { flyCamera } from "./flyCamera.mjs";
-import { AudioListener3D } from "./audioListener3D.mjs";
-import { AudioSource3D } from "./audioSource3D.mjs";
 import { AnimationController } from "./animationController.mjs";
 import { AnimationData } from "./animationData.mjs";
-import { AnimationBlend } from "./animationBlend.mjs";
-import { IK } from "./IK.mjs";
-import { LOD } from "./lod.mjs";
 import { EventHandler } from "./eventHandler.mjs";
 import { NewLitMaterial, NewMaterial } from "./material.mjs";
 
+// Forward shaders
 import * as litSource from "../assets/shaders/built-in/lit.glsl.mjs";
 import * as unlitSource from "../assets/shaders/built-in/unlit.glsl.mjs";
 import * as billboardSource from "../assets/shaders/built-in/billboard.glsl.mjs";
 import * as particleSource from "../assets/shaders/built-in/particle.glsl.mjs";
+
+// Deferred shaders
+import * as deferredShaders from "../assets/shaders/built-in/deferred/deferred.mjs";
+import * as blurSource from "../assets/shaders/built-in/blur.mjs";
+
+// Misc. shaders
 import * as skyboxSource from "../assets/shaders/built-in/skybox.glsl.mjs";
 import * as shadowSource from "../assets/shaders/built-in/shadow.glsl.mjs";
 import * as postprocessingSource from "../assets/shaders/built-in/postprocessing.glsl.mjs";
@@ -48,9 +48,6 @@ import * as bloomSource from "../assets/shaders/built-in/bloom.glsl.mjs";
 import * as equirectangularToCubemapSource from "../assets/shaders/built-in/equirectangularToCubemap.glsl.mjs";
 import * as diffuseCubemapSource from "../assets/shaders/built-in/cubemapConvolution.glsl.mjs";
 import * as specularCubemapSource from "../assets/shaders/built-in/prefilterCubemap.glsl.mjs";
-
-import * as deferredShaders from "../assets/shaders/built-in/deferred/deferred.mjs";
-import * as blurSource from "../assets/shaders/built-in/blur.mjs";
 
 // bruh load shaders as javascript with import
 
@@ -543,7 +540,11 @@ function Renderer(settings = {}) {
   }
 
   this.update = function(frameTime) {
-    let scene = this.getActiveScene();
+    const scene = this.getActiveScene();
+    if (!scene) {
+      throw new Error("No active scene");
+    }
+
     scene.update(frameTime);
   };
 
@@ -618,6 +619,7 @@ function Renderer(settings = {}) {
       this.currentScene = index;
     }
     else {
+      console.error("Trying to set active scene:", scene);
       throw new Error("Scene not valid");
     }
   };
@@ -1440,6 +1442,7 @@ function Renderer(settings = {}) {
     Shaders
   
   */
+  //#region Shaders
 
   this.loadTextFile = async function(path) {
     return await (await fetch(path, {
@@ -1546,6 +1549,8 @@ function Renderer(settings = {}) {
     }
   }
   this.CustomProgram = CustomProgram;
+
+  //#endregion Shaders
 
   /*
   
@@ -1677,9 +1682,9 @@ function Renderer(settings = {}) {
     throw new Error("Invalid uniform type string: " + type);
   }
 
-  var storedEnums = {};
+  const storedEnums = {};
   function glEnumToString(value) {
-    var e = storedEnums[value];
+    const e = storedEnums[value];
     if (e) {
       return e;
     }
@@ -4171,8 +4176,9 @@ function Renderer(settings = {}) {
       // Shadows
       if (!settings.shadowPass) {
         gl.uniform1i(programContainer.getUniformLocation("shadowQuality"), settings.shadowQuality ?? 0);
+        gl.uniform1f(programContainer.getUniformLocation("shadowSampleRadius"), scene.shadowSampleRadius);
         
-        if (renderer.shadowCascades) {
+        if (renderer.shadowCascades && renderer.renderpipeline instanceof ForwardPBRRenderpipeline) {
           renderer.shadowCascades.setUniforms(material);
         }
       }
@@ -4435,6 +4441,7 @@ function Renderer(settings = {}) {
       this.matrixBuffer = gl.createBuffer();
       this.matrices = [];
 
+      this.enableDither = true;
       this.ditherBuffer = gl.createBuffer();
       this.ditherAmount = new WeakMap();
       this.ditherData = null;
@@ -4473,7 +4480,9 @@ function Renderer(settings = {}) {
       this.matrices.push(newMat);
       this.needsBufferUpdate = true;
 
-      this.ditherAmount.set(newMat, 0);
+      if (this.enableDither) {
+        this.ditherAmount.set(newMat, 0);
+      }
   
       // if (update) {
       //   this.updateMatrixData();
@@ -4486,7 +4495,9 @@ function Renderer(settings = {}) {
       this.matrices.push(instance);
       this.needsBufferUpdate = true;
 
-      this.ditherAmount.set(instance, 0);
+      if (this.enableDither) {
+        this.ditherAmount.set(instance, 0);
+      }
   
       // if (update) {
       //   this.updateMatrixData();
@@ -4538,10 +4549,18 @@ function Renderer(settings = {}) {
     }
 
     setDitherAmount(instance, ditherAmount = 0) {
+      if (!this.enableDither) {
+        return;
+      }
+
       this.ditherAmount.set(instance, ditherAmount);
     }
 
     updateDitherBuffer() {
+      if (!this.enableDither) {
+        return;
+      }
+
       this.ditherData = new Float32Array(this.matrices.length);
       for (var i = 0; i < this.matrices.length; i++) {
         this.ditherData[i] = this.ditherAmount.get(this.matrices[i]) ?? 0;
@@ -4561,9 +4580,11 @@ function Renderer(settings = {}) {
         this.updateMatrixData();
         this.needsBufferUpdate = false;
       }
-      // if (!shadowPass) {
+
+      // Only update once instead of twice
+      if (shadowPass) {
         this.updateDitherBuffer();
-      // }
+      }
 
       if (this.matrices.length > 0) {
         for (var i = 0; i < this.meshData.length; i++) {
@@ -4596,12 +4617,14 @@ function Renderer(settings = {}) {
           }
 
           // Dithering
-          const loc = mat.programContainer.getAttribLocation("ditherAmount");
-          if (loc) {
-            gl.bindBuffer(gl.ARRAY_BUFFER, this.ditherBuffer);
-            gl.enableVertexAttribArray(loc);
-            gl.vertexAttribPointer(loc, 1, gl.FLOAT, false, 0, 0);
-            vertexAttribDivisor(loc, 1);
+          if (this.enableDither) {
+            const loc = mat.programContainer.getAttribLocation("ditherAmount");
+            if (loc) {
+              gl.bindBuffer(gl.ARRAY_BUFFER, this.ditherBuffer);
+              gl.enableVertexAttribArray(loc);
+              gl.vertexAttribPointer(loc, 1, gl.FLOAT, false, 0, 0);
+              vertexAttribDivisor(loc, 1);
+            }
           }
 
           if (mat instanceof NewMaterial) {
@@ -4980,6 +5003,7 @@ function Renderer(settings = {}) {
     this.getSubdivision = function(levels = 1, connected = false) {
       let vertices = this.data.position.bufferData;
       let indices = this.data.indices.bufferData;
+      let uvs = this.data.uv.bufferData;
 
       function Edge(a, b, v, last) {
         this.a = a;
@@ -4996,10 +5020,20 @@ function Renderer(settings = {}) {
         return dst;
       };
 
+      let getUV = (index, dst) => {
+        dst = dst || new Vector();
+        dst.x = uvs[index * 2 + 0];
+        dst.y = uvs[index * 2 + 1];
+        dst.z = 0;
+        return dst;
+      };
+
       let newVertices = [];
+      let newUVs = [];
       let newIndices = [];
 
-      newVertices = [...vertices];
+      // newVertices = [...vertices];
+      // newUVs = [...uvs];
       // newIndices = Array.from(indices);
       
       let allEdges = new Map();
@@ -5067,6 +5101,7 @@ function Renderer(settings = {}) {
         return connectedTriangles;
       };
 
+      // Compute connected vertices
       let connectedVertices = new Array(vertices.length / 3);
       for (let i = 0; i < connectedVertices.length; i++) {
         connectedVertices[i] = [];
@@ -5093,10 +5128,12 @@ function Renderer(settings = {}) {
         }
       }
 
+      // Remove duplicates
       for (let i = 0; i < connectedVertices.length; i++) {
         connectedVertices[i] = Array.from(new Set(connectedVertices[i]));
       }
 
+      // Move existing vertices
       const _pos = new Vector();
       let newPosition = Vector.zero();
       for (let i = 0; i < vertices.length / 3; i++) {
@@ -5118,8 +5155,12 @@ function Renderer(settings = {}) {
         newVertices[i * 3 + 0] = newPosition.x;
         newVertices[i * 3 + 1] = newPosition.y;
         newVertices[i * 3 + 2] = newPosition.z;
+
+        newUVs[i * 2 + 0] = uvs[i * 2 + 0];
+        newUVs[i * 2 + 1] = uvs[i * 2 + 1];
       }
 
+      // 
       for (let i = 0; i < indices.length; i += 3) {
         let ia = indices[i + 0];
         let ib = indices[i + 1];
@@ -5146,6 +5187,7 @@ function Renderer(settings = {}) {
             if (!edgeClass) {
               let ct = getConnectedTriangles(edge);
               if (ct.length == 2) {
+                // Position
                 let newPosition = Vector.zero();
                 Vector.addTo(newPosition, Vector.multiply(getVertex(ct[0].a), 3 / 8));
                 Vector.addTo(newPosition, Vector.multiply(getVertex(ct[0].b), 3 / 8));
@@ -5154,6 +5196,14 @@ function Renderer(settings = {}) {
 
                 newVertices.push(newPosition.x, newPosition.y, newPosition.z);
                 newTriangleVertices.push(newVertices.length / 3 - 1);
+
+                // UV
+                let newUV = Vector.zero();
+                Vector.addTo(newUV, Vector.multiply(getUV(ct[0].a), 3 / 8));
+                Vector.addTo(newUV, Vector.multiply(getUV(ct[0].b), 3 / 8));
+                Vector.addTo(newUV, Vector.multiply(getUV(ct[0].last), 1 / 8));
+                Vector.addTo(newUV, Vector.multiply(getUV(ct[1].last), 1 / 8));
+                newUVs.push(newUV.x, newUV.y);
               }
               else if (ct.length == 1) {
                 let newPosition = Vector.zero();
@@ -5162,6 +5212,11 @@ function Renderer(settings = {}) {
 
                 newVertices.push(newPosition.x, newPosition.y, newPosition.z);
                 newTriangleVertices.push(newVertices.length / 3 - 1);
+
+                let newUV = Vector.zero();
+                Vector.addTo(newUV, Vector.multiply(getUV(ct[0].a), 1 / 2));
+                Vector.addTo(newUV, Vector.multiply(getUV(ct[0].b), 1 / 2));
+                newUVs.push(newUV.x, newUV.y);
               }
               else {
                 console.warn(ct.length);
@@ -5179,17 +5234,19 @@ function Renderer(settings = {}) {
           else {
             let edgeClass = edgeHasVertex(edge);
             if (!edgeClass) {
-              let a = getVertex(edge[0]);
-              let b = getVertex(edge[1]);
-              let newVertex = Vector.add(
-                Vector.multiply(a, 3 / 8),
-                Vector.multiply(b, 3 / 8)
-              );
-              Vector.addTo(newVertex, Vector.multiply(getVertex(last[j]), 1 / 8));
-              // let newVertex = Vector.average(a, b);
+              const newPosition = Vector.zero();
+              Vector.addTo(newPosition, Vector.multiply(getVertex(edge[0]), 3 / 8));
+              Vector.addTo(newPosition, Vector.multiply(getVertex(edge[1]), 3 / 8));
+              Vector.addTo(newPosition, Vector.multiply(getVertex(last[j]), 1 / 8));
 
-              newVertices.push(newVertex.x, newVertex.y, newVertex.z);
+              newVertices.push(newPosition.x, newPosition.y, newPosition.z);
               newTriangleVertices.push(newVertices.length / 3 - 1);
+
+              const newUV = Vector.zero();
+              Vector.addTo(newUV, Vector.multiply(getUV(edge[0]), 3 / 8));
+              Vector.addTo(newUV, Vector.multiply(getUV(edge[1]), 3 / 8));
+              Vector.addTo(newUV, Vector.multiply(getUV(last[j]), 1 / 8));
+              newUVs.push(newUV.x, newUV.y);
 
               edgeClass = new Edge(edge[0], edge[1], newVertices.length / 3 - 1, last[j]);
               // allEdges.push(edgeClass);
@@ -5201,6 +5258,12 @@ function Renderer(settings = {}) {
               newVertices[edgeClass.v * 3 + 0] += v.x;
               newVertices[edgeClass.v * 3 + 1] += v.y;
               newVertices[edgeClass.v * 3 + 2] += v.z;
+
+              {
+                let v = Vector.multiply(getUV(last[j]), 1 / 8);
+                newUVs[edgeClass.v * 2 + 0] += v.x;
+                newUVs[edgeClass.v * 2 + 1] += v.y;
+              }
 
               newTriangleVertices.push(edgeClass.v);
             }
@@ -5230,6 +5293,8 @@ function Renderer(settings = {}) {
       //   }
       // }
 
+      // console.log(newUVs);
+
       return {
         indices: {
           bufferData: new Uint32Array(newIndices),
@@ -5239,6 +5304,10 @@ function Renderer(settings = {}) {
         position: {
           bufferData: new Float32Array(newVertices),
           size: 3
+        },
+        uv: {
+          bufferData: new Float32Array(newUVs),
+          size: 2
         },
       };
     };
@@ -5974,9 +6043,9 @@ function Renderer(settings = {}) {
         // let newMat = new NewLitMaterial(renderer.programContainers.litSkinned, currentMat.uniforms);
 
         let pc = null;
-        if (renderer.renderpipeline instanceof ForwardPBRRenderpipeline) {
+        // if (renderer.renderpipeline instanceof ForwardPBRRenderpipeline) { // if-statement does not work with deferred
           pc = renderer.programContainers.litSkinned;
-        }
+        // }
 
         let currentMat = skin.obj.meshRenderer.materials[j];
         let newMat = new NewLitMaterial(pc, currentMat.uniforms);
@@ -8034,7 +8103,7 @@ function Renderer(settings = {}) {
       );
 
       // Shadows
-      bindShadowCascades(combineProgramContainer);
+      bindShadowCascades(combineProgramContainer, scene);
 
       screenQuad.render();
     };
@@ -8055,9 +8124,10 @@ function Renderer(settings = {}) {
       setMaterialCulling(material, false);
     };
 
-    var bindShadowCascades = (program) => {
+    var bindShadowCascades = (program, scene) => {
       var sc = renderer.shadowCascades;
       sc.setUniforms(program);
+      gl.uniform1f(program.getUniformLocation("shadowSampleRadius"), scene.shadowSampleRadius);
 
       var projectedTextureIndices = Array.from({length: sc.levels}, (_, i) => 30 - i * 2).reverse(); // bruh does not need to be generated each frame
       gl.uniform1iv(program.getUniformLocation("projectedTextures[0]"), projectedTextureIndices);
@@ -8109,10 +8179,11 @@ function Renderer(settings = {}) {
       var framebuffer = gl.createFramebuffer();
       gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
 
+      // RGBA32F instead of RGBA16F helps with banding artifacts
       var bufferSettings = {
         position: { internalFormat: gl.RGBA32F, type: FLOAT_TYPE, filter: gl.NEAREST },
         albedo: { internalFormat: gl.RGBA16F, type: FLOAT_TYPE, filter: gl.LINEAR },
-        normal: { internalFormat: gl.RGBA16F, type: FLOAT_TYPE, filter: gl.LINEAR },
+        normal: { internalFormat: gl.RGBA32F, type: FLOAT_TYPE, filter: gl.LINEAR }, // This needs to be 32f instead of 16f to remove specular highlight artifacts
         properties: { internalFormat: gl.RGBA, type: gl.UNSIGNED_BYTE, filter: gl.LINEAR },
         positionViewSpace: { internalFormat: gl.RGBA32F, type: FLOAT_TYPE, filter: gl.NEAREST },
       };
@@ -8131,9 +8202,7 @@ function Renderer(settings = {}) {
       for (var key in colorBuffers) {
         var colorBuffer = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, colorBuffer);
-        // RGBA32F instead of RGBA16F helps with banding artifacts
-        // gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, currentWidth, currentHeight, 0, gl.RGBA, getFloatTextureType(), null);
-        
+
         var bs = bufferSettings[key];
 
         var internalFormat = bs?.internalFormat ?? gl.RGBA32F;
@@ -8534,22 +8603,6 @@ function calculateTangents(vertices, indices, uvs) {
   return tangents;
 }
 
-function FindMaterials(name, obj, exactMatch = false, output = []) {
-  if (obj.meshRenderer) {
-    for (var mat of obj.meshRenderer.materials) {
-      if ((!exactMatch && mat.name.indexOf(name) !== -1) || (exactMatch && mat.name == name)) {
-        output.push(mat);
-      }
-    }
-  }
-
-  for (var child of obj.children) {
-    FindMaterials(name, child, exactMatch, output);
-  }
-
-  return output;
-}
-
 function getMousePos(canvas, evt) {
   var rect = canvas.getBoundingClientRect();
   var scaleX = canvas.width / rect.width;
@@ -8570,20 +8623,3 @@ function resizeImage(image, width, height) {
 }
 
 export default Renderer;
-export {
-  GameObject,
-  Transform,
-  Scene,
-  Light,
-  Camera,
-  flyCamera,
-  AnimationController,
-  AnimationData,
-  AnimationBlend,
-  AudioListener3D,
-  AudioSource3D,
-  LOD,
-  IK,
-  FindMaterials,
-  EventHandler,
-};

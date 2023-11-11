@@ -1,5 +1,14 @@
 import * as ENUMS from "../engine/constants.mjs";
-import Renderer, { Scene, GameObject, Transform, AudioListener3D, Camera, Light, FindMaterials, flyCamera, IK, AnimationController, AnimationBlend } from "../engine/renderer.mjs";
+import Renderer from "../engine/renderer.mjs";
+import { Scene } from "../engine/scene.mjs";
+import { GameObject } from "../engine/gameObject.mjs";
+import { AudioListener3D } from "../engine/audioListener3D.mjs";
+import { Camera } from "../engine/camera.mjs";
+import { Light } from "../engine/light.mjs";
+import { flyCamera } from "../engine/flyCamera.mjs";
+import { IK } from "../engine/IK.mjs";
+import { AnimationController } from "../engine/animationController.mjs";
+import { AnimationBlend } from "../engine/animationBlend.mjs";
 import { 
   AABB,
   PhysicsEngine,
@@ -285,8 +294,7 @@ async function setup() {
   renderer = new Renderer({
     version: 2,
     clearColor: [0.02, 0.02, 0.02, 1],
-    shadowSizes: [4, 30],
-    shadowBiases: [-0.0003, -0.001],
+    shadowSizes: [16, 128],
     renderScale: 1,
     path: "../",
     renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
@@ -3936,52 +3944,3 @@ function AudioHandler() {
 function wrapAround(t, m) {
   return (m + t) % m;
 }
-
-// bruh performance intensive
-// bruh add to renderer class
-// function GLDebugger() {
-//   this.index = 0;
-//   this.cubes = [];
-//   for (var i = 0; i < 50; i++) {
-//     var c = this.cubes[i] = scene.add(renderer.CreateShape("cube"));
-//     c.transform.position.y = -100;
-//     c.castShadows = false;
-
-//     var m = FindMaterials("", c)[0];
-//     m.setUniform("albedo", [0, 0, 0, 1]);
-//     m.setUniform("emissiveFactor", [Math.random(), Math.random(), Math.random()]);
-//   }
-
-//   this.clear = function() {
-//     this.index = 0;
-//     for (var cube of this.cubes) {
-//       cube.transform.position.y = -100;
-//     }
-//   }
-
-//   this.Vector = function(p, normal, size = 1, color) {
-//     var c = this.cubes[this.index];
-//     c.transform.matrix = Matrix.lookAt(Vector.add(p, Vector.multiply(normal, 0.5 * size)), Vector.add(p, normal), new Vector(0.1, 0.9, 0));
-//     c.transform.scale = new Vector(0.01, 0.01, 0.5 * size);
-
-//     if (color) {
-//       FindMaterials("", c)[0].setUniform("emissiveFactor", color);
-//     }
-
-//     this.index++;
-//     this.index = this.index % this.cubes.length;
-//   }
-
-//   this.Point = function(p, size = 0.2, color) {
-//     var c = this.cubes[this.index];
-//     c.transform.position = p;
-//     c.transform.scale = Vector.fill(size);
-
-//     if (color) {
-//       FindMaterials("", c)[0].setUniform("emissiveFactor", color);
-//     }
-
-//     this.index++;
-//     this.index = this.index % this.cubes.length;
-//   }
-// }

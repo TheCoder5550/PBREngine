@@ -1,9 +1,10 @@
+import Stats from "../statsModule.mjs";
 import * as ENUMS from "../engine/constants.mjs";
-import Renderer, { GameObject, Scene, Light } from "../engine/renderer.mjs";
+import Renderer from "../engine/renderer.mjs";
+import { Scene } from "../engine/scene.mjs";
+import { Light } from "../engine/light.mjs";
 import OrbitCamera from "../engine/orbitCamera.mjs";
 import Vector from "../engine/vector.mjs";
-import Quaternion from "../engine/quaternion.mjs";
-import Matrix from "../engine/matrix.mjs";
 
 let renderer;
 let scene;
@@ -63,6 +64,8 @@ async function onDrop(ev) {
 }
 
 async function handleFile(file) {
+  hideElement(dropZone);
+
   const url = URL.createObjectURL(file);
 
   if (!renderer) {
@@ -72,7 +75,6 @@ async function handleFile(file) {
   let model = await loadGLB(url);
   cleanUpScene(model);
 
-  hideElement(dropZone);
   document.body.appendChild(stats.dom);
 }
 
@@ -99,7 +101,8 @@ async function createRenderer() {
     path: "../",
     renderScale: 1,
     shadowResolution: 2048,
-    renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
+    renderpipeline: ENUMS.RENDERPIPELINE.DEFERRED,
+    // renderpipeline: ENUMS.RENDERPIPELINE.FORWARD,
   });
 
   scene = new Scene();
@@ -107,11 +110,10 @@ async function createRenderer() {
 
   scene.environmentIntensity = 0.5;
   scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(5200, 20));
-  scene.sunDirection.z *= -1;
   scene.bloom.intensity = 0.01;
 
   await scene.loadEnvironment({
-    hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k_precomputed",
+    hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k_precomputed",
     // res: 512
   });
 

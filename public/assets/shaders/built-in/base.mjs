@@ -35,13 +35,15 @@ uniform float environmentMinLight;
 // vec4 projectedTexcoords[levels];
 // uniform float biases[levels];
 // uniform sampler2D projectedTextures[levels];
-uniform mat4 textureMatrices[levels];
-uniform float shadowSizes[levels];
+// uniform mat4 textureMatrices[levels];
 
+uniform float shadowSizes[levels];
 uniform int shadowQuality;
+uniform float shadowSampleRadius;
+
 const bool blurShadows = true;
 const int shadowSamples = 16;
-const float shadowSampleRadius = 96. * 2.;
+// const float shadowSampleRadius = 96. * 2. / 8.;
 
 float shadowDarkness = 0.;
 const float shadowKernalSize = 2.;

@@ -115,7 +115,7 @@ void main() {
 export const fragment = `
 ${lit.shaderBase}
 
-${lit.litAttributesAndUniforms}
+${lit.litAttributesAndUniforms.replace("uniform bool doNoTiling;", "const bool doNoTiling = false;")}
 
 ${lit.litBase}
 
