@@ -1,0 +1,23 @@
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+#textures {
+  position: absolute;
+  top: 0;
+  right: 0;
+  overflow: auto;
+
+  display: grid;
+  grid-template-columns: repeat(5, 50px);
+
+  user-select: none;
+}
+
+#textures > img {
+  width: 100%;
+  display: flex;
+  cursor: pointer;
+}

@@ -7296,7 +7296,7 @@ function Renderer(settings = {}) {
     console.info("Using %cforward%c renderpipeline", "color: green; text-transform: uppercase; font-weight: bold;", "");
   
     this.renderer = renderer;
-    var gl = this.renderer.gl;
+    const gl = this.renderer.gl;
   
     this.render = function(camera, secondaryCameras, scene, settings) {
       if (typeof camera === "undefined") {
@@ -7317,22 +7317,24 @@ function Renderer(settings = {}) {
       );
   
       // Bind post processing framebuffer
-      if (this.renderer.postprocessing && _settings.enablePostProcessing) {
+      const usePostProcessing = !!(this.renderer.postprocessing && _settings.enablePostProcessing);
+      if (usePostProcessing) {
         this.renderer.postprocessing.bindFramebuffer();
+
+        if (renderer.version > 1) {
+          gl.drawBuffers([ gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1 ]);
+        }
       }
       else {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       }
   
       // Clear framebuffer/screen
-      if (renderer.version > 1) {
-        gl.drawBuffers([ gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1 ]);
-      }
       gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
       // Fill motion blur texture with (0.5, 0.5, ..., ...)
-      if (renderer.version > 1) {
+      if (usePostProcessing && renderer.version > 1) {
         gl.drawBuffers([ gl.NONE, gl.COLOR_ATTACHMENT1 ]);
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
         gl.clearColor(0.5, 0.5, 0, 1);
@@ -7411,7 +7413,7 @@ function Renderer(settings = {}) {
       // scene.render(camera, { renderPass: ENUMS.RENDERPASS.ALPHA | ENUMS.RENDERPASS.DOWNSCALED });
       // gl.depthMask(true);
 
-      if (renderer.version > 1) {
+      if (usePostProcessing && renderer.version > 1) {
         gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
       }
   
@@ -8284,12 +8286,12 @@ function Renderer(settings = {}) {
 
         // Bind uniforms
 
-        SSRProgramContainer.setUniform("scale", this.scale);
-        SSRProgramContainer.setUniform("maxRoughness", this.maxRoughness);
-        SSRProgramContainer.setUniform("maxDistance", this.maxDistance);
-        SSRProgramContainer.setUniform("resolution", this.stepResolution);
-        SSRProgramContainer.setUniform("steps", this.refinementSteps);
-        SSRProgramContainer.setUniform("thickness", this.thickness);
+        // SSRProgramContainer.setUniform("scale", this.scale);
+        // SSRProgramContainer.setUniform("maxRoughness", this.maxRoughness);
+        // SSRProgramContainer.setUniform("maxDistance", this.maxDistance);
+        // SSRProgramContainer.setUniform("resolution", this.stepResolution);
+        // SSRProgramContainer.setUniform("steps", this.refinementSteps);
+        // SSRProgramContainer.setUniform("thickness", this.thickness);
 
         // Bind textures
 
@@ -8322,6 +8324,14 @@ function Renderer(settings = {}) {
         gl.uniform1i(
           SSRProgramContainer.getUniformLocation("albedoTexture"),
           3
+        );
+
+        // Splitsum
+        gl.activeTexture(gl.TEXTURE4);
+        gl.bindTexture(gl.TEXTURE_2D, renderer.splitsumTexture);
+        gl.uniform1i(
+          SSRProgramContainer.getUniformLocation("u_splitSum"),
+          4
         );
 
         // Bind matrices

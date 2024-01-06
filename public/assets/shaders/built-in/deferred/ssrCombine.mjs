@@ -1,8 +1,8 @@
 import { screenQuadVertex, shaderBase } from "../base.mjs";
 
-var vertex = screenQuadVertex;
+export const vertex = screenQuadVertex;
 
-var fragment = `
+export const fragment = `
 ${shaderBase}
 
 uniform sampler2D combinedTexture;
@@ -18,14 +18,11 @@ void main() {
   vec3 combinedColor = texture(combinedTexture, uv).rgb;
   vec4 ssrColor = texture(ssrTexture, uv * scale);
 
-  fragColor = vec4(mix(combinedColor, ssrColor.rgb, ssrColor.a), 1);
+  fragColor = vec4(
+    combinedColor.rgb + ssrColor.rgb,
+    1
+  );
+
+  // fragColor = vec4(mix(combinedColor, ssrColor.rgb, ssrColor.a), 1);
 }
 `;
-
-vertex = vertex.trim();
-fragment = fragment.trim();
-
-export {
-  vertex,
-  fragment
-};

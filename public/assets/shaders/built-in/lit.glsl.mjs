@@ -238,9 +238,11 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
 }
 
 vec3 IBL (vec3 N, vec3 V, vec3 R, vec3 albedo, float metallic, float roughness, float scalarF0) {
+  float cosTheta = max(dot(N, V), 0.);
+
   vec3 F0 = vec3(scalarF0);
   F0 = mix(F0, albedo, metallic);
-  vec3 F = fresnelSchlickRoughness(max(dot(N, V), 0.), F0, roughness);
+  vec3 F = fresnelSchlickRoughness(cosTheta, F0, roughness);
 
   vec3 kS = F;
   vec3 kD = 1.0 - kS;
@@ -252,7 +254,7 @@ vec3 IBL (vec3 N, vec3 V, vec3 R, vec3 albedo, float metallic, float roughness, 
   const float MAX_REFLECTION_LOD = 4.0;
   vec3 prefilteredColor = textureLod(u_specularIBL, R, roughness * MAX_REFLECTION_LOD).rgb;
 
-  vec2 uv = vec2(max(dot(N, V), 0.), roughness);
+  vec2 uv = vec2(cosTheta, roughness);
   uv.y = 1. - uv.y;
   vec2 envBRDF = texture(u_splitSum, uv).rg;
 

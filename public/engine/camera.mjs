@@ -232,6 +232,14 @@ function Camera(settings = {}) {
     return _fov;
   };
 
+  this.getNear = function() {
+    return _near;
+  };
+
+  this.getFar = function() {
+    return _far;
+  };
+  
   /**
    * @description Converts a point on the screen to a ray in world-space
    * @param {number} x x position on screen (from 0 to 1)

@@ -64,23 +64,22 @@
         path: "../"
       });
 
-      scene = new Scene();
-      renderer.add(scene);
-
-      scene.environmentIntensity = 0.5;
-      scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(5200, 200));
-      scene.sunDirection.y = 0.3;
-      scene.postprocessing.vignette.amount = 0.3;
-      scene.postprocessing.vignette.falloff = 0.3;
+      scene = renderer.add(new Scene());
       scene.postprocessing.motionBlurStrength = 0;
-      scene.shadowSampleRadius = 20;
+
+      // scene.environmentIntensity = 0.5;
+      // scene.sunIntensity = Vector.fromArray(Light.kelvinToRgb(5200, 200));
+      // scene.sunDirection.y = 0.3;
+      // scene.postprocessing.vignette.amount = 0.3;
+      // scene.postprocessing.vignette.falloff = 0.3;
+      // scene.shadowSampleRadius = 20;
 
       renderer.settings.enableShadows = true;
       renderer.shadowCascades.refreshRate = 60;
 
       renderer.renderpipeline.enableSSR = true;
-      renderer.renderpipeline.ssr.blur = 2;
-      renderer.renderpipeline.ssr.scale = 0.35;
+      renderer.renderpipeline.ssr.blur = 0;//2;
+      renderer.renderpipeline.ssr.scale = 1;//0.35;
 
       await scene.loadEnvironment({
         // hdrFolder: "./assets/hdri/wide_street_01_1k_precomputed",
@@ -92,9 +91,9 @@
       camera.distance = 1.75;
       camera.rotation = new Vector(-0.25, 0.5, 0);
 
-      scene.add(renderer.BatchGameObject(await renderer.loadGLTF(renderer.path + "assets/models/test/60sOffice.glb")));
-      // scene.add(await renderer.loadGLTF("./assets/models/test/indoor_basketball_court.glb"));
-      // scene.add(await renderer.loadGLTF("./assets/models/test/SSRTest.glb"));
+      // scene.add(renderer.BatchGameObject(await renderer.loadGLTF(renderer.path + "assets/models/test/60sOffice.glb")));
+      // scene.add(await renderer.loadGLTF(renderer.path + "assets/models/test/indoor_basketball_court.glb"));
+      scene.add(await renderer.loadGLTF(renderer.path + "assets/models/test/SSRTest.glb"));
       // scene.add(renderer.CreateShape("sphere")).transform.position.y = 3;
 
       window.renderer = renderer;

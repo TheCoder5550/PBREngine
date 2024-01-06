@@ -605,9 +605,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   // const { terrain } = await generateCity();
   // const { terrain, checkChunks } = await generateLowpolyForest();
-  const { terrain, checkChunks } = await generateForest();
+  // const { terrain, checkChunks } = await generateForest();
   // const { terrain } = await generateTerrain();
-  // const { terrain } = await generatePlayground();
+  const { terrain } = await generatePlayground();
   // const { terrain } = await generateTouge();
 
   // Re-set spawnpoint since maps changes it

@@ -1702,16 +1702,18 @@ function Car(scene, physicsEngine, settings = {}) {
       // Clutch input
 
       var rpmChange = (this.engine.getRPM() - lastEngineRPM) * dt;
-
+      const autoClutchOnEbrake = ebrakeInput > 0.05 && this.drivetrain !== "FWD" ? 1 : 0;
+      
       targetClutchInput = Math.max(
-        ebrakeInput,
+        autoClutchOnEbrake,
         getClutchInput,
-        clutchInput - (this.engine.getRPM() - (this.engine.minRPM + 800)) * 0.002 - rpmChange * 20
+        clutchInput - (this.engine.getRPM() - (this.engine.minRPM + 800)) * 0.002 - rpmChange * 20 // P(I = 0)D controller for smooth clutch input
       );
       targetClutchInput = clamp(targetClutchInput, 0, 1);
       // clutchInput = targetClutchInput;
       clutchInput += (targetClutchInput - clutchInput) * 0.3;
 
+      // During the gear-change, apply the clutch
       if (isChangingGear) {
         clutchInput = 1;
         targetClutchInput = 1;

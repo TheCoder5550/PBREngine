@@ -28,7 +28,7 @@ function GamepadManager() {
     LSVertical: 1,
     RSHorizontal: 2,
     RSVertical: 3
-  }
+  };
 
   window.addEventListener("gamepadconnected", e => {
     console.log("Gamepad connected at index %d: %s. %d buttons, %d axes.",
@@ -52,15 +52,15 @@ function GamepadManager() {
     }
 
     return false;
-  }
+  };
 
   this.nameToIndex = function(name, nameList) {
     return nameList[name] ?? name;
-  }
+  };
 
   this.getButtonName = function(index) {
     return Object.keys(this.buttonNames).find(key => this.buttonNames[key] === index);
-  }
+  };
 
   this.getButton = function(button, gamepadIndex) {
     var gamepad = this.getGamepad(gamepadIndex);
@@ -70,7 +70,7 @@ function GamepadManager() {
     }
 
     return null;
-  }
+  };
 
   this.getButtons = function(gamepadIndex) {
     var gamepad = this.getGamepad(gamepadIndex);
@@ -85,7 +85,7 @@ function GamepadManager() {
     }
 
     return [];
-  }
+  };
 
   this.getButtonDown = function(button, gamepadIndex, uniqueID = "") {
     var b = this.getButton(button, gamepadIndex);
@@ -99,7 +99,7 @@ function GamepadManager() {
     else {
       keysDown[index + uniqueID] = true;
     }
-  }
+  };
 
   this.getButtonUp = function(button, gamepadIndex, uniqueID = "") {
     var b = this.getButton(button, gamepadIndex);
@@ -113,7 +113,7 @@ function GamepadManager() {
     else {
       keysUp[index + uniqueID] = true;
     }
-  }
+  };
 
   this.getAxis = function(axis, gamepadIndex) {
     var gamepad = this.getGamepad(gamepadIndex);
@@ -123,7 +123,7 @@ function GamepadManager() {
     }
 
     return null;
-  }
+  };
 
   this.vibrate = function(duration, weakMagnitude = 0.5, strongMagnitude = 0.5, gamepadIndex) {
     var gamepad = this.getGamepad(gamepadIndex);
@@ -136,7 +136,7 @@ function GamepadManager() {
 
       }).catch(err => console.log(err));
     }
-  }
+  };
 }
 
 function deadZone(x, zone = 0.1) {
