@@ -42,7 +42,13 @@
     import Renderer from "./engine/renderer.mjs";
     import { Scene } from "./engine/scene.mjs";
     import OrbitCamera from "./engine/orbitCamera.mjs";
-
+    import Bloom from "./engine/postprocessing-effects/bloom.mjs";
+    import Tonemapper from "./engine/postprocessing-effects/tonemapper.mjs";
+    import Motionblur from "./engine/postprocessing-effects/motionBlur.mjs";
+    import FXAA from "./engine/postprocessing-effects/fxaa.mjs";
+    import Vignette from "./engine/postprocessing-effects/vignette.mjs";
+    import Raindrops from "./engine/postprocessing-effects/raindrops.mjs";
+    
     (async function() {
       const stats = new Stats();
       document.body.appendChild(stats.dom);
@@ -50,6 +56,13 @@
       const renderer = new Renderer({
         // debug: false,
       });
+      const pp = renderer.postprocessing;
+      pp.addEffect(new Motionblur());
+      pp.addEffect(new Raindrops())
+      pp.addEffect(new Bloom());
+      pp.addEffect(new Tonemapper());
+      pp.addEffect(new FXAA());
+      pp.addEffect(new Vignette());
 
       const camera = new OrbitCamera(renderer, { near: 0.1, far: 300, fov: 20 });
 

@@ -1,0 +1,64 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  /* font-family: 'Courier New', Courier, monospace; */
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+}
+
+.ui {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+
+  user-select: none;
+  pointer-events: none;
+
+  font-size: 1.5em;
+  font-weight: bold;
+  color: white;
+  -webkit-text-stroke: 1.5px black;
+}
+
+.ui .bottom {
+  position: absolute;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+
+  display: grid;
+  place-items: center;
+}
+
+.ui .bottom .gps {
+  position: absolute;
+  left: 10px;
+}
+
+.ui .bottom .statusBar {
+  display: flex;
+  gap: 10px;
+}
+
+.ui .bottom .statusBar .active {
+  color: rgb(60, 228, 60);
+}
+
+.ui .autopilot {
+  position: absolute;
+  bottom: 25%;
+  left: 0;
+  right: 0;
+  text-align: center;
+
+  font-size: 1.5em;
+  animation: 1s blink linear infinite;
+}
+
+@keyframes blink {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+}

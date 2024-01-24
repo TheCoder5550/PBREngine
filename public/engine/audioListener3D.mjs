@@ -1,7 +1,18 @@
+import Vector from "./vector.mjs";
+
 function AudioListener3D(audioContext) {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   this.audioContext = audioContext || new AudioContext();
   const listener = this.audioContext.listener;
+
+  this.getPosition = function(dst) {
+    return new Vector(
+      listener.positionX.value,
+      listener.positionY.value,
+      listener.positionZ.value,
+      dst
+    );
+  };
 
   this.setPosition = function(pos) {
     if (listener.positionX && listener.positionY && listener.positionZ) {

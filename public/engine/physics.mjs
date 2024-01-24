@@ -411,37 +411,6 @@ function Octree(aabb, maxDepth = 5) {
       new Octree(new SimpleAABB(Vector.average(this.aabb.bl, this.aabb.tr), this.aabb.tr), this.maxDepth)
     );
   };
-
-  this.render = function(scene, topCall = true) {
-    if (this.items.length > 0) {
-      var aabb = this.aabb;
-      scene.root.getChild("AABB").meshRenderer.addInstance(Matrix.transform([
-        ["translate", Vector.divide(Vector.add(aabb.bl, aabb.tr), 2)],
-        ["sx", (aabb.tr.x - aabb.bl.x) / 2],
-        ["sy", (aabb.tr.y - aabb.bl.y) / 2],
-        ["sz", (aabb.tr.z - aabb.bl.z) / 2]
-      ]), false);
-    }
-
-    if (this.children.length == 0) {
-      // var aabb = this.aabb;
-      // scene.root.getChild("AABB").meshRenderer.addInstance(Matrix.transform([
-      //   ["translate", Vector.divide(Vector.add(aabb.bl, aabb.tr), 2)],
-      //   ["sx", (aabb.tr.x - aabb.bl.x) / 2],
-      //   ["sy", (aabb.tr.y - aabb.bl.y) / 2],
-      //   ["sz", (aabb.tr.z - aabb.bl.z) / 2]
-      // ]), false);
-    }
-    else {
-      for (var i = 0; i < this.children.length; i++) {
-        this.children[i].render(scene, false);
-      }
-    }
-    
-    if (topCall) {
-      scene.root.getChild("AABB").meshRenderer.updateMatrixData();
-    }
-  };
 }
 
 function SimpleAABB(bl, tr) {
@@ -627,7 +596,8 @@ AABB.bounds = function(points) {
 
 // bruh generates garbage together with physics octree
 function GetMeshAABB(gameObject, padding, ignoreGameObjects) {
-  var aabb = new AABB();
+  const aabb = new AABB();
+  const tempVector = new Vector();
 
   gameObject.traverse(o => {
     if (ignoreGameObjects && ignoreGameObjects.includes(o)) {
@@ -643,13 +613,20 @@ function GetMeshAABB(gameObject, padding, ignoreGameObjects) {
 
         if (md.data.position && md.data.indices) {
           for (var j = 0; j < md.data.position.bufferData.length; j += 3) {
-            var v = {
-              x: md.data.position.bufferData[j],
-              y: md.data.position.bufferData[j + 1],
-              z: md.data.position.bufferData[j + 2]
-            };
-            v = Matrix.transformVector(o.transform.worldMatrix, v);
-            aabb.extend(v);
+            tempVector.x = md.data.position.bufferData[j + 0];
+            tempVector.y = md.data.position.bufferData[j + 1];
+            tempVector.z = md.data.position.bufferData[j + 2];
+
+            Matrix.transformVector(o.transform.worldMatrix, tempVector, tempVector);
+            aabb.extend(tempVector);
+
+            // var v = {
+            //   x: md.data.position.bufferData[j],
+            //   y: md.data.position.bufferData[j + 1],
+            //   z: md.data.position.bufferData[j + 2]
+            // };
+            // v = Matrix.transformVector(o.transform.worldMatrix, v);
+            // aabb.extend(v);
           }
         }
       }
@@ -1311,343 +1288,346 @@ function PhysicsEngine(scene, settings = {}) {
           //   }
           // }
 
-          // VClip collision
-          const boxColliders = rigidbody.gameObject.findComponents("BoxCollider");
-          for (const boxCollider of boxColliders) {
-            if (!boxCollider.vclipGeometry) {
-              throw new Error("Missing vclip geometry in boxcollider");
-              // continue;
-            }
+          // // VClip collision
+          // const boxColliders = rigidbody.gameObject.findComponents("BoxCollider");
+          // for (const boxCollider of boxColliders) {
+          //   if (!boxCollider.vclipGeometry) {
+          //     throw new Error("Missing vclip geometry in boxcollider");
+          //     // continue;
+          //   }
 
-            // Draw bounds of BoxCollider
-            window.Debug?.Bounds(boxCollider.aabb, rigidbody.gameObject.transform.worldMatrix);
+          //   // Draw bounds of BoxCollider
+          //   window.Debug?.Bounds(boxCollider.aabb, rigidbody.gameObject.transform.worldMatrix);
 
-            this.scene.root.traverseCondition(otherGameObject => {
-              // Don't collide with self
-              if (otherGameObject === gameObject) {
-                return;
-              }
+          //   this.scene.root.traverseCondition(otherGameObject => {
+          //     // Don't collide with self
+          //     if (otherGameObject === gameObject) {
+          //       return;
+          //     }
 
-              /**
-               * @type {MeshCollider[]}
-               */
-              const otherMeshColliders = otherGameObject.findComponents("MeshCollider");
-              for (const otherMeshCollider of otherMeshColliders) {
-                if (!otherMeshCollider.vclipGeometry) {
-                  throw new Error("Missing vclip geometry in meshcollider");
-                  // continue;
-                }
+          //     /**
+          //      * @type {MeshCollider[]}
+          //      */
+          //     const otherMeshColliders = otherGameObject.findComponents("MeshCollider");
+          //     for (const otherMeshCollider of otherMeshColliders) {
+          //       if (!otherMeshCollider.vclipGeometry) {
+          //         throw new Error("Missing vclip geometry in meshcollider");
+          //         // continue;
+          //       }
 
-                if (!otherMeshCollider.convex) {
-                  continue;
-                }
+          //       if (!otherMeshCollider.convex) {
+          //         continue;
+          //       }
 
-                // const boxGeometry = new CubeGeometry(rigidbody.gameObject.transform.matrix, Vector.fill(2));
-                // const boxGeometry = new MeshGeometry(rigidbody.gameObject.transform.matrix, rigidbody.gameObject.meshRenderer.meshData[0]);
-                // const otherGeometry = new CubeGeometry(Matrix.translate(new Vector(0, -10.5, 0)), new Vector(50, 20, 50));
-                // const otherGeometry = new MeshGeometry(otherGameObject.transform.matrix, otherGameObject.meshRenderer.meshData[0]);
-                const otherGeometry = otherMeshCollider.vclipGeometry;//new MeshGeometry(otherGameObject.transform.matrix, otherGameObject.meshRenderer.meshData[0]);
-                otherGeometry.updateMatrix(otherGameObject.transform.matrix);
+          //       // const boxGeometry = new CubeGeometry(rigidbody.gameObject.transform.matrix, Vector.fill(2));
+          //       // const boxGeometry = new MeshGeometry(rigidbody.gameObject.transform.matrix, rigidbody.gameObject.meshRenderer.meshData[0]);
+          //       // const otherGeometry = new CubeGeometry(Matrix.translate(new Vector(0, -10.5, 0)), new Vector(50, 20, 50));
+          //       // const otherGeometry = new MeshGeometry(otherGameObject.transform.matrix, otherGameObject.meshRenderer.meshData[0]);
+          //       const otherGeometry = otherMeshCollider.vclipGeometry;//new MeshGeometry(otherGameObject.transform.matrix, otherGameObject.meshRenderer.meshData[0]);
+          //       otherGeometry.updateMatrix(otherGameObject.transform.matrix);
 
-                const getDeepestPenetration = (matrix) => {
-                  const maxIterations = 20;
+          //       const getDeepestPenetration = (matrix) => {
+          //         const maxIterations = 20;
 
-                  let penetration = false;
-                  const point = new Vector();
-                  const totalTranslation = Vector.zero();
-                  const newBoxGeometry = new MeshGeometry(matrix, rigidbody.gameObject.meshRenderer.meshData[0]);
+          //         let penetration = false;
+          //         const point = new Vector();
+          //         const totalTranslation = Vector.zero();
+          //         const newBoxGeometry = new MeshGeometry(matrix, rigidbody.gameObject.meshRenderer.meshData[0]);
 
-                  for (let depth = 0; depth < maxIterations; depth++) {
-                    const intersectionData = VClip(otherGeometry, newBoxGeometry);
-                    if (intersectionData.status !== 2) { // 2 = intersection
-                      break;
-                    }
+          //         for (let depth = 0; depth < maxIterations; depth++) {
+          //           const intersectionData = VClip(otherGeometry, newBoxGeometry);
+          //           if (intersectionData.status !== 2) { // 2 = intersection
+          //             break;
+          //           }
     
-                    if (!intersectionData.penetrationPoint || !intersectionData.penetrationDepth || !intersectionData.penetrationNormal) {
-                      break;
-                    }
+          //           if (!intersectionData.penetrationPoint || !intersectionData.penetrationDepth || !intersectionData.penetrationNormal) {
+          //             break;
+          //           }
 
-                    intersectionData.featureA.render();
-                    intersectionData.featureB.render();
-                    window.Debug?.Vector(intersectionData.penetrationPoint, intersectionData.penetrationNormal, -intersectionData.penetrationDepth, [0, 1, 0]);
-                    window.Debug?.Point(intersectionData.penetrationPoint, 0.03, [0, 1, 0.2]);
+          //           intersectionData.featureA.render();
+          //           intersectionData.featureB.render();
+          //           window.Debug?.Vector(intersectionData.penetrationPoint, intersectionData.penetrationNormal, -intersectionData.penetrationDepth, [0, 1, 0]);
+          //           window.Debug?.Point(intersectionData.penetrationPoint, 0.03, [0, 1, 0.2]);
 
-                    penetration = true;
+          //           penetration = true;
 
-                    Vector.set(point, Vector.subtract(intersectionData.penetrationPoint, totalTranslation));
+          //           Vector.set(point, Vector.subtract(intersectionData.penetrationPoint, totalTranslation));
 
-                    const translate = Vector.multiply(intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001);
-                    for (const vertex of newBoxGeometry.vertices) {
-                      Vector.addTo(vertex.position, translate);
-                    }
+          //           const translate = Vector.multiply(intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001);
+          //           for (const vertex of newBoxGeometry.vertices) {
+          //             Vector.addTo(vertex.position, translate);
+          //           }
 
-                    Vector.addTo(totalTranslation, translate);
+          //           Vector.addTo(totalTranslation, translate);
 
-                    // window.Debug.Point(point, 0.02);
-                    // window.Debug.Vector(point, intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001);
+          //           // window.Debug.Point(point, 0.02);
+          //           // window.Debug.Vector(point, intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001);
 
-                    // return;
+          //           // return;
 
-                    if (depth == maxIterations - 1) {
-                      console.warn("max");
-                    }
-                  }
+          //           if (depth == maxIterations - 1) {
+          //             console.warn("max");
+          //           }
+          //         }
 
-                  if (!penetration) {
-                    return null;
-                  }
+          //         if (!penetration) {
+          //           return null;
+          //         }
 
-                  const diff = Vector.copy(totalTranslation);
-                  const normal = Vector.normalize(diff);
-                  const depth = Vector.length(diff);
+          //         const diff = Vector.copy(totalTranslation);
+          //         const normal = Vector.normalize(diff);
+          //         const depth = Vector.length(diff);
 
-                  window.Debug?.Vector(point, normal, depth, [0, 0, 1]);
-                  window.Debug?.Point(point, 0.03, [0, 0.2, 1]);
+          //         window.Debug?.Vector(point, normal, depth, [0, 0, 1]);
+          //         window.Debug?.Point(point, 0.03, [0, 0.2, 1]);
 
-                  return {
-                    normal,
-                    depth,
-                    point
-                  };
-                };
+          //         return {
+          //           normal,
+          //           depth,
+          //           point
+          //         };
+          //       };
 
-                // const getContact = (matrix) => {
-                //   return getDeepestPenetration(matrix);
-                // };
+          //       // const getContact = (matrix) => {
+          //       //   return getDeepestPenetration(matrix);
+          //       // };
 
-                const getContact = (matrix) => {
-                  // const newBoxGeometry = new MeshGeometry(matrix, rigidbody.gameObject.meshRenderer.meshData[0]);
-                  // const newBoxGeometry = new CubeGeometry(matrix, boxCollider.aabb.getSize());
-                  const newBoxGeometry = boxCollider.vclipGeometry;
-                  newBoxGeometry.updateMatrix(matrix);
+          //       const getContact = (matrix) => {
+          //         // const newBoxGeometry = new MeshGeometry(matrix, rigidbody.gameObject.meshRenderer.meshData[0]);
+          //         // const newBoxGeometry = new CubeGeometry(matrix, boxCollider.aabb.getSize());
+          //         const newBoxGeometry = boxCollider.vclipGeometry;
+          //         newBoxGeometry.updateMatrix(matrix);
 
-                  const vclipData = VClip(otherGeometry, newBoxGeometry);
-                  if (vclipData.status !== 1) { // 1 = Not intersecting
-                    return null;
-                  }
+          //         const vclipData = VClip(otherGeometry, newBoxGeometry);
+          //         if (vclipData.status !== 1) { // 1 = Not intersecting
+          //           return null;
+          //         }
 
-                  vclipData.featureA.render();
-                  vclipData.featureB.render();
+          //         vclipData.featureA.render();
+          //         vclipData.featureB.render();
 
-                  const { pointA, pointB, distance, vector } = computeDistance(vclipData.featureA, vclipData.featureB);
+          //         const { pointA, pointB, distance, vector } = computeDistance(vclipData.featureA, vclipData.featureB);
 
-                  const margin = 0.1;
+          //         const margin = 0.1;
 
-                  if (distance > margin * 2) {
-                    return null;
-                  }
+          //         if (distance > margin * 2) {
+          //           return null;
+          //         }
 
-                  const point = pointB;
-                  const normal = Vector.normalize(vector);
-                  const depth = -(distance - margin * 2);
+          //         const point = pointB;
+          //         const normal = Vector.normalize(vector);
+          //         const depth = -(distance - margin * 2);
 
-                  // Vector.set(normal, new Vector(0, 1, 0));
-                  // console.log(normal);
+          //         // Vector.set(normal, new Vector(0, 1, 0));
+          //         // console.log(normal);
 
-                  // if (normal.y < 0) {
-                  //   Vector.negateTo(normal);
-                  //   Vector.set(point, pointB);
-                  // }
+          //         // if (normal.y < 0) {
+          //         //   Vector.negateTo(normal);
+          //         //   Vector.set(point, pointB);
+          //         // }
 
-                  window.Debug?.Point(pointA, 0.05);
-                  window.Debug?.Point(pointB, 0.05);
-                  window.Debug?.Vector(pointA, vector, 1, [0, 1, 0]);
-                  window.Debug?.Vector(point, normal, 1, [1, 1, 0]);
-                  // console.log(point, normal, depth);
+          //         window.Debug?.Point(pointA, 0.05);
+          //         window.Debug?.Point(pointB, 0.05);
+          //         window.Debug?.Vector(pointA, vector, 1, [0, 1, 0]);
+          //         window.Debug?.Vector(point, normal, 1, [1, 1, 0]);
+          //         // console.log(point, normal, depth);
 
-                  return {
-                    point,
-                    normal,
-                    depth
-                  };
-                };
+          //         return {
+          //           point,
+          //           normal,
+          //           depth
+          //         };
+          //       };
 
-                const perturbationAngle = Math.PI * 0.004 * 0.1;
+          //       const perturbationAngle = Math.PI * 0.004 * 0.1;
 
-                const getPerturbationMatrix = (baseMatrix, x, z) => {
-                  const matrix = Matrix.copy(baseMatrix);
-                  Matrix.applyRotationX(perturbationAngle * x, matrix);
-                  Matrix.applyRotationZ(perturbationAngle * z, matrix);
-                  return matrix;
-                };
+          //       const getPerturbationMatrix = (baseMatrix, x, z) => {
+          //         const matrix = Matrix.copy(baseMatrix);
+          //         Matrix.applyRotationX(perturbationAngle * x, matrix);
+          //         Matrix.applyRotationZ(perturbationAngle * z, matrix);
+          //         return matrix;
+          //       };
 
-                const matrices = [
-                  // getPerturbationMatrix(rigidbody.gameObject.transform.matrix, 0, 0),
-                  getPerturbationMatrix(rigidbody.gameObject.transform.matrix, 1, 1),
-                  getPerturbationMatrix(rigidbody.gameObject.transform.matrix, 1, -1),
-                  getPerturbationMatrix(rigidbody.gameObject.transform.matrix, -1, 1),
-                  getPerturbationMatrix(rigidbody.gameObject.transform.matrix, -1, -1),
-                ];
+          //       const matrices = [
+          //         // getPerturbationMatrix(rigidbody.gameObject.transform.matrix, 0, 0),
+          //         getPerturbationMatrix(rigidbody.gameObject.transform.matrix, 1, 1),
+          //         getPerturbationMatrix(rigidbody.gameObject.transform.matrix, 1, -1),
+          //         getPerturbationMatrix(rigidbody.gameObject.transform.matrix, -1, 1),
+          //         getPerturbationMatrix(rigidbody.gameObject.transform.matrix, -1, -1),
+          //       ];
 
-                for (const matrix of matrices) {
-                  const penetrationData = getContact(matrix);
-                  if (!penetrationData) {
-                    continue;
-                  }
+          //       for (const matrix of matrices) {
+          //         const penetrationData = getContact(matrix);
+          //         if (!penetrationData) {
+          //           continue;
+          //         }
 
-                  // window.Debug.Point(penetrationData.point, 0.04);
+          //         // window.Debug.Point(penetrationData.point, 0.04);
   
-                  if (this.dt !== 0) {
-                    _tmpConstraintsToSolve.push({
-                      C: -penetrationData.depth,
-                      bodies: [
-                        {
-                          collider: boxCollider,
-                          body: rigidbody,
-                          normal: penetrationData.normal,
-                          p: penetrationData.point,
-                        }
-                      ]
-                    });
-                  }
-                }
+          //         if (this.dt !== 0) {
+          //           _tmpConstraintsToSolve.push({
+          //             C: -penetrationData.depth,
+          //             bodies: [
+          //               {
+          //                 collider: boxCollider,
+          //                 body: rigidbody,
+          //                 normal: penetrationData.normal,
+          //                 p: penetrationData.point,
+          //               }
+          //             ]
+          //           });
+          //         }
+          //       }
 
-                // this.dt = 0;
-                // return;
+          //       // this.dt = 0;
+          //       // return;
 
-                // const penetrationData = getDeepestPenetration(rigidbody.gameObject.transform.matrix);
-                // if (!penetrationData) {
-                //   continue;
-                // }
+          //       // const penetrationData = getDeepestPenetration(rigidbody.gameObject.transform.matrix);
+          //       // if (!penetrationData) {
+          //       //   continue;
+          //       // }
 
-                // _tmpConstraintsToSolve.push({
-                //   C: -penetrationData.depth,
-                //   bodies: [
-                //     {
-                //       collider: boxCollider,
-                //       body: rigidbody,
-                //       normal: penetrationData.normal,
-                //       p: penetrationData.point,
-                //     }
-                //   ]
-                // });
-
-
+          //       // _tmpConstraintsToSolve.push({
+          //       //   C: -penetrationData.depth,
+          //       //   bodies: [
+          //       //     {
+          //       //       collider: boxCollider,
+          //       //       body: rigidbody,
+          //       //       normal: penetrationData.normal,
+          //       //       p: penetrationData.point,
+          //       //     }
+          //       //   ]
+          //       // });
 
 
 
-                // // const intersectionData = VClip(otherGeometry, boxGeometry);
-                // // if (intersectionData.status !== 2) { // 2 = intersection
-                // //   continue;
-                // // }
 
-                // // // console.log(intersectionData);
 
-                // // if (!intersectionData.penetrationPoint || !intersectionData.penetrationDepth || !intersectionData.penetrationNormal) {
-                // //   continue;
-                // // }
+          //       // // const intersectionData = VClip(otherGeometry, boxGeometry);
+          //       // // if (intersectionData.status !== 2) { // 2 = intersection
+          //       // //   continue;
+          //       // // }
 
-                // // const originalPosition = Vector.copy(rigidbody.gameObject.transform.position);
-                // const point = new Vector();//Vector.copy(intersectionData.penetrationPoint);
-                // let intersection = false;
+          //       // // // console.log(intersectionData);
 
-                // // Vector.addTo(rigidbody.gameObject.transform.position, Vector.multiply(intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001));
+          //       // // if (!intersectionData.penetrationPoint || !intersectionData.penetrationDepth || !intersectionData.penetrationNormal) {
+          //       // //   continue;
+          //       // // }
 
-                // // window.Debug.Point(point, 0.07);
-                // // window.Debug.Vector(point, intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001);
+          //       // // const originalPosition = Vector.copy(rigidbody.gameObject.transform.position);
+          //       // const point = new Vector();//Vector.copy(intersectionData.penetrationPoint);
+          //       // let intersection = false;
 
-                // // _tmpConstraintsToSolve.push({
-                // //   C: -(-intersectionData.penetrationDepth + 0.001),
-                // //   bodies: [
-                // //     {
-                // //       collider: boxCollider,
-                // //       body: rigidbody,
-                // //       normal: intersectionData.penetrationNormal,
-                // //       p: Vector.copy(point),
-                // //     }
-                // //   ]
-                // // });
+          //       // // Vector.addTo(rigidbody.gameObject.transform.position, Vector.multiply(intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001));
 
-                // // this.dt = 0;
-                // // return;
+          //       // // window.Debug.Point(point, 0.07);
+          //       // // window.Debug.Vector(point, intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001);
 
-                // // console.log("---");
+          //       // // _tmpConstraintsToSolve.push({
+          //       // //   C: -(-intersectionData.penetrationDepth + 0.001),
+          //       // //   bodies: [
+          //       // //     {
+          //       // //       collider: boxCollider,
+          //       // //       body: rigidbody,
+          //       // //       normal: intersectionData.penetrationNormal,
+          //       // //       p: Vector.copy(point),
+          //       // //     }
+          //       // //   ]
+          //       // // });
 
-                // const totalTranslation = Vector.zero();
-                // const newBoxGeometry = new MeshGeometry(rigidbody.gameObject.transform.matrix, rigidbody.gameObject.meshRenderer.meshData[0]);
+          //       // // this.dt = 0;
+          //       // // return;
 
-                // for (let depth = 0; depth < 40; depth++) {
-                //   // const newBoxGeometry = new CubeGeometry(rigidbody.gameObject.transform.matrix, Vector.fill(2));
-                //   // const newBoxGeometry = new MeshGeometry(rigidbody.gameObject.transform.matrix, rigidbody.gameObject.meshRenderer.meshData[0]);
+          //       // // console.log("---");
+
+          //       // const totalTranslation = Vector.zero();
+          //       // const newBoxGeometry = new MeshGeometry(rigidbody.gameObject.transform.matrix, rigidbody.gameObject.meshRenderer.meshData[0]);
+
+          //       // for (let depth = 0; depth < 40; depth++) {
+          //       //   // const newBoxGeometry = new CubeGeometry(rigidbody.gameObject.transform.matrix, Vector.fill(2));
+          //       //   // const newBoxGeometry = new MeshGeometry(rigidbody.gameObject.transform.matrix, rigidbody.gameObject.meshRenderer.meshData[0]);
                   
-                //   const intersectionData = VClip(otherGeometry, newBoxGeometry);
-                //   if (intersectionData.status !== 2) { // 2 = intersection
-                //     break;
-                //   }
+          //       //   const intersectionData = VClip(otherGeometry, newBoxGeometry);
+          //       //   if (intersectionData.status !== 2) { // 2 = intersection
+          //       //     break;
+          //       //   }
   
-                //   if (!intersectionData.penetrationPoint || !intersectionData.penetrationDepth || !intersectionData.penetrationNormal) {
-                //     break;
-                //   }
+          //       //   if (!intersectionData.penetrationPoint || !intersectionData.penetrationDepth || !intersectionData.penetrationNormal) {
+          //       //     break;
+          //       //   }
 
-                //   intersection = true;
+          //       //   intersection = true;
 
-                //   // window.Debug.Point(intersectionData.featureA.a.position, 0.05);
-                //   // window.Debug.Point(intersectionData.featureA.b.position, 0.05);
+          //       //   // window.Debug.Point(intersectionData.featureA.a.position, 0.05);
+          //       //   // window.Debug.Point(intersectionData.featureA.b.position, 0.05);
 
-                //   Vector.set(point, Vector.subtract(intersectionData.penetrationPoint, totalTranslation));
-                //   // Vector.set(point, Vector.subtract(intersectionData.penetrationPoint, Vector.subtract(rigidbody.gameObject.transform.position, originalPosition)));
+          //       //   Vector.set(point, Vector.subtract(intersectionData.penetrationPoint, totalTranslation));
+          //       //   // Vector.set(point, Vector.subtract(intersectionData.penetrationPoint, Vector.subtract(rigidbody.gameObject.transform.position, originalPosition)));
                   
-                //   const translate = Vector.multiply(intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001);
-                //   for (const vertex of newBoxGeometry.vertices) {
-                //     Vector.addTo(vertex.position, translate);
-                //   }
+          //       //   const translate = Vector.multiply(intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001);
+          //       //   for (const vertex of newBoxGeometry.vertices) {
+          //       //     Vector.addTo(vertex.position, translate);
+          //       //   }
 
-                //   Vector.addTo(totalTranslation, translate);
-                //   // Vector.addTo(rigidbody.gameObject.transform.position, translate);
+          //       //   Vector.addTo(totalTranslation, translate);
+          //       //   // Vector.addTo(rigidbody.gameObject.transform.position, translate);
                 
-                //   // window.Debug.Point(point, 0.02);
-                //   // window.Debug.Vector(point, intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001);
+          //       //   // window.Debug.Point(point, 0.02);
+          //       //   // window.Debug.Vector(point, intersectionData.penetrationNormal, -intersectionData.penetrationDepth + 0.001);
 
-                //   // _tmpConstraintsToSolve.push({
-                //   //   C: -(-intersectionData.penetrationDepth + 0.001),
-                //   //   bodies: [
-                //   //     {
-                //   //       collider: boxCollider,
-                //   //       body: rigidbody,
-                //   //       normal: intersectionData.penetrationNormal,
-                //   //       p: Vector.copy(point),
-                //   //     }
-                //   //   ]
-                //   // });
+          //       //   // _tmpConstraintsToSolve.push({
+          //       //   //   C: -(-intersectionData.penetrationDepth + 0.001),
+          //       //   //   bodies: [
+          //       //   //     {
+          //       //   //       collider: boxCollider,
+          //       //   //       body: rigidbody,
+          //       //   //       normal: intersectionData.penetrationNormal,
+          //       //   //       p: Vector.copy(point),
+          //       //   //     }
+          //       //   //   ]
+          //       //   // });
 
-                //   if (depth == 39) {
-                //     console.log("max");
-                //   }
-                // }
+          //       //   if (depth == 39) {
+          //       //     console.log("max");
+          //       //   }
+          //       // }
 
-                // if (!intersection) {
-                //   continue;
-                // }
+          //       // if (!intersection) {
+          //       //   continue;
+          //       // }
 
-                // // console.log("+++");
+          //       // // console.log("+++");
 
-                // const diff = Vector.copy(totalTranslation);//Vector.subtract(rigidbody.gameObject.transform.position, originalPosition);
-                // const normal = Vector.normalize(diff);
-                // const depth = Vector.length(diff);
+          //       // const diff = Vector.copy(totalTranslation);//Vector.subtract(rigidbody.gameObject.transform.position, originalPosition);
+          //       // const normal = Vector.normalize(diff);
+          //       // const depth = Vector.length(diff);
 
-                // // rigidbody.gameObject.transform.position = point;
+          //       // // rigidbody.gameObject.transform.position = point;
 
-                // // window.Debug.Point(point, 0.02);
-                // window.Debug.Vector(point, normal, depth);
-                // // console.log(point, normal, depth);
+          //       // // window.Debug.Point(point, 0.02);
+          //       // window.Debug.Vector(point, normal, depth);
+          //       // // console.log(point, normal, depth);
 
-                // // this.dt = 0; 
-                // // return;
+          //       // // this.dt = 0; 
+          //       // // return;
 
-                // _tmpConstraintsToSolve.push({
-                //   C: -depth,
-                //   bodies: [
-                //     {
-                //       collider: boxCollider,
-                //       body: rigidbody,
-                //       normal: normal,
-                //       p: point,
-                //     }
-                //   ]
-                // });
-              }
-            });
-          }
+          //       // _tmpConstraintsToSolve.push({
+          //       //   C: -depth,
+          //       //   bodies: [
+          //       //     {
+          //       //       collider: boxCollider,
+          //       //       body: rigidbody,
+          //       //       normal: normal,
+          //       //       p: point,
+          //       //     }
+          //       //   ]
+          //       // });
+          //     }
+          //   });
+          // }
+
+          // Box - box collision
+          _tmpConstraintsToSolve.push(...this.boxToBoxCollision(gameObject, rigidbody));
 
           // Mesh to Mesh
           let meshColliders = rigidbody.gameObject.findComponents("MeshCollider");
@@ -2294,6 +2274,120 @@ function PhysicsEngine(scene, settings = {}) {
   this.getConstraintImpulse = getConstraintImpulse;
   this.getLambda = getLambda;
   this.getEffectiveMass = getEffectiveMass;
+
+  this.boxToBoxCollision = function(gameObject, rigidbody) {
+    const _tmpConstraintsToSolve = [];
+
+    const boxColliders = rigidbody.gameObject.findComponents("BoxCollider");
+    for (const boxCollider of boxColliders) {
+      if (!boxCollider.vclipGeometry) {
+        throw new Error("Missing vclip geometry in boxcollider");
+      }
+
+      this.scene.root.traverseCondition(otherGameObject => {
+        // Don't collide with self
+        if (otherGameObject === gameObject) {
+          return;
+        }
+
+        const otherRigidbodies = otherGameObject.findComponents("Rigidbody");
+        const otherRigidbody = otherRigidbodies[0];
+
+        // Skip static colliders for now
+        if (!otherRigidbody) {
+          return;
+        }
+
+        /**
+         * @type {BoxCollider[]}
+         */
+        const otherBoxColliders = otherGameObject.findComponents("BoxCollider");
+        for (const otherBoxCollider of otherBoxColliders) {
+          if (!otherBoxCollider.vclipGeometry) {
+            throw new Error("Missing vclip geometry in meshcollider");
+          }
+
+          const otherGeometry = otherBoxCollider.vclipGeometry;
+          otherGeometry.updateMatrix(otherGameObject.transform.matrix);
+
+          const getContact = (matrix) => {
+            const newBoxGeometry = boxCollider.vclipGeometry;
+            newBoxGeometry.updateMatrix(matrix);
+
+            const vclipData = VClip(otherGeometry, newBoxGeometry);
+            if (vclipData.status !== 1) { // 1 = Not intersecting
+              return null;
+            }
+
+            // vclipData.featureA.render();
+            // vclipData.featureB.render();
+
+            const { pointA, pointB, distance, vector } = computeDistance(vclipData.featureA, vclipData.featureB);
+
+            const margin = 0.1;
+            if (distance > margin * 2) {
+              return null;
+            }
+
+            const point = pointB;
+            const normal = Vector.normalize(vector);
+            const depth = -(distance - margin * 2);
+
+            return {
+              point,
+              normal,
+              depth
+            };
+          };
+
+          const perturbationAngle = Math.PI * 0.004 * 0.1;
+
+          const getPerturbationMatrix = (baseMatrix, x, z) => {
+            const matrix = Matrix.copy(baseMatrix);
+            Matrix.applyRotationX(perturbationAngle * x, matrix);
+            Matrix.applyRotationZ(perturbationAngle * z, matrix);
+            return matrix;
+          };
+
+          const matrices = [
+            getPerturbationMatrix(rigidbody.gameObject.transform.matrix, 1, 1),
+            getPerturbationMatrix(rigidbody.gameObject.transform.matrix, 1, -1),
+            getPerturbationMatrix(rigidbody.gameObject.transform.matrix, -1, 1),
+            getPerturbationMatrix(rigidbody.gameObject.transform.matrix, -1, -1),
+          ];
+
+          for (const matrix of matrices) {
+            const penetrationData = getContact(matrix);
+            if (!penetrationData) {
+              continue;
+            }
+
+            if (this.dt !== 0) {
+              _tmpConstraintsToSolve.push({
+                C: -penetrationData.depth,
+                bodies: [
+                  {
+                    collider: boxCollider,
+                    body: rigidbody,
+                    normal: penetrationData.normal,
+                    p: penetrationData.point,
+                  },
+                  {
+                    collider: otherBoxCollider,
+                    body: otherRigidbody,
+                    normal: Vector.negate(penetrationData.normal),
+                    p: Vector.add(penetrationData.point, Vector.multiply(penetrationData.normal, penetrationData.depth)),
+                  },
+                ]
+              });
+            }
+          }
+        }
+      });
+    }
+
+    return _tmpConstraintsToSolve;
+  };
 }
 
 class Collider {
@@ -2306,6 +2400,8 @@ class Collider {
     this.disableRotationImpulse = false;
   }
 }
+
+let hasWarned = false;
 
 class MeshCollider extends Collider {
   #_octree = null;
@@ -2346,7 +2442,10 @@ class MeshCollider extends Collider {
 
       var nrTriangles = 0;
 
-      console.error("Mesh to mesh collision is off!");
+      if (!hasWarned) {
+        console.error("Mesh to mesh collision is off!");
+        hasWarned = true;
+      }
       // if (!this.gameObject.meshRenderer.isConvex()) {
       //   console.warn("Mesh is not convex!");
       //   console.log(this.gameObject.name, this.gameObject.meshRenderer.meshData.length, this.gameObject);
@@ -2399,10 +2498,10 @@ class MeshCollider extends Collider {
 
       aabb.addPadding(0.1);
 
-      const trianglesPerSection = 1000;
+      const trianglesPerSection = 1000 / 10;
       const d = nrTriangles <= 0 ? 0 : Math.max(0, Math.floor(Math.log(nrTriangles / trianglesPerSection) / Math.log(8) + 1));
+
       this.#_octree = new Octree(aabb, d);
-      // this.#_octree = new Octree(aabb, 4 - 3);
       this.#_octree.addTriangles(trianglesArray, gameObjectLookup, gameObjects);
       this.aabb = aabb;
 

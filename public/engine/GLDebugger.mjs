@@ -4,6 +4,7 @@ import Matrix from "./matrix.mjs";
 import Vector from "./vector.mjs";
 import { NewMaterial } from "./material.mjs";
 import Quaternion from "./quaternion.mjs";
+import { AABB } from "./physics.mjs";
 
 /**
  * 
@@ -27,6 +28,7 @@ function GLDebugger(scene, maxShapes = 50) {
   const tempTransform = new Transform();
 
   const cube = scene.add(renderer.CreateShape("cube"));
+  cube.disableFrustumCulling = true;
   cube.meshRenderer = cube.meshRenderer.getInstanceMeshRenderer();
 
   this.index = 0;
@@ -83,6 +85,21 @@ function GLDebugger(scene, maxShapes = 50) {
     cubeIR.needsBufferUpdate = true;
 
     return currentCube;
+  };
+
+  this.DrawOctree = function(octree) {
+    if (octree.items.length > 0) {
+      // Octree uses SimpleAABB which does not have any methods
+      const aabb = new AABB(
+        octree.aabb.bl,
+        octree.aabb.tr
+      );
+      this.Bounds(aabb);
+    }
+
+    for (let i = 0; i < octree.children.length; i++) {
+      this.DrawOctree(octree.children[i]);
+    }
   };
 
   this.Bounds = function(aabb, matrix) {

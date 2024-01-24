@@ -4,6 +4,7 @@ import { Scene } from "../../engine/scene.mjs";
 import OrbitCamera from "../../engine/orbitCamera.mjs";
 
 import * as matcapSource from "./matcap.glsl.mjs";
+import Vector from "../../engine/vector.mjs";
 
 const renderer = new Renderer({
   renderpipeline: RENDERPIPELINE.FORWARD,
@@ -14,7 +15,7 @@ renderer.setClearColor(0.2, 0.2, 0.2, 1);
 const scene = window.scene = renderer.add(new Scene());
 renderer.settings.enablePostProcessing = false;
 
-const orbitCamera = new OrbitCamera(renderer, { fov: 20, far: 5000 });
+const orbitCamera = new OrbitCamera(renderer, { fov: 10, far: 5000 });
 const camera = orbitCamera.camera;
 
 const normalTexture = await renderer.loadTextureAsync("./plasterNormal.jpg");
@@ -44,8 +45,18 @@ for (let i = 0; i < nrTextures; i++) {
 
 const matcap = new renderer.CustomProgram(matcapSource);
 
-const suzanne = scene.add(await renderer.loadGLTF("../../assets/models/primitives/suzanneSmooth.glb"));
-const material = suzanne.children[0].meshRenderer.materials[0];
+// const suzanne = scene.add(await renderer.loadGLTF("../../assets/models/primitives/suzanneSmooth.glb"));
+// const material = suzanne.children[0].meshRenderer.materials[0];
+// material.programContainer = matcap;
+// material.setUniform("matcapTexture", matcapTexture);
+// material.setUniform("normalTexture", normalTexture);
+
+const model = scene.add(renderer.BatchGameObject(await renderer.loadGLTF("../../assets/models/stanford_dragon.glb")));
+model.transform.scale = Vector.fill(10);
+
+console.log(model.getChildStructure());
+
+const material = model.meshRenderer.materials[0];
 material.programContainer = matcap;
 material.setUniform("matcapTexture", matcapTexture);
 material.setUniform("normalTexture", normalTexture);

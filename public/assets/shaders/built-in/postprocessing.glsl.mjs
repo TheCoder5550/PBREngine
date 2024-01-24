@@ -605,6 +605,7 @@ const output = {
       fragment: `
         precision highp float;
 
+        #define ENABLE_FXAA
         // #define DEBUG_COLOR
         
         out vec4 fragColor;
@@ -628,7 +629,10 @@ const output = {
         uniform float vignetteAmount;
         
         #ifdef ENABLE_MOTIONBLUR
+        uniform float near;
+        uniform float far;
         uniform float motionBlurStrength;
+        uniform float currentFPS;
         #endif
 
         uniform sampler2D rainTexture;
@@ -897,6 +901,10 @@ const output = {
 
           return uv;
         }
+
+        float getLinearDepth(float depth) {
+          return (2.0 * near * far) / (far + near - depth * (far - near));
+        }
         
         void main() {
           vec2 uv = gl_FragCoord.xy / SIZE;
@@ -905,6 +913,9 @@ const output = {
           fragColor = texture2D(mainTexture, uv);
           return;
           #endif
+
+          // fragColor = texture2D(depthTexture, uv);
+          // return;
         
           // float stepSize = 0.02;
           // float size = 2.; //?
@@ -986,20 +997,46 @@ const output = {
           // }
 
           #ifdef ENABLE_MOTIONBLUR
-            const int nSamples = 32;
-            vec2 blurVec = motionBlurStrength * (texture2D(motionBlurTexture, uv).xy * 2. - 1.);
+            const int MAX_SAMPLES = 32;
+
+            vec2 texelSize = 1.0 / vec2(textureSize(motionBlurTexture, 0));
+            vec2 velocity = texture2D(motionBlurTexture, uv).xy * 2. - 1.;
+            velocity *= motionBlurStrength;
+            velocity *= currentFPS / 60.;
+
+            float speed = length(velocity / texelSize);
+            int nSamples = clamp(int(speed), 1, MAX_SAMPLES);
+
+            #ifdef ENABLE_FXAA
+            vec4 result = applyFXAA(mainTexture, uv * SIZE, SIZE); // only apply fxaa for first motion blur sample
+            #else
             vec4 result = texture2D(mainTexture, uv);
+            #endif
+            
+            float targetDepth = getLinearDepth(texture2D(depthTexture, uv).r);
+            float weights = 1.;
 
             for (int i = 1; i < nSamples; ++i) {
-              vec2 offset = blurVec * (float(i) / float(nSamples - 1) - 0.5);
-              result += texture2D(mainTexture, uv + offset);
-              // result += applyFXAA(mainTexture, (uv + offset) * SIZE, SIZE);
+              vec2 offset = velocity * (float(i) / float(nSamples - 1) - 0.5);
+
+              float currentDepth = texture2D(depthTexture, uv + offset).r;
+              currentDepth = getLinearDepth(currentDepth);
+
+              // Samples with different depth should not be used in blur
+              float weight = 1. - clamp(abs(targetDepth - currentDepth), 0., 1.);
+
+              result += texture2D(mainTexture, uv + offset) * weight;
+              weights += weight;
             }
-            result /= float(nSamples);
+            result /= weights;
             col += result;
           #else
+            #ifdef ENABLE_FXAA
+            vec4 samp = applyFXAA(mainTexture, gl_FragCoord.xy, SIZE);
+            #else
             vec4 samp = texture2D(mainTexture, uv);
-            // vec4 samp = applyFXAA(mainTexture, gl_FragCoord.xy, SIZE);
+            #endif
+            
             col += samp;
           #endif
 

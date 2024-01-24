@@ -3,6 +3,7 @@ import { Transform } from "./transform.mjs";
 import Renderer from "./renderer.mjs";
 import Matrix from "./matrix.mjs";
 import { AABB } from "./physics.mjs";
+import { Scene } from "./scene.mjs";
 // import { AABB, GetMeshAABB } from "./physics.mjs";
 // import Vector from "./vector.mjs";
 
@@ -338,6 +339,12 @@ function GameObject(name = "Unnamed", options = {}) {
       this.parent.removeChild(this);
     }
 
+    if (parent instanceof Scene) {
+      const scene = parent;
+      scene.add(this);
+      return;
+    }
+
     this.parent = parent;
     parent.children.push(this);
   };
@@ -495,7 +502,13 @@ function GameObject(name = "Unnamed", options = {}) {
   };
 
   this.getChildStructure = function(level = 0, lastChild = []) {
-    var output = this.name;
+    var output = "";
+    
+    if (level === 0) {
+      output += `Parent: ${this.parent?.name}\n⋮\n`;
+    }
+
+    output += this.name;
 
     if (!this.visible) {
       output += " (Not visible)";
@@ -503,10 +516,6 @@ function GameObject(name = "Unnamed", options = {}) {
 
     if (!this.active) {
       output += " (Not active)";
-    }
-
-    if (this.children.length > 0 || this.getComponents().length > 0) {
-      output += "\n";
     }
 
     var list = [];
@@ -522,6 +531,30 @@ function GameObject(name = "Unnamed", options = {}) {
 
       let entry = spacing + "(COMPONENT) " + component.componentType ?? `No type: ${component.constructor.name}`;
       list.push(entry);
+    }
+
+    if (this.meshRenderer) {
+      let spacing = "";
+      for (let j = 0; j < lastChild.length; j++) {
+        spacing += lastChild[j] ? "   " : "|  ";
+      }
+      spacing += "└──";
+
+      list.push(spacing + `(COMPONENT) ${this.meshRenderer.constructor.name}`);
+    }
+
+    if (this.animationController) {
+      let spacing = "";
+      for (let j = 0; j < lastChild.length; j++) {
+        spacing += lastChild[j] ? "   " : "|  ";
+      }
+      spacing += "└──";
+
+      list.push(spacing + `(COMPONENT) ${this.animationController.constructor.name}`);
+    }
+
+    if (this.children.length > 0 || list.length > 0) {
+      output += "\n";
     }
 
     for (let i = 0; i < this.children.length; i++) {

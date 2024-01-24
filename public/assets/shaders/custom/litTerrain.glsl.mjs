@@ -126,6 +126,8 @@ uniform sampler2D albedoTextures[nrTextures];
 uniform sampler2D normalTextures[nrTextures];
 uniform sampler2D metallicRoughnessTextures[nrTextures];
 
+uniform vec4 albedos[nrTextures];
+
 uniform sampler2D heightmap;
 
 void main() {
@@ -134,30 +136,37 @@ void main() {
   vec3 up = vec3(0, 1, 0);
   vec4 currentAlbedo = vec4(1);
 
+  vec2 currentUVs = vPosition.xz * 0.2;//vUV;
+
   // Normals
-  vec3 grassNormal = sampleTexture(normalTextures[0], vUV).rgb * 2. - 1.;
-  vec3 stoneNormal = sampleTexture(normalTextures[1], vUV).rgb * 2. - 1.;
-  vec3 snowNormal = sampleTexture(normalTextures[2], vUV).rgb * 2. - 1.;
+  vec3 grassNormal = sampleTexture(normalTextures[0], currentUVs).rgb * 2. - 1.;
+  vec3 stoneNormal = sampleTexture(normalTextures[1], currentUVs).rgb * 2. - 1.;
+  vec3 snowNormal = sampleTexture(normalTextures[2], currentUVs).rgb * 2. - 1.;
+
+  grassNormal = setNormalStrength(grassNormal, 0.4);
 
   vec3 currentNormal = normalize(mix(stoneNormal, grassNormal, smoothstep(0.4, 0.75, pow(dot(up, vNormal), 100.))));
-  currentNormal = normalize(mix(currentNormal, snowNormal, smoothstep(80., 100., vPosition.y + LayeredNoise(vUV / 20.) * 30.)));
+  currentNormal = normalize(mix(currentNormal, snowNormal, smoothstep(80., 100., vPosition.y + LayeredNoise(currentUVs / 20.) * 30.)));
+  currentNormal = grassNormal;
 
   // Colors
-  vec3 grassAlbedo = sampleTexture(albedoTextures[0], vUV).rgb;
-  vec3 stoneAlbedo = sampleTexture(albedoTextures[1], vUV).rgb;
-  vec3 snowAlbedo = sampleTexture(albedoTextures[2], vUV).rgb;
+  vec3 grassAlbedo = sampleTexture(albedoTextures[0], currentUVs).rgb * albedos[0].rgb;
+  vec3 stoneAlbedo = sampleTexture(albedoTextures[1], currentUVs).rgb * albedos[1].rgb;
+  vec3 snowAlbedo = sampleTexture(albedoTextures[2], currentUVs).rgb * albedos[2].rgb;
 
   // Large scale detail (grass color variation)
-  grassAlbedo *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(vUV / 40.), 0., 1.));
+  grassAlbedo *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(currentUVs / 40.), 0., 1.));
 
-  // Steep terrain is rocky
-  currentAlbedo.rgb = mix(stoneAlbedo, grassAlbedo, smoothstep(0.4, 0.75, pow(dot(up, vNormal), 100.)));
+  currentAlbedo.rgb = grassAlbedo;
 
-  // Top of mountains are snowy
-  currentAlbedo.rgb = mix(currentAlbedo.rgb, snowAlbedo, smoothstep(80., 100., vPosition.y + LayeredNoise(vUV / 20.) * 30.));
+  // // Steep terrain is rocky
+  // currentAlbedo.rgb = mix(stoneAlbedo, grassAlbedo, smoothstep(0.4, 0.75, pow(dot(up, vNormal), 100.)));
 
-  vec3 steepness = normalize(mix(stoneNormal, grassAlbedo, smoothstep(0.8, 1., dot(up, vNormal))));
-  vec3 newNormal = normalize(mix(steepness, snowNormal, smoothstep(20., 35., vPosition.y)));
+  // // Top of mountains are snowy
+  // currentAlbedo.rgb = mix(currentAlbedo.rgb, snowAlbedo, smoothstep(80., 100., vPosition.y + LayeredNoise(vUV / 20.) * 30.));
+
+  // vec3 steepness = normalize(mix(stoneNormal, grassAlbedo, smoothstep(0.8, 1., dot(up, vNormal))));
+  // vec3 newNormal = normalize(mix(steepness, snowNormal, smoothstep(20., 35., vPosition.y)));
 
   // fragColor = vec4(grassAlbedo, 1.0);
   // return;
@@ -180,12 +189,12 @@ void main() {
 
   // vec3 up = vec3(0, 1, 0);
 
-  // // grassAlbedo = mix(grassAlbedo * vec3(1, 1, 0.3), grassAlbedo, noise(vUV / 50.));
-  // // grassAlbedo = mix(vec3(1), vec3(0), noise(vUV / 5.));
-  // grassAlbedo *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(vUV / 40.), 0., 1.));
+  // // grassAlbedo = mix(grassAlbedo * vec3(1, 1, 0.3), grassAlbedo, noise(currentUVs / 50.));
+  // // grassAlbedo = mix(vec3(1), vec3(0), noise(currentUVs / 5.));
+  // grassAlbedo *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(currentUVs / 40.), 0., 1.));
 
   // vec3 steepness = mix(stoneAlbedo, grassAlbedo, smoothstep(0.7, 0.75, dot(up, vNormal)));
-  // currentAlbedo.xyz = mix(steepness, snowAlbedo, smoothstep(80., 100., vPosition.y + LayeredNoise(vUV / 20.) * 30.));
+  // currentAlbedo.xyz = mix(steepness, snowAlbedo, smoothstep(80., 100., vPosition.y + LayeredNoise(currentUVs / 20.) * 30.));
 
   // steepness = normalize(mix(stoneNormal, grassAlbedo, smoothstep(0.8, 1., dot(up, vNormal))));
   // vec3 newNormal = normalize(mix(steepness, snowNormal, smoothstep(20., 35., vPosition.y)));
@@ -198,23 +207,23 @@ void main() {
   // // return;
 
   // // if (doNoTiling) {
-  // //   currentAlbedo.rgb = mix(currentAlbedo.rgb * vec3(1, 1, 0.3), currentAlbedo.rgb, noise(vUV / 50.));
+  // //   currentAlbedo.rgb = mix(currentAlbedo.rgb * vec3(1, 1, 0.3), currentAlbedo.rgb, noise(currentUVs / 50.));
   // // }
 
   // vec3 _emission = vec3(0);//emissiveFactor;
   // // if (useEmissiveTexture) {
-  // //   _emission *= sampleTexture(emissiveTexture, vUV).rgb;
+  // //   _emission *= sampleTexture(emissiveTexture, currentUVs).rgb;
   // // }
 
   // float _ao = 1.;//ao;
   // // if (useOcclusionTexture) {
-  // //   _ao *= sampleTexture(occlusionTexture, vUV).r;
+  // //   _ao *= sampleTexture(occlusionTexture, currentUVs).r;
   // // }
 
   // float _metallic = 0.;//metallic;
   // float _roughness = 0.95;//roughness;
   // // if (useMetallicRoughnessTexture) {
-  // //   vec3 ts = sampleTexture(metallicRoughnessTexture, vUV).rgb;
+  // //   vec3 ts = sampleTexture(metallicRoughnessTexture, currentUVs).rgb;
   // //   _metallic *= ts.b;
   // //   _roughness *= ts.g;
   // // }

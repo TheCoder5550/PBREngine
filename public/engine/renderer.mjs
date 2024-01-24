@@ -43,8 +43,6 @@ import * as blurSource from "../assets/shaders/built-in/blur.mjs";
 // Misc. shaders
 import * as skyboxSource from "../assets/shaders/built-in/skybox.glsl.mjs";
 import * as shadowSource from "../assets/shaders/built-in/shadow.glsl.mjs";
-import * as postprocessingSource from "../assets/shaders/built-in/postprocessing.glsl.mjs";
-import * as bloomSource from "../assets/shaders/built-in/bloom.glsl.mjs";
 import * as equirectangularToCubemapSource from "../assets/shaders/built-in/equirectangularToCubemap.glsl.mjs";
 import * as diffuseCubemapSource from "../assets/shaders/built-in/cubemapConvolution.glsl.mjs";
 import * as specularCubemapSource from "../assets/shaders/built-in/prefilterCubemap.glsl.mjs";
@@ -76,6 +74,7 @@ function Renderer(settings = {}) {
   var frameNumber = 0;
   var time = 0;
   var lastUpdate;
+  this.frameTime = 1 / 60;
   this.startTime = new Date();
 
   this.eventHandler = new EventHandler();
@@ -97,10 +96,13 @@ function Renderer(settings = {}) {
   this.currentScene = 0;
   this.scenes = [];
 
-  this.godrays = null;
+  /** @type {PostProcessing} */
   this.postprocessing = null;
-  this.bloom = null;
+
+  /** @type {Skybox} */
   this.skybox = null;
+
+  /** @type {ShadowCascades} */
   this.shadowCascades = null;
 
   // var materialTextureUnitOffset = 3;
@@ -123,8 +125,6 @@ function Renderer(settings = {}) {
     get shadowInstanced() { return _getProgramContainer(shadowSource, "shadowInstanced"); },
     get shadowSkinned() { return _getProgramContainer(shadowSource, "shadowSkinned"); },
 
-    get postprocessing() { return _getProgramContainer(postprocessingSource, "postprocessing"); },
-    get bloom() { return _getProgramContainer(bloomSource, "bloom"); },
     get equirectangularToCubemap() { return _getProgramContainer(equirectangularToCubemapSource, "equirectangularToCubemap"); },
     get diffuseCubemap() { return _getProgramContainer(diffuseCubemapSource, "diffuseCubemap"); },
     get specularCubemap() { return _getProgramContainer(specularCubemapSource, "specularCubemap"); },
@@ -147,7 +147,6 @@ function Renderer(settings = {}) {
 
   var _settings = {
     enableShadows: true,
-    enableBloom: true,
     enablePostProcessing: true,
     loadTextures: true
   };
@@ -158,14 +157,6 @@ function Renderer(settings = {}) {
       _settings.enableShadows = val;
       if (!val) {
         renderer.shadowCascades.clearShadowmaps();
-      }
-    },
-
-    get enableBloom() { return _settings.enableBloom; },
-    set enableBloom(val) {
-      _settings.enableBloom = val;
-      if (!val) {
-        renderer.bloom.clearBloom();
       }
     },
     
@@ -182,8 +173,8 @@ function Renderer(settings = {}) {
 
   // Stats
   let drawCalls = 0;
-  let glFunctions;
-  let functionCallStats = {};
+  // let glFunctions;
+  // let functionCallStats = {};
 
   /*
 
@@ -421,19 +412,8 @@ function Renderer(settings = {}) {
     );
     logGLError("Shadow cascades");
 
-    this.bloom = new Bloom(this.programContainers.bloom);
-    logGLError("Bloom");
-
     this.postprocessing = new PostProcessing();
     logGLError("Post processing");
-
-    if (settings.enableGodrays) {
-      this.createProgramFromFile(this.path + `assets/shaders/built-in/webgl${this.version}/godrays`).then(program => {
-        var godrayProgram = new ProgramContainer(program);
-        this.godrays = new Godrays(godrayProgram);
-        console.info(this.godrays);
-      });
-    }
 
     this.gizmos = new Gizmos();
 
@@ -451,7 +431,7 @@ function Renderer(settings = {}) {
   };
 
   function loop() {
-    var ft = getFrameTime();
+    const ft = renderer.frameTime = getFrameTime();
     time += ft;
 
     // Stats
@@ -523,7 +503,6 @@ function Renderer(settings = {}) {
   function refreshSizes() {
     setCanvasSize();
     if (renderer.postprocessing) renderer.postprocessing.resizeFramebuffers();
-    if (renderer.bloom) renderer.bloom.resizeFramebuffers();
 
     renderer.eventHandler.fireEvent("resize");
   }
@@ -553,19 +532,6 @@ function Renderer(settings = {}) {
     if (!scene) {
       throw new Error("No active scene");
     }
-
-    this.postprocessing.exposure.value = scene.postprocessing.exposure;
-    this.postprocessing.gamma.value = scene.postprocessing.gamma;
-    this.postprocessing.tonemapping.value = scene.postprocessing.tonemapping;
-    this.postprocessing.motionBlurStrength.value = scene.postprocessing.motionBlurStrength;
-    this.postprocessing.saturation.value = scene.postprocessing.saturation;
-    this.postprocessing.contrast.value = scene.postprocessing.contrast;
-    this.postprocessing.vignette.amount.value = scene.postprocessing.vignette.amount;
-    this.postprocessing.vignette.falloff.value = scene.postprocessing.vignette.falloff;
-    this.postprocessing.whiteBalance.temperature.value = scene.postprocessing.whiteBalance.temperature;
-    this.postprocessing.whiteBalance.tint.value = scene.postprocessing.whiteBalance.tint;
-
-    this.bloom.setProperties(scene.bloom);
 
     this.renderpipeline.render(camera, secondaryCameras, scene, settings);
   };
@@ -600,6 +566,10 @@ function Renderer(settings = {}) {
     return this.scenes[this.currentScene];
   };
 
+  /**
+   * Activate scene
+   * @param {Scene} scene New active scene
+   */
   this.setActiveScene = function(scene) {
     this.shadowCascades.clearShadowmaps();
 
@@ -1367,22 +1337,17 @@ function Renderer(settings = {}) {
   };
 
   this.saveCubemapAsImages = async function(cubemap, res = 512) {
-    // var mat = new Material(new ProgramContainer(await this.createProgramFromFile("../assets/shaders/built-in/webgl2/cubemapVis")), [
-    //   {type: "1i", name: "environmentMap", arguments: [0]}
-    // ], [{type: gl.TEXTURE_CUBE_MAP, texture: cubemap}]);
-    // mat.doubleSided = true;
-
-    var pc = new ProgramContainer(await this.createProgramFromFile("../assets/shaders/built-in/webgl2/cubemapVis"));
-    var mat = new NewMaterial(pc, { "environmentMap": cubemap });
+    const pc = new ProgramContainer(await this.createProgramFromFile("../assets/shaders/built-in/webgl2/cubemapVis"));
+    const mat = new NewMaterial(pc, { "environmentMap": cubemap });
     mat.doubleSided = true;
   
-    var cube = new GameObject("Cubemap", {
+    const cube = new GameObject("Cubemap", {
       meshRenderer: new MeshRenderer([mat], [new MeshData(getCubeData())]),
       castShadows: false
     });
   
-    var perspectiveMatrix = Matrix.orthographic({size: 1});
-    var views = [
+    const perspectiveMatrix = Matrix.orthographic({size: 1});
+    const views = [
       Matrix.inverse(Matrix.transform([["ry", -Math.PI / 2], ["rz", Math.PI]])),
       Matrix.inverse(Matrix.transform([["ry",  Math.PI / 2], ["rz", Math.PI]])),
 
@@ -1394,8 +1359,8 @@ function Renderer(settings = {}) {
     ];
   
     // Viewport
-    var oldWidth = this.canvas.width;
-    var oldHeight = this.canvas.height;
+    const oldWidth = this.canvas.width;
+    const oldHeight = this.canvas.height;
 
     this.canvas.width = res;
     this.canvas.height = res;
@@ -1404,7 +1369,7 @@ function Renderer(settings = {}) {
     // gl.disable(gl.CULL_FACE);
     gl.viewport(0, 0, res, res);
   
-    for (var i = 0; i < 6; i++) {
+    for (let i = 0; i < 6; i++) {
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
       this.currentBoundLitPrograms = new WeakMap();
@@ -1454,27 +1419,24 @@ function Renderer(settings = {}) {
   };
 
   this.createProgramFromFile = async function(shaderPath, fragmentPathOpt) {
-    var vertexPath = shaderPath + "/vertex.glsl";
-    var fragmentPath = shaderPath + "/fragment.glsl";
+    let vertexPath = shaderPath + "/vertex.glsl";
+    let fragmentPath = shaderPath + "/fragment.glsl";
     if (fragmentPathOpt != undefined) {
       vertexPath = shaderPath;
       fragmentPath = fragmentPathOpt;
     }
   
-    var vertexSource = await this.loadTextFile(vertexPath);
-    var fragmentSource = await this.loadTextFile(fragmentPath);
+    const vertexSource = await this.loadTextFile(vertexPath);
+    const fragmentSource = await this.loadTextFile(fragmentPath);
 
     return this.createProgram(vertexSource, fragmentSource);
   };
 
   this.createProgram = function(vertexSource, fragmentSource) {
-    vertexSource = vertexSource.trim();
-    fragmentSource = fragmentSource.trim();
-
-    var vertexShader = compileShader(vertexSource, gl.VERTEX_SHADER);
-    var fragmentShader = compileShader(fragmentSource, gl.FRAGMENT_SHADER);
+    const vertexShader = compileShader(vertexSource, gl.VERTEX_SHADER);
+    const fragmentShader = compileShader(fragmentSource, gl.FRAGMENT_SHADER);
   
-    var program = gl.createProgram();
+    const program = gl.createProgram();
     gl.attachShader(program, vertexShader);
     gl.attachShader(program, fragmentShader);
     gl.linkProgram(program);
@@ -1486,26 +1448,33 @@ function Renderer(settings = {}) {
 
   function catchLinkErrors(program) {
     if (renderer.catchProgramErrors && !gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      var errorMessage = "\nCould not compile WebGL program\n\nLink failed: " + gl.getProgramInfoLog(program);
+      let errorMessage = "\nCould not compile WebGL program\n\nLink failed: " + gl.getProgramInfoLog(program);
 
-      var shaders = gl.getAttachedShaders(program);
-      for (var shader of shaders) {
-        var error = gl.getShaderInfoLog(shader);
-        var type = glEnumToString(gl.getShaderParameter(shader, gl.SHADER_TYPE));
+      const shaders = gl.getAttachedShaders(program);
+      for (const shader of shaders) {
+        const error = gl.getShaderInfoLog(shader);
+        const type = glEnumToString(gl.getShaderParameter(shader, gl.SHADER_TYPE));
 
         if (error) {
           errorMessage += "\n" + type + ":\n" + error;
         }
 
-        console.trace(type, gl.getShaderSource(shader));
+        const formattedSource = `\n${addLineNumbers(gl.getShaderSource(shader))}`;
+        console.log(type, formattedSource);
       }
 
       throw new Error(errorMessage);
     }
   }
+
+  function addLineNumbers(source) {
+    return source.split("\n").map((line, index) => `${index + 1}\t${line}`).join("\n");
+  }
   
   function compileShader(shaderSource, shaderType) {
-    var shader = gl.createShader(shaderType);
+    shaderSource = shaderSource.trim();
+
+    const shader = gl.createShader(shaderType);
     gl.shaderSource(shader, shaderSource);
     gl.compileShader(shader);
   
@@ -1513,20 +1482,22 @@ function Renderer(settings = {}) {
   }
 
   this.updateVertexShader = function(programContainer, newSource) {
-    var shaders = gl.getAttachedShaders(programContainer.program);
-    var vertexShader = shaders[0];
+    const shaders = gl.getAttachedShaders(programContainer.program);
+    const vertexShader = shaders[0];
 
     this.updateShader(vertexShader, programContainer, newSource);
   };
 
   this.updateFragmentShader = function(programContainer, newSource) {
-    var shaders = gl.getAttachedShaders(programContainer.program);
-    var fragmentShader = shaders[1];
+    const shaders = gl.getAttachedShaders(programContainer.program);
+    const fragmentShader = shaders[1];
 
     this.updateShader(fragmentShader, programContainer, newSource);
   };
 
   this.updateShader = function(shader, programContainer, newSource) {
+    newSource = newSource.trim();
+
     gl.shaderSource(shader, newSource);
     gl.compileShader(shader);
 
@@ -1538,13 +1509,13 @@ function Renderer(settings = {}) {
 
   class CustomProgram {
     constructor(shader) {
-      var s = shader["webgl" + renderer.version] ?? shader;
+      const s = shader["webgl" + renderer.version] ?? shader;
       if (!s.vertex || !s.fragment) {
         console.error("Custom program does not have a vertex/fragment shader for version " + renderer.version);
         return;
       }
 
-      var program = renderer.createProgram(s.vertex, s.fragment);
+      const program = renderer.createProgram(s.vertex, s.fragment);
       return new renderer.ProgramContainer(program);
     }
   }
@@ -1573,7 +1544,7 @@ function Renderer(settings = {}) {
   };
 
   this.getExtension = function(name) {
-    var e = this.gl.getExtension(name);
+    const e = this.gl.getExtension(name);
     if (!e) {
       console.error("Could not get extension: " + name);
       return false;
@@ -1581,6 +1552,7 @@ function Renderer(settings = {}) {
     return e;
   };
 
+  this.getFloatTextureType = getFloatTextureType;
   function getFloatTextureType() {
     if (renderer.floatTextures) {
       return gl.FLOAT;
@@ -1594,8 +1566,8 @@ function Renderer(settings = {}) {
   }
 
   this.getSRGBFormats = function() {
-    var sRGBInternalFormat = renderer.version == 1 ? (renderer.sRGBExt && (renderer.floatTextures || renderer.textureHalfFloatExt) ? renderer.sRGBExt.SRGB_ALPHA_EXT : gl.RGBA) : gl.SRGB8_ALPHA8;
-    var sRGBFormat = renderer.version == 1 ? (renderer.sRGBExt && (renderer.floatTextures || renderer.textureHalfFloatExt) ? renderer.sRGBExt.SRGB_ALPHA_EXT : gl.RGBA) : gl.RGBA;
+    const sRGBInternalFormat = renderer.version == 1 ? (renderer.sRGBExt && (renderer.floatTextures || renderer.textureHalfFloatExt) ? renderer.sRGBExt.SRGB_ALPHA_EXT : gl.RGBA) : gl.SRGB8_ALPHA8;
+    const sRGBFormat = renderer.version == 1 ? (renderer.sRGBExt && (renderer.floatTextures || renderer.textureHalfFloatExt) ? renderer.sRGBExt.SRGB_ALPHA_EXT : gl.RGBA) : gl.RGBA;
 
     return {
       internalFormat: sRGBInternalFormat,
@@ -1603,11 +1575,12 @@ function Renderer(settings = {}) {
     };
   };
 
+  this.createFramebuffer = createFramebuffer;
   function createFramebuffer(currentWidth, currentHeight, settings = {}) {
-    var framebuffer = gl.createFramebuffer();
+    const framebuffer = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
 
-    var colorBuffer = gl.createTexture();
+    const colorBuffer = gl.createTexture();
     // gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, colorBuffer);
     gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, currentWidth, currentHeight, 0, gl.RGBA, getFloatTextureType(), null);
@@ -1618,7 +1591,7 @@ function Renderer(settings = {}) {
 
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colorBuffer, 0);
 
-    var depthBuffer = gl.createRenderbuffer();
+    const depthBuffer = gl.createRenderbuffer();
     gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
     gl.renderbufferStorage(gl.RENDERBUFFER, settings.depthComponent ?? gl.DEPTH_COMPONENT16, currentWidth, currentHeight);
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
@@ -1632,8 +1605,9 @@ function Renderer(settings = {}) {
     };
   }
 
+  this.createBuffer = createBuffer;
   function createBuffer(data, target = gl.ARRAY_BUFFER, usage = gl.STATIC_DRAW) {
-    var buffer = gl.createBuffer();
+    const buffer = gl.createBuffer();
     gl.bindBuffer(target, buffer);
     gl.bufferData(target, data, usage);
     return buffer;
@@ -1660,7 +1634,7 @@ function Renderer(settings = {}) {
       return "1f";
     }
 
-    var m = type.match(/FLOAT_VEC([0-9])/);
+    let m = type.match(/FLOAT_VEC([0-9])/);
     if (m) {
       return m[1] + "f";
     }
@@ -1801,7 +1775,7 @@ function Renderer(settings = {}) {
 
   this.logGLError = logGLError;
   function logGLError(label = "", logNoError = false) {
-    var error = gl.getError();
+    const error = gl.getError();
     if (logNoError) {
       console[error ? "error" : "log"]("(" + label + ") " + errorEnums[error]);
     }
@@ -1950,6 +1924,7 @@ function Renderer(settings = {}) {
         trailDataIndex = 0;
       }
 
+      // Note how many of the indices are used
       indicesUsed++;
       indicesUsed = Math.min(indicesUsed, this.maxVertices);
 
@@ -2460,7 +2435,7 @@ function Renderer(settings = {}) {
   }
 
   function ScreenQuad() {
-    var vertices = new Float32Array([
+    const vertices = new Float32Array([
       -1.0,  1.0, // top left
       -1.0, -1.0, // bottom left
       1.0,  1.0, // top right
@@ -2468,10 +2443,24 @@ function Renderer(settings = {}) {
     ]);
     this.vertexBuffer = createBuffer(vertices);
 
-    this.bindBuffers = function(positionLocation) {
+    const uvs = new Float32Array([
+      0, 1,
+      0, 0,
+      1, 1,
+      1, 0,
+    ]);
+    this.uvBuffer = createBuffer(uvs);
+
+    this.bindBuffers = function(positionLocation, uvLocation) {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
       gl.enableVertexAttribArray(positionLocation);
       gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 8, 0);
+
+      if (typeof uvLocation !== "undefined") {
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.uvBuffer);
+        gl.enableVertexAttribArray(uvLocation);
+        gl.vertexAttribPointer(uvLocation, 2, gl.FLOAT, false, 8, 0);
+      }
     };
 
     this.render = function() {
@@ -2480,265 +2469,351 @@ function Renderer(settings = {}) {
   }
 
   function PostProcessing() {
-    var postprocessing = this;
-    this.TONEMAPPING = { NONE: 0, ACES: 1, REINHARD: 2 };
+    /** @type {PostProcessingEffect[]} */
+    this.effects = [];
+    let needsRecompiling = true;
 
-    function Property(value, onChange = () => {}) {
-      this.value = value;
-      var lastValue = value;
-      this.onChange = onChange;
-      var hasRunInitial = false;
+    const screenQuad = new ScreenQuad();
 
-      this.update = function() {
-        if (this.value != lastValue || !hasRunInitial) {
-          this.onChange(this.value, lastValue);
-          lastValue = this.value;
-          hasRunInitial = true;
-        }
+    let targetTextureWidth = gl.canvas.width;
+    let targetTextureHeight = gl.canvas.height;
+
+    const createFramebufferForPostprocessing = () => {
+      // Framebuffer
+      const framebuffer = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+
+      // Color texture
+      const colorTexture = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, colorTexture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, targetTextureWidth, targetTextureHeight, 0, gl.RGBA, getFloatTextureType(), null);
+
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colorTexture, 0);
+
+      // Depth texture
+      const depthTexture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, depthTexture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.DEPTH_COMPONENT : gl.DEPTH_COMPONENT16, targetTextureWidth, targetTextureHeight, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+      
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depthTexture, 0);
+    
+      return {
+        width: targetTextureWidth,
+        height: targetTextureHeight,
+        framebuffer,
+        colorTexture,
+        depthTexture,
       };
-    }
-
-    this.exposure = new Property(0, value => {
-      gl.uniform1f(this.programContainer.getUniformLocation("exposure"), value);
-    });
-    this.gamma = new Property(2.2, value => {
-      gl.uniform1f(this.programContainer.getUniformLocation("gamma"), value);
-    });
-    this.tonemapping = new Property(this.TONEMAPPING.ACES, value => {
-      gl.uniform1i(this.programContainer.getUniformLocation("tonemapping"), value);
-    });
-    this.motionBlurStrength = new Property(0.2, (value, lastValue) => {
-      if (!needRecompile(value, lastValue)) {
-        gl.uniform1f(this.programContainer.getUniformLocation("motionBlurStrength"), value);
-      }
-    });
-    this.saturation = new Property(0, (value) => {
-      gl.uniform1f(this.programContainer.getUniformLocation("saturation"), value);
-    });
-    this.contrast = new Property(0, (value) => {
-      gl.uniform1f(this.programContainer.getUniformLocation("contrast"), value);
-    });
-    this.vignette = {
-      amount: new Property(0, (value) => {
-        gl.uniform1f(this.programContainer.getUniformLocation("vignetteAmount"), value);
-      }),
-      falloff: new Property(0, (value) => {
-        gl.uniform1f(this.programContainer.getUniformLocation("vignetteFalloff"), value);
-      }),
-    };
-    this.whiteBalance = {
-      temperature: new Property(0, (value) => {
-        gl.uniform1f(this.programContainer.getUniformLocation("temperature"), value);
-      }),
-      tint: new Property(0, (value) => {
-        gl.uniform1f(this.programContainer.getUniformLocation("tint"), value);
-      }),
     };
 
-    var needRecompile = (value, lastValue) => {
-      if ((value > 0 && lastValue == 0) || (value == 0 && lastValue > 0)) {
-        renderer.updateFragmentShader(this.programContainer, getShaderSource().fragment);
-  
-        for (var property of properties) {
-          property.onChange(property.value, property.value);
-        }
-
-        bindUniforms();
-
-        console.info("Recompiling postprocessing");
-
-        return true;
-      }
-
-      return false;
-    };
-
-    var properties = [
-      this.exposure,
-      this.gamma,
-      this.tonemapping,
-      this.motionBlurStrength,
-      this.saturation,
-      this.contrast,
-      this.vignette.amount,
-      this.vignette.falloff,
-      this.whiteBalance.temperature,
-      this.whiteBalance.tint
+    // Downscaled framebuffer
+    this.downscaledFramebuffer = createFramebuffer(targetTextureWidth / 4, targetTextureHeight / 4);
+    
+    // Render scene to this buffer
+    this.sceneRenderBuffer = createFramebufferForPostprocessing();
+    
+    // We need double buffers to read from one and render to the other
+    this.renderBuffers = [
+      createFramebufferForPostprocessing(),
+      createFramebufferForPostprocessing()
     ];
 
-    // this.exposure = 0;
-    // this.gamma = 2.2;
-    // this.tonemapping = this.TONEMAPPING.ACES;
-    // this.motionBlurStrength = 0.2;
-    // this.saturation = 20; //0.3
+    // Velocity texture
+    if (renderer.version > 1) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.sceneRenderBuffer.framebuffer);
 
-    // var _lastExposure;
-    // var _lastGamma;
-    // var _lastMotionBlurStrength;
-    var _lastWidth;
-    var _lastHeight;
-
-    var source = getShaderSource();
-    var program = renderer.createProgram(source.vertex, source.fragment);
-    this.programContainer = new ProgramContainer(program);
-
-    // this.colorBuffers = [];
-  
-    var targetTextureWidth = gl.canvas.width;
-    var targetTextureHeight = gl.canvas.height;
-
-    var colorRenderbuffer;
-    var depthBuffer;
-
-    if (renderer.version > 1 && false) {
-      this.preFramebuffer = gl.createFramebuffer();
-      this.framebuffer = gl.createFramebuffer();
-
-      colorRenderbuffer = gl.createRenderbuffer();
-      gl.bindRenderbuffer(gl.RENDERBUFFER, colorRenderbuffer);
-      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, gl.getParameter(gl.MAX_SAMPLES), gl.RGBA16F, targetTextureWidth, targetTextureHeight);
-      
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this.preFramebuffer);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, colorRenderbuffer);
-
-      // Required for z sorting (better quality than above)
-      depthBuffer = gl.createRenderbuffer();
-      gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
-      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, gl.getParameter(gl.MAX_SAMPLES), gl.DEPTH_COMPONENT16, targetTextureWidth, targetTextureHeight);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
-      
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
-
-      this.colorBuffer = gl.createTexture();
+      const velocityTexture = gl.createTexture();
       gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, this.colorBuffer);
+      gl.bindTexture(gl.TEXTURE_2D, velocityTexture);
       gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, targetTextureWidth, targetTextureHeight, 0, gl.RGBA, getFloatTextureType(), null);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.colorBuffer, 0);
-
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    }
-    else {
-      // Framebuffer
-      this.framebuffer = gl.createFramebuffer();
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, velocityTexture, 0);
     
-      // Color buffer
-      this.colorBuffer = gl.createTexture();
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, this.colorBuffer);
-      gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, targetTextureWidth, targetTextureHeight, 0, gl.RGBA, getFloatTextureType(), null);
-    
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.colorBuffer, 0);
-
-      // Motion blur
-      if (renderer.version > 1) {
-        this.motionBlurColorBuffer = gl.createTexture();
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.motionBlurColorBuffer);
-        gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, targetTextureWidth, targetTextureHeight, 0, gl.RGBA, getFloatTextureType(), null);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, this.motionBlurColorBuffer, 0);
-      }
-
-      // // Low quality depth info
-      // this.depthTexture = gl.createTexture();
-      // gl.bindTexture(gl.TEXTURE_2D, this.depthTexture);
-      // gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.DEPTH_COMPONENT : gl.DEPTH_COMPONENT16, targetTextureWidth, targetTextureHeight, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-      // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      // gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this.depthTexture, 0);
-
-      // Required for z sorting (better quality than above)
-      depthBuffer = gl.createRenderbuffer();
-      gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
-      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, targetTextureWidth, targetTextureHeight);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+      this.sceneRenderBuffer.velocityTexture = velocityTexture;
     }
 
-    this.downscaledFramebuffer = createFramebuffer(targetTextureWidth / 4, targetTextureHeight / 4);
-  
-    var screenQuad = new ScreenQuad();
+    /**
+     * Generates combined shader code for list of effects
+     * @param {PostProcessingEffect[]} includedEffects 
+     * @returns {{
+     *  vertex: String,
+     *  fragment: String,
+     * }}
+     */
+    this.getShaderSource = function(includedEffects) {
+      const vertex = `
+        #version 300 es
 
-    var bindUniforms = () => {
-      useProgram(this.programContainer.program);
-      gl.uniform1i(this.programContainer.getUniformLocation("mainTexture"), 0);
-      gl.uniform1i(this.programContainer.getUniformLocation("bloomTexture"), 1);
+        in vec2 position;
+        in vec2 inUV;
 
-      if (this.depthTexture || renderer.godrays) {
-        // gl.uniform1i(this.programContainer.getUniformLocation("enableGodrays"), 1);
-        gl.uniform1i(this.programContainer.getUniformLocation("depthTexture"), 2);
-      }
-      else {
-        gl.uniform1i(this.programContainer.getUniformLocation("enableGodrays"), 0);
-      }
+        out vec2 vUV;
 
-      gl.uniform1i(this.programContainer.getUniformLocation("motionBlurTexture"), 3);
+        void main() {
+          vUV = inUV;
+          gl_Position = vec4(position, 0.0, 1.0);
+        }
+      `;
 
-      if (this.motionBlurColorBuffer) {
-        gl.uniform1i(this.programContainer.getUniformLocation("motionBlurTexture"), 16);
-      }
+      /**
+       * 
+       * @param {String} source 
+       */
+      const formatFragmentSouce = (source, uniqueName) => {
+        source = source.replace("vec4 mainImage", `vec4 mainImage_${uniqueName}`);
+        return source;
+      };
 
-      gl.uniform2f(this.programContainer.getUniformLocation("SIZE"), gl.canvas.width, gl.canvas.height);
-    
-      // // DoF
-      // var NEAR = 0.1;
-      // var FAR = 100.0;
-      // var FOCAL_LENGTH = 1.0;
-      // var FOCUS_DISTANCE = 4.0;
-      // var MAGNIFICATION = FOCAL_LENGTH / Math.abs(FOCUS_DISTANCE - FOCAL_LENGTH);
-      // var FSTOP = 2.8 * 0.3;
-      // var BLUR_COEFFICIENT = FOCAL_LENGTH * MAGNIFICATION / FSTOP;
-      // var PPM = Math.sqrt(gl.canvas.width * gl.canvas.width + gl.canvas.height * gl.canvas.height) / 35;   
+      const fragment = `
+        #version 300 es
+        precision highp float;
 
-      // gl.uniform1f(this.programContainer.getUniformLocation("uFocusDistance"), FOCUS_DISTANCE);
-      // gl.uniform1f(this.programContainer.getUniformLocation("uBlurCoefficient"), BLUR_COEFFICIENT);
-      // gl.uniform1f(this.programContainer.getUniformLocation("uPPM"), PPM);
-      // gl.uniform2f(this.programContainer.getUniformLocation("uDepthRange"), NEAR, FAR);
-      // gl.uniform2f(this.programContainer.getUniformLocation("uResolution"), gl.canvas.width, gl.canvas.height);
-      // gl.uniform2f(this.programContainer.getUniformLocation("uTexelOffset"), 1, 0);
-      // // gl.uniform2f(this.programContainer.getUniformLocation("uTexelOffset"), 0, 1);
-      // gl.uniform1i(this.programContainer.getUniformLocation("uDepth"), 17);
+        out vec4 fragColor;
+
+        in vec2 vUV;
+
+        uniform float cameraNear;
+        uniform float cameraFar;
+        uniform mat4 projectionMatrix;
+        uniform mat4 viewMatrix;
+
+        uniform float currentFPS;
+        uniform float time;
+        uniform vec2 screenSize;
+        uniform float aspectRatio;
+
+        uniform sampler2D sceneTexture;
+        uniform sampler2D sceneDepthTexture;
+        uniform sampler2D sceneVelocityTexture;
+
+        ${includedEffects.map((e, i) => formatFragmentSouce(e.getFragmentSource(), i)).join("\n\n")}
+
+        void main() {
+          vec2 uv = vUV;
+          vec4 outColor = texture(sceneTexture, uv);
+
+          // Effects
+          ${includedEffects.map((e, i) => `outColor = mainImage_${i}(outColor, uv);`).join("\n")}
+
+          fragColor = outColor;
+        }
+      `;
+      
+      return {
+        vertex,
+        fragment,
+      };
     };
 
-    bindUniforms();
+    this.programContainers = null;
 
-    this.getFramebuffer = function() {
-      if (this.preFramebuffer) {
-        return this.preFramebuffer;
+    /**
+     * Add an effect to the postprocessing stack
+     * @template T
+     * @param {T} effect
+     * @returns {T}
+     */
+    this.addEffect = function(effect) {
+      // if (effect.name === "") {
+      //   throw new Error("Effect must have a name");
+      // }
+
+      this.effects.push(effect);
+      needsRecompiling = true;
+
+      effect.initialize(renderer);
+
+      return effect;
+    };
+
+    this.removeEffect = function(effect) {
+      const index = this.effects.indexOf(effect);
+      if (index === -1) {
+        return effect;
       }
 
-      return this.framebuffer;
+      this.effects.splice(index, 1);
+      needsRecompiling = true;
+
+      effect.dispose(renderer);
+
+      return effect;
     };
 
-    this.bindFramebuffer = function() {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this.getFramebuffer());
-    };
+    /**
+     * 
+     * @param {Camera} camera 
+     */
+    this.render = function(camera) {
+      recompile();
 
-    this.blitAA = function() {
-      if (this.preFramebuffer) {
-        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.preFramebuffer);
-        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.framebuffer);
+      // Copy scene buffer to screen
+      if (this.programContainers.length === 0) {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.sceneRenderBuffer.framebuffer);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
         gl.clearBufferfv(gl.COLOR, 0, [1.0, 1.0, 1.0, 1.0]);
         gl.blitFramebuffer(
           0, 0, targetTextureWidth, targetTextureHeight,
           0, 0, targetTextureWidth, targetTextureHeight,
           gl.COLOR_BUFFER_BIT, gl.LINEAR
         );
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this.preFramebuffer);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      }
+
+      for (let i = 0; i < this.programContainers.length; i++) {
+        const programContainer = this.programContainers[i];
+
+        // Render to the screen on the last past
+        const writeBuffer = i === this.programContainers.length - 1 ?
+          null :
+          this.renderBuffers[0].framebuffer;
+
+        // Read from scene buffer on the first pass
+        const readBuffer = i === 0 ?
+          this.sceneRenderBuffer :
+          this.renderBuffers[1];
+
+        for (const effect of programContainer.effects) {
+          effect.prepass(renderer, readBuffer);
+        }
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, writeBuffer);
+        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        useProgram(programContainer.program);
+
+        bindVertexArray(null);
+        screenQuad.bindBuffers(
+          programContainer.getAttribLocation("position"),
+          programContainer.getAttribLocation("inUV"),
+        );
+
+        // Color texture
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, readBuffer.colorTexture);
+        gl.uniform1i(programContainer.getUniformLocation("sceneTexture"), 0);
+
+        // Depth texture
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.sceneRenderBuffer.depthTexture);
+        gl.uniform1i(programContainer.getUniformLocation("sceneDepthTexture"), 1);
+
+        // Velocity texture
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, this.sceneRenderBuffer.velocityTexture);
+        gl.uniform1i(programContainer.getUniformLocation("sceneVelocityTexture"), 2);
+
+        // Screen size
+        gl.uniform2f(programContainer.getUniformLocation("screenSize"), targetTextureWidth, targetTextureHeight);
+        gl.uniform1f(programContainer.getUniformLocation("aspectRatio"), renderer.aspect);
+        
+        // Time
+        const time = (new Date() - renderer.startTime) / 1000;
+        gl.uniform1f(programContainer.getUniformLocation("time"), time);
+
+        // FPS
+        gl.uniform1f(programContainer.getUniformLocation("currentFPS"), 1 / renderer.frameTime);
+
+        // Camera properties
+        gl.uniform1f(programContainer.getUniformLocation("cameraNear"), camera.getNear());
+        gl.uniform1f(programContainer.getUniformLocation("cameraFar"), camera.getFar());
+        gl.uniformMatrix4fv(programContainer.getUniformLocation("projectionMatrix"), false, camera.projectionMatrix);
+        gl.uniformMatrix4fv(programContainer.getUniformLocation("viewMatrix"), false, camera.viewMatrix);
+        
+        // Set uniform 
+        for (const effect of programContainer.effects) {
+          effect.setUniforms(programContainer, gl);
+        }
+
+        screenQuad.render();
+
+        swapRenderBuffers();
       }
     };
-  
+
+    const swapRenderBuffers = () => {
+      const temp = this.renderBuffers[0];
+      this.renderBuffers[0] = this.renderBuffers[1];
+      this.renderBuffers[1] = temp;
+    };
+
+    const doesEffectNeedSplit = (effect) => {
+      if (effect.doesEffectNeedSplit) {
+        return true;
+      }
+
+      return effect.getFragmentSource().indexOf("sceneTexture") !== -1;
+    };
+
+    const recompile = () => {
+      if (needsRecompiling) {
+        needsRecompiling = false;
+
+        // if (this.programContainers == null) {
+        this.programContainers = [];
+        const currentEffects = [];
+
+        for (const effect of this.effects) {
+          if (!doesEffectNeedSplit(effect)) {
+            currentEffects.push(effect);
+            continue;
+          }
+
+          if (currentEffects.length > 0) {
+            const source = this.getShaderSource(currentEffects);
+            const program = renderer.createProgram(source.vertex, source.fragment);
+            const programContainer = new ProgramContainer(program);
+            programContainer.effects = [ ...currentEffects ];
+            this.programContainers.push(programContainer);
+          }
+
+          currentEffects.length = 0;
+          currentEffects.push(effect);
+        }
+
+        if (currentEffects.length > 0) {
+          const source = this.getShaderSource(currentEffects);
+          const program = renderer.createProgram(source.vertex, source.fragment);
+          const programContainer = new ProgramContainer(program);
+          programContainer.effects = [ ...currentEffects ];
+          this.programContainers.push(programContainer);
+
+          currentEffects.length = 0;
+        }
+
+        return;
+        // }
+
+        // for (let i = 0; i < this.effects.length; i++) {
+        //   const effect = this.effects[i];
+        //   const source = this.getShaderSource([ effect ]);
+        //   const programContainer = this.programContainers[i];
+        //   renderer.updateFragmentShader(programContainer, source.fragment);
+        // }
+      }
+    };
+
+    this.getFramebuffer = function() {
+      return this.sceneRenderBuffer.framebuffer;
+    };
+
+    this.bindFramebuffer = function() {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.getFramebuffer());
+    };
+
     this.resizeFramebuffers = function() {
       targetTextureWidth = gl.canvas.width;
       targetTextureHeight = gl.canvas.height;
@@ -2747,366 +2822,680 @@ function Renderer(settings = {}) {
       gl.bindTexture(gl.TEXTURE_2D, this.downscaledFramebuffer.colorBuffer);
       gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, targetTextureWidth / 4, targetTextureHeight / 4, 0, gl.RGBA, getFloatTextureType(), null);
 
-      // Color buffer
-      gl.bindTexture(gl.TEXTURE_2D, this.colorBuffer);
-      gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, gl.canvas.width, gl.canvas.height, 0, gl.RGBA, getFloatTextureType(), null);
-
-      // Motion blur
-      if (this.motionBlurColorBuffer) {
-        gl.bindTexture(gl.TEXTURE_2D, this.motionBlurColorBuffer);
+      // Resize all buffers
+      for (const renderBuffer of [ this.sceneRenderBuffer, ...this.renderBuffers ]) {
+        // Color buffer
+        gl.bindTexture(gl.TEXTURE_2D, renderBuffer.colorTexture);
         gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, gl.canvas.width, gl.canvas.height, 0, gl.RGBA, getFloatTextureType(), null);
-      }
 
-      if (this.depthTexture) {
-        gl.bindTexture(gl.TEXTURE_2D, this.depthTexture);
+        // Depth texture
+        gl.bindTexture(gl.TEXTURE_2D, renderBuffer.depthTexture);
         gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.DEPTH_COMPONENT : gl.DEPTH_COMPONENT16, gl.canvas.width, gl.canvas.height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-      }
-      else {
-        if (this.preFramebuffer) {
-          gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
-          gl.renderbufferStorageMultisample(gl.RENDERBUFFER, gl.getParameter(gl.MAX_SAMPLES), gl.DEPTH_COMPONENT16, gl.canvas.width, gl.canvas.height);
-        }
-        else {
-          gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
-          gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, gl.canvas.width, gl.canvas.height);
+
+        // Velocity texture
+        if (renderBuffer.velocityTexture) {
+          gl.bindTexture(gl.TEXTURE_2D, renderBuffer.velocityTexture);
+          gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, gl.canvas.width, gl.canvas.height, 0, gl.RGBA, getFloatTextureType(), null);
         }
       }
 
-      if (this.preFramebuffer) {
-        gl.bindRenderbuffer(gl.RENDERBUFFER, colorRenderbuffer);
-        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, gl.getParameter(gl.MAX_SAMPLES), gl.RGBA16F, gl.canvas.width, gl.canvas.height);
+      for (const effect of this.effects) {
+        effect.resizeFramebuffers(renderer);
       }
 
       gl.bindTexture(gl.TEXTURE_2D, null);
     };
-  
-    this.render = function() {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  
-      useProgram(this.programContainer.program);
-
-      // if (this.depthTexture || renderer.godrays) {
-      //   gl.uniform1i(this.programContainer.getUniformLocation("enableGodrays"), 1);
-      //   // gl.uniform1i(this.programContainer.getUniformLocation("depthTexture"), 2);
-      // }
-      // else {
-      //   gl.uniform1i(this.programContainer.getUniformLocation("enableGodrays"), 0);
-      // }
-  
-      bindVertexArray(null);
-      gl.bindBuffer(gl.ARRAY_BUFFER, screenQuad.vertexBuffer);
-      var loc = this.programContainer.getAttribLocation("position");
-      gl.enableVertexAttribArray(loc);
-      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 8, 0);
-  
-      // Bind textures
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, this.colorBuffer);
-      // gl.uniform1i(this.mainTextureLocation, 0);
-
-      gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, renderer.bloom.upsampleFramebuffers[renderer.bloom.upsampleFramebuffers.length - 1].colorBuffer);
-      // gl.uniform1i(this.bloomTextureLocation, 1);
-
-      if (this.depthTexture) {
-        // gl.uniform1i(this.godraysLocation, 1);
-
-        gl.activeTexture(gl.TEXTURE2);
-        gl.bindTexture(gl.TEXTURE_2D, this.depthTexture);
-        // gl.uniform1i(this.depthTextureLocation, 2);
-      }
-      else if (renderer.godrays) {
-        // gl.uniform1i(this.godraysLocation, 1);
-
-        gl.activeTexture(gl.TEXTURE2);
-        gl.bindTexture(gl.TEXTURE_2D, renderer.godrays.framebufferData.colorBuffer);
-        // gl.uniform1i(this.depthTextureLocation, 2);
-      }
-      else {
-        // gl.uniform1i(this.godraysLocation, 0);
-      }
-
-      if (this.motionBlurColorBuffer) {
-        gl.activeTexture(gl.TEXTURE25);
-        gl.bindTexture(gl.TEXTURE_2D, this.motionBlurColorBuffer);
-        gl.uniform1i(this.programContainer.getUniformLocation("motionBlurTexture"), 25);
-      }
-
-      // // DoF
-      // gl.activeTexture(gl.TEXTURE17);
-      // gl.bindTexture(gl.TEXTURE_2D, this.depthTexture);
-
-      // Rain drops on screen
-      if (this.rainTexture) {
-        gl.activeTexture(gl.TEXTURE17);
-        gl.bindTexture(gl.TEXTURE_2D, this.rainTexture);
-        gl.uniform1i(this.programContainer.getUniformLocation("rainTexture"), 17);
-      }
-
-      // Downscaled framebuffer
-      gl.activeTexture(gl.TEXTURE18);
-      gl.bindTexture(gl.TEXTURE_2D, this.downscaledFramebuffer.colorBuffer);
-      gl.uniform1i(this.programContainer.getUniformLocation("downscaledTexture"), 18);
-
-      // Set uniforms
-      gl.uniform1f(this.programContainer.getUniformLocation("iTime"), (new Date() - renderer.startTime) / 1000);
-  
-      if (gl.canvas.width !== _lastWidth || gl.canvas.height !== _lastHeight) {
-        _lastWidth = gl.canvas.width;
-        _lastHeight = gl.canvas.height;
-        gl.uniform2f(this.programContainer.getUniformLocation("SIZE"), gl.canvas.width, gl.canvas.height);
-      }
-
-      // if (this.exposure !== _lastExposure) {
-      //   _lastExposure = this.exposure;
-      //   gl.uniform1f(this.programContainer.getUniformLocation("exposure"), this.exposure);
-      // }
-
-      // if (this.gamma !== _lastGamma) {
-      //   _lastGamma = this.gamma;
-      //   gl.uniform1f(this.programContainer.getUniformLocation("gamma"), this.gamma);
-      // }
-
-      // if (this.motionBlurStrength !== _lastMotionBlurStrength) {
-      //   _lastMotionBlurStrength = this.motionBlurStrength;
-      //   gl.uniform1f(this.programContainer.getUniformLocation("motionBlurStrength"), this.motionBlurStrength);
-      //   gl.uniform1i(this.programContainer.getUniformLocation("enableMotionBlur"), this.motionBlurStrength < 1e-6 ? 0 : 1);
-      // }
-
-      gl.uniform1f(this.programContainer.getUniformLocation("bloomIntensity"), renderer.bloom.getIntensity());
-      // gl.uniform1i(this.programContainer.getUniformLocation("tonemapping"), this.tonemapping);
-      // gl.uniform1f(this.programContainer.getUniformLocation("saturation"), this.saturation);
-
-      for (var property of properties) {
-        property.update();
-      }
-
-      // Render
-      screenQuad.render();
-    };
-
-    function getShaderSource() {
-      var p = postprocessingSource["webgl" + renderer.version].postprocessing;
-      if (!p || !p.vertex || !p.fragment) {
-        console.error(`Program postprocessing not found for version ${renderer.version}!`);
-        return;
-      }
-  
-      var fragment = "";
-
-      if (renderer.version > 1) {
-        fragment += "#version 300 es\n";
-      }
-
-      if (renderer.version > 1 && postprocessing.motionBlurStrength.value > 1e-6) {
-        fragment += "#define ENABLE_MOTIONBLUR\n";
-      }
-
-      fragment += "#define TONEMAPPING " + postprocessing.tonemapping.value + "\n";
-
-      if (renderer.godrays) {
-        fragment += "#define ENABLE_GODRAYS\n";
-      }
-
-      if (renderer.bloom.getIntensity() > 1e-6) {
-        fragment += "#define ENABLE_BLOOM\n";
-      }
-
-      // if (Math.abs(postprocessing.saturation.value) > 1e-6) {
-      //   fragment += "#define ENABLE_COLORGRADING\n";
-      // }
-
-      fragment += p.fragment;
-
-      return {
-        vertex: p.vertex,
-        fragment: fragment,
-      };
-    }
   }
 
-  function Bloom(programContainer) {
-    this.programContainer = programContainer;
+  // function OldPostProcessing() {
+  //   var postprocessing = this;
+  //   this.TONEMAPPING = { NONE: 0, ACES: 1, REINHARD: 2 };
 
-    var _enabled = true;
-    var _maxDownsamples = 7;
-    var _sampleScale = 1;
-    var _threshold = 1;
-    var _knee = 0.5;
-    var _clamp = 10;
-    var _intensity = 0.05;
+  //   function Property(value, onChange = () => {}) {
+  //     this.value = value;
+  //     var lastValue = value;
+  //     this.onChange = onChange;
+  //     var hasRunInitial = false;
 
-    var _cachedProperties = {
-      enabled: _enabled
-    };
+  //     this.update = function() {
+  //       if (this.value != lastValue || !hasRunInitial) {
+  //         this.onChange(this.value, lastValue);
+  //         lastValue = this.value;
+  //         hasRunInitial = true;
+  //       }
+  //     };
+  //   }
 
-    this.downsampleFramebuffers = [];
-    this.upsampleFramebuffers = [];
+  //   this.exposure = new Property(0, value => {
+  //     gl.uniform1f(this.programContainer.getUniformLocation("exposure"), value);
+  //   });
+  //   this.gamma = new Property(2.2, value => {
+  //     gl.uniform1f(this.programContainer.getUniformLocation("gamma"), value);
+  //   });
+  //   this.tonemapping = new Property(this.TONEMAPPING.ACES, value => {
+  //     gl.uniform1i(this.programContainer.getUniformLocation("tonemapping"), value);
+  //   });
+  //   this.motionBlurStrength = new Property(0.2, (value, lastValue) => {
+  //     if (!needRecompile(value, lastValue)) {
+  //       gl.uniform1f(this.programContainer.getUniformLocation("motionBlurStrength"), value);
+  //     }
+  //   });
+  //   this.saturation = new Property(0, (value) => {
+  //     gl.uniform1f(this.programContainer.getUniformLocation("saturation"), value);
+  //   });
+  //   this.contrast = new Property(0, (value) => {
+  //     gl.uniform1f(this.programContainer.getUniformLocation("contrast"), value);
+  //   });
+  //   this.vignette = {
+  //     amount: new Property(0, (value) => {
+  //       gl.uniform1f(this.programContainer.getUniformLocation("vignetteAmount"), value);
+  //     }),
+  //     falloff: new Property(0, (value) => {
+  //       gl.uniform1f(this.programContainer.getUniformLocation("vignetteFalloff"), value);
+  //     }),
+  //   };
+  //   this.whiteBalance = {
+  //     temperature: new Property(0, (value) => {
+  //       gl.uniform1f(this.programContainer.getUniformLocation("temperature"), value);
+  //     }),
+  //     tint: new Property(0, (value) => {
+  //       gl.uniform1f(this.programContainer.getUniformLocation("tint"), value);
+  //     }),
+  //   };
 
-    // Screen quad
-    var vertices = new Float32Array([
-      -1.0,  1.0,
-      -1.0, -1.0,
-      1.0,  1.0,
-      1.0, -1.0,
-    ]);
-    var vertexBuffer = createBuffer(vertices);
-
-    useProgram(this.programContainer.program);
-    gl.uniform1i(this.programContainer.getUniformLocation("mainTexture"), 0);
-    gl.uniform1i(this.programContainer.getUniformLocation("secondTexture"), 1);
-
-    let getNrDownsamples = () => {
-      let minDim = Math.min(gl.canvas.width, gl.canvas.height);
-      let sizeLimit = Math.floor(Math.log(minDim) / Math.log(2));
-      let downsamples = Math.min(_maxDownsamples, sizeLimit);
-      return downsamples;
-    };
-
-    this.resizeFramebuffers = function() {
-      for (let i = 0; i < this.downsampleFramebuffers.length; i++) {
-        gl.deleteFramebuffer(this.downsampleFramebuffers[i].framebuffer);
-      }
-      for (let i = 0; i < this.upsampleFramebuffers.length; i++) {
-        gl.deleteFramebuffer(this.upsampleFramebuffers[i].framebuffer);
-      }
-
-      this.downsampleFramebuffers = [];
-      this.upsampleFramebuffers = [];
-
-      let downsamples = getNrDownsamples();
-
-      for (let i = 0; i < downsamples; i++) {
-        let scale = Math.pow(0.5, i + 1);
-        this.downsampleFramebuffers.push(createFramebuffer(Math.floor(gl.canvas.width * scale), Math.floor(gl.canvas.height * scale)));
-      }
+  //   var needRecompile = (value, lastValue) => {
+  //     if ((value > 0 && lastValue == 0) || (value == 0 && lastValue > 0)) {
+  //       renderer.updateFragmentShader(this.programContainer, getShaderSource().fragment);
   
-      for (let i = 0; i < downsamples - 1; i++) {
-        let scale = Math.pow(0.5, downsamples - 1 - i);
-        this.upsampleFramebuffers.push(createFramebuffer(Math.floor(gl.canvas.width * scale), Math.floor(gl.canvas.height * scale)));
-      }
-    };
+  //       for (var property of properties) {
+  //         property.onChange(property.value, property.value);
+  //       }
 
-    this.resizeFramebuffers();
+  //       bindUniforms();
 
-    this.render = function() {
-      if (!_enabled && _cachedProperties.enabled) {
-        this.clearBloom();
-      }
-      _cachedProperties.enabled = _enabled;
+  //       console.info("Recompiling postprocessing");
 
-      if (!_enabled) {
-        return;
-      }
+  //       return true;
+  //     }
 
-      useProgram(this.programContainer.program);
+  //     return false;
+  //   };
 
-      gl.uniform1f(this.programContainer.getUniformLocation("_SampleScale"), _sampleScale);
-      gl.uniform1f(this.programContainer.getUniformLocation("threshold"), _threshold);
-      gl.uniform1f(this.programContainer.getUniformLocation("knee"), _knee);
-      gl.uniform1f(this.programContainer.getUniformLocation("_Clamp"), _clamp);
+  //   var properties = [
+  //     this.exposure,
+  //     this.gamma,
+  //     this.tonemapping,
+  //     this.motionBlurStrength,
+  //     this.saturation,
+  //     this.contrast,
+  //     this.vignette.amount,
+  //     this.vignette.falloff,
+  //     this.whiteBalance.temperature,
+  //     this.whiteBalance.tint
+  //   ];
 
-      let pl = this.programContainer.getAttribLocation("position");
-      gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-      gl.enableVertexAttribArray(pl);
-      gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 8, 0);
+  //   // this.exposure = 0;
+  //   // this.gamma = 2.2;
+  //   // this.tonemapping = this.TONEMAPPING.ACES;
+  //   // this.motionBlurStrength = 0.2;
+  //   // this.saturation = 20; //0.3
 
-      gl.activeTexture(gl.TEXTURE0);
+  //   // var _lastExposure;
+  //   // var _lastGamma;
+  //   // var _lastMotionBlurStrength;
+  //   var _lastWidth;
+  //   var _lastHeight;
 
-      for (var i = 0; i < this.downsampleFramebuffers.length; i++) {
-        var framebuffer = this.downsampleFramebuffers[i];
+  //   var source = getShaderSource();
+  //   var program = renderer.createProgram(source.vertex, source.fragment);
+  //   this.programContainer = new ProgramContainer(program);
 
-        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer.framebuffer);
-        gl.viewport(0, 0, framebuffer.width, framebuffer.height);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  //   // this.colorBuffers = [];
+  
+  //   var targetTextureWidth = gl.canvas.width;
+  //   var targetTextureHeight = gl.canvas.height;
 
-        gl.bindTexture(gl.TEXTURE_2D, i < 1 ? renderer.postprocessing.colorBuffer : this.downsampleFramebuffers[i - 1].colorBuffer);
+  //   var colorRenderbuffer;
+  //   var depthBuffer;
 
-        if (this.programContainer.getUniformLocation("mainTextureSize")) {
-          gl.uniform2fv(this.programContainer.getUniformLocation("mainTextureSize"), i < 1 ? [gl.canvas.width, gl.canvas.height] : [this.downsampleFramebuffers[i - 1].width, this.downsampleFramebuffers[i - 1].height]);
-        }
-        gl.uniform2f(this.programContainer.getUniformLocation("screenSize"), framebuffer.width, framebuffer.height);
-        gl.uniform1i(this.programContainer.getUniformLocation("stage"), i == 0 ? 0 : 1);
+  //   this.useDepthTexture = true;
 
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      }
+  //   if (renderer.version > 1/* && false*/) {
+  //     this.preFramebuffer = gl.createFramebuffer();
+  //     this.framebuffer = gl.createFramebuffer();
 
-      gl.uniform1i(this.programContainer.getUniformLocation("stage"), 2);
+  //     colorRenderbuffer = gl.createRenderbuffer();
+  //     gl.bindRenderbuffer(gl.RENDERBUFFER, colorRenderbuffer);
+  //     gl.renderbufferStorageMultisample(gl.RENDERBUFFER, gl.getParameter(gl.MAX_SAMPLES), gl.RGBA16F, targetTextureWidth, targetTextureHeight);
+      
+  //     gl.bindFramebuffer(gl.FRAMEBUFFER, this.preFramebuffer);
+  //     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, colorRenderbuffer);
 
-      for (let i = 0; i < this.upsampleFramebuffers.length; i++) {
-        let framebuffer = this.upsampleFramebuffers[i];
+  //     // Required for z sorting (better quality than above)
+  //     depthBuffer = gl.createRenderbuffer();
+  //     gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+  //     gl.renderbufferStorageMultisample(gl.RENDERBUFFER, gl.getParameter(gl.MAX_SAMPLES), gl.DEPTH_COMPONENT16, targetTextureWidth, targetTextureHeight);
+  //     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+      
+  //     gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
 
-        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer.framebuffer);
-        gl.viewport(0, 0, framebuffer.width, framebuffer.height);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  //     this.colorBuffer = gl.createTexture();
+  //     gl.activeTexture(gl.TEXTURE0);
+  //     gl.bindTexture(gl.TEXTURE_2D, this.colorBuffer);
+  //     gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, targetTextureWidth, targetTextureHeight, 0, gl.RGBA, getFloatTextureType(), null);
+  //     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  //     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  //     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  //     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.colorBuffer, 0);
 
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, i < 1 ? this.downsampleFramebuffers[this.downsampleFramebuffers.length - 1].colorBuffer : this.upsampleFramebuffers[i - 1].colorBuffer);
+  //     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  //   }
+  //   else {
+  //     // Framebuffer
+  //     this.framebuffer = gl.createFramebuffer();
+  //     gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+    
+  //     // Color buffer
+  //     this.colorBuffer = gl.createTexture();
+  //     gl.activeTexture(gl.TEXTURE0);
+  //     gl.bindTexture(gl.TEXTURE_2D, this.colorBuffer);
+  //     gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, targetTextureWidth, targetTextureHeight, 0, gl.RGBA, getFloatTextureType(), null);
+    
+  //     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  //     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  //     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  
+  //     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.colorBuffer, 0);
 
-        gl.activeTexture(gl.TEXTURE1);
-        gl.bindTexture(gl.TEXTURE_2D, this.downsampleFramebuffers[this.downsampleFramebuffers.length - 2 - i].colorBuffer);
+  //     // Motion blur
+  //     if (renderer.version > 1) {
+  //       this.motionBlurColorBuffer = gl.createTexture();
+  //       gl.activeTexture(gl.TEXTURE0);
+  //       gl.bindTexture(gl.TEXTURE_2D, this.motionBlurColorBuffer);
+  //       gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, targetTextureWidth, targetTextureHeight, 0, gl.RGBA, getFloatTextureType(), null);
+  //       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  //       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  //       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  //       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, this.motionBlurColorBuffer, 0);
+  //     }
 
-        if (this.programContainer.getUniformLocation("mainTextureSize")) {
-          let fbd = i < 1 ? this.downsampleFramebuffers[this.downsampleFramebuffers.length - 1] : this.upsampleFramebuffers[i - 1];
-          gl.uniform2f(this.programContainer.getUniformLocation("mainTextureSize"), fbd.width, fbd.height);
-        }
-        gl.uniform2f(this.programContainer.getUniformLocation("screenSize"), framebuffer.width, framebuffer.height);
+  //     if (this.useDepthTexture) {
+  //       // Low quality depth info
+  //       this.depthTexture = gl.createTexture();
+  //       gl.bindTexture(gl.TEXTURE_2D, this.depthTexture);
+  //       gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.DEPTH_COMPONENT : gl.DEPTH_COMPONENT16, targetTextureWidth, targetTextureHeight, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+  //       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  //       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  //       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  //       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  //       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this.depthTexture, 0);
+  //     }
+  //     else {
+  //       // Required for z sorting (better quality than depth texture?)
+  //       depthBuffer = gl.createRenderbuffer();
+  //       gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+  //       gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, targetTextureWidth, targetTextureHeight);
+  //       gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+  //     }
+  //   }
 
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      }
-    };
+  //   this.downscaledFramebuffer = createFramebuffer(targetTextureWidth / 4, targetTextureHeight / 4);
+  
+  //   var screenQuad = new ScreenQuad();
 
-    this.clearBloom = function() {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this.upsampleFramebuffers[this.upsampleFramebuffers.length - 1].framebuffer);
+  //   var bindUniforms = () => {
+  //     useProgram(this.programContainer.program);
+  //     gl.uniform1i(this.programContainer.getUniformLocation("mainTexture"), 0);
+  //     gl.uniform1i(this.programContainer.getUniformLocation("bloomTexture"), 1);
 
-      var lastClearColor = currentClearColor;
-      clearColor(0, 0, 0, 1);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-      clearColor(...lastClearColor);
-    };
+  //     if (this.depthTexture || renderer.godrays) {
+  //       // gl.uniform1i(this.programContainer.getUniformLocation("enableGodrays"), 1);
+  //       gl.uniform1i(this.programContainer.getUniformLocation("depthTexture"), 2);
+  //     }
+  //     else {
+  //       gl.uniform1i(this.programContainer.getUniformLocation("enableGodrays"), 0);
+  //     }
 
-    this.setProperties = function(properties) {
-      _enabled = properties.enabled;
-      _sampleScale = properties.sampleScale;
-      _threshold = properties.threshold;
-      _knee = properties.knee;
-      _clamp = properties.clamp;
-      _intensity = properties.intensity;
-    };
+  //     gl.uniform1i(this.programContainer.getUniformLocation("motionBlurTexture"), 3);
 
-    this.getIntensity = function() {
-      return _intensity;
-    };
-  }
+  //     if (this.motionBlurColorBuffer) {
+  //       gl.uniform1i(this.programContainer.getUniformLocation("motionBlurTexture"), 16);
+  //     }
 
-  function Godrays(programContainer) {
-    // this.material = new Material(programContainer);
-    this.material = new NewMaterial(programContainer);
+  //     gl.uniform2f(this.programContainer.getUniformLocation("SIZE"), gl.canvas.width, gl.canvas.height);
+    
+  //     // // DoF
+  //     // var NEAR = 0.1;
+  //     // var FAR = 100.0;
+  //     // var FOCAL_LENGTH = 1.0;
+  //     // var FOCUS_DISTANCE = 4.0;
+  //     // var MAGNIFICATION = FOCAL_LENGTH / Math.abs(FOCUS_DISTANCE - FOCAL_LENGTH);
+  //     // var FSTOP = 2.8 * 0.3;
+  //     // var BLUR_COEFFICIENT = FOCAL_LENGTH * MAGNIFICATION / FSTOP;
+  //     // var PPM = Math.sqrt(gl.canvas.width * gl.canvas.width + gl.canvas.height * gl.canvas.height) / 35;   
 
-    var scale = 0.2;
-    this.framebufferData = createFramebuffer(gl.canvas.width * scale, gl.canvas.height * scale);
+  //     // gl.uniform1f(this.programContainer.getUniformLocation("uFocusDistance"), FOCUS_DISTANCE);
+  //     // gl.uniform1f(this.programContainer.getUniformLocation("uBlurCoefficient"), BLUR_COEFFICIENT);
+  //     // gl.uniform1f(this.programContainer.getUniformLocation("uPPM"), PPM);
+  //     // gl.uniform2f(this.programContainer.getUniformLocation("uDepthRange"), NEAR, FAR);
+  //     // gl.uniform2f(this.programContainer.getUniformLocation("uResolution"), gl.canvas.width, gl.canvas.height);
+  //     // gl.uniform2f(this.programContainer.getUniformLocation("uTexelOffset"), 1, 0);
+  //     // // gl.uniform2f(this.programContainer.getUniformLocation("uTexelOffset"), 0, 1);
+  //     // gl.uniform1i(this.programContainer.getUniformLocation("uDepth"), 17);
+  //   };
 
-    // Required for z sorting (better quality than above)
-    var depthBuffer = gl.createRenderbuffer();
-    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
-    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, gl.canvas.width * scale, gl.canvas.height * scale);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+  //   bindUniforms();
 
-    this.render = function(scene, camera) {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebufferData.framebuffer);
-      gl.viewport(0, 0, this.framebufferData.width, this.framebufferData.height);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  //   this.getFramebuffer = function() {
+  //     if (this.preFramebuffer) {
+  //       return this.preFramebuffer;
+  //     }
 
-      scene.render(camera, {
-        renderPass: ENUMS.RENDERPASS.OPAQUE,
-        materialOverride: this.material
-      });
+  //     return this.framebuffer;
+  //   };
 
-      renderer.skybox.render(camera, scene.skyboxCubemap);
-    };
-  }
+  //   this.bindFramebuffer = function() {
+  //     gl.bindFramebuffer(gl.FRAMEBUFFER, this.getFramebuffer());
+  //   };
+
+  //   this.blitAA = function() {
+  //     if (this.preFramebuffer) {
+  //       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.preFramebuffer);
+  //       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.framebuffer);
+  //       gl.clearBufferfv(gl.COLOR, 0, [1.0, 1.0, 1.0, 1.0]);
+  //       gl.blitFramebuffer(
+  //         0, 0, targetTextureWidth, targetTextureHeight,
+  //         0, 0, targetTextureWidth, targetTextureHeight,
+  //         gl.COLOR_BUFFER_BIT, gl.LINEAR
+  //       );
+  //       gl.bindFramebuffer(gl.FRAMEBUFFER, this.preFramebuffer);
+  //     }
+  //   };
+  
+  //   this.resizeFramebuffers = function() {
+  //     targetTextureWidth = gl.canvas.width;
+  //     targetTextureHeight = gl.canvas.height;
+
+  //     // Downscaled framebuffer
+  //     gl.bindTexture(gl.TEXTURE_2D, this.downscaledFramebuffer.colorBuffer);
+  //     gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, targetTextureWidth / 4, targetTextureHeight / 4, 0, gl.RGBA, getFloatTextureType(), null);
+
+  //     // Color buffer
+  //     gl.bindTexture(gl.TEXTURE_2D, this.colorBuffer);
+  //     gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, gl.canvas.width, gl.canvas.height, 0, gl.RGBA, getFloatTextureType(), null);
+
+  //     // Motion blur
+  //     if (this.motionBlurColorBuffer) {
+  //       gl.bindTexture(gl.TEXTURE_2D, this.motionBlurColorBuffer);
+  //       gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.RGBA : gl.RGBA16F, gl.canvas.width, gl.canvas.height, 0, gl.RGBA, getFloatTextureType(), null);
+  //     }
+
+  //     if (this.depthTexture) {
+  //       gl.bindTexture(gl.TEXTURE_2D, this.depthTexture);
+  //       gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.DEPTH_COMPONENT : gl.DEPTH_COMPONENT16, gl.canvas.width, gl.canvas.height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+  //     }
+  //     else {
+  //       if (this.preFramebuffer) {
+  //         gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+  //         gl.renderbufferStorageMultisample(gl.RENDERBUFFER, gl.getParameter(gl.MAX_SAMPLES), gl.DEPTH_COMPONENT16, gl.canvas.width, gl.canvas.height);
+  //       }
+  //       else {
+  //         gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+  //         gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, gl.canvas.width, gl.canvas.height);
+  //       }
+  //     }
+
+  //     if (this.preFramebuffer) {
+  //       gl.bindRenderbuffer(gl.RENDERBUFFER, colorRenderbuffer);
+  //       gl.renderbufferStorageMultisample(gl.RENDERBUFFER, gl.getParameter(gl.MAX_SAMPLES), gl.RGBA16F, gl.canvas.width, gl.canvas.height);
+  //     }
+
+  //     gl.bindTexture(gl.TEXTURE_2D, null);
+  //   };
+  
+  //   /**
+  //    * 
+  //    * @param {Camera} camera 
+  //    */
+  //   this.render = function(camera) {
+  //     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  //     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+  //     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  
+  //     useProgram(this.programContainer.program);
+
+  //     // if (this.depthTexture || renderer.godrays) {
+  //     //   gl.uniform1i(this.programContainer.getUniformLocation("enableGodrays"), 1);
+  //     //   // gl.uniform1i(this.programContainer.getUniformLocation("depthTexture"), 2);
+  //     // }
+  //     // else {
+  //     //   gl.uniform1i(this.programContainer.getUniformLocation("enableGodrays"), 0);
+  //     // }
+  
+  //     bindVertexArray(null);
+  //     gl.bindBuffer(gl.ARRAY_BUFFER, screenQuad.vertexBuffer);
+  //     var loc = this.programContainer.getAttribLocation("position");
+  //     gl.enableVertexAttribArray(loc);
+  //     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 8, 0);
+  
+  //     // Bind textures
+  //     // Main scene color texture
+  //     gl.activeTexture(gl.TEXTURE0);
+  //     gl.bindTexture(gl.TEXTURE_2D, this.colorBuffer);
+  //     // gl.uniform1i(this.mainTextureLocation, 0);
+
+  //     // Bloom texture
+  //     gl.activeTexture(gl.TEXTURE1);
+  //     gl.bindTexture(gl.TEXTURE_2D, renderer.bloom.upsampleFramebuffers[renderer.bloom.upsampleFramebuffers.length - 1].colorBuffer);
+  //     // gl.uniform1i(this.bloomTextureLocation, 1);
+
+  //     // Depth texture
+  //     if (this.depthTexture) {
+  //       // gl.uniform1i(this.godraysLocation, 1);
+
+  //       gl.activeTexture(gl.TEXTURE2);
+  //       gl.bindTexture(gl.TEXTURE_2D, this.depthTexture);
+  //       gl.uniform1i(this.programContainer.getUniformLocation("depthTexture"), 2);
+  //       // gl.uniform1i(this.depthTextureLocation, 2);
+  //     }
+  //     else if (renderer.godrays) {
+  //       // gl.uniform1i(this.godraysLocation, 1);
+
+  //       gl.activeTexture(gl.TEXTURE2);
+  //       gl.bindTexture(gl.TEXTURE_2D, renderer.godrays.framebufferData.colorBuffer);
+  //       // gl.uniform1i(this.depthTextureLocation, 2);
+  //     }
+  //     else {
+  //       // gl.uniform1i(this.godraysLocation, 0);
+  //     }
+
+  //     if (this.motionBlurColorBuffer) {
+  //       gl.activeTexture(gl.TEXTURE25);
+  //       gl.bindTexture(gl.TEXTURE_2D, this.motionBlurColorBuffer);
+  //       gl.uniform1i(this.programContainer.getUniformLocation("motionBlurTexture"), 25);
+  //     }
+
+  //     // // DoF
+  //     // gl.activeTexture(gl.TEXTURE17);
+  //     // gl.bindTexture(gl.TEXTURE_2D, this.depthTexture);
+
+  //     // Rain drops on screen
+  //     if (this.rainTexture) {
+  //       gl.activeTexture(gl.TEXTURE17);
+  //       gl.bindTexture(gl.TEXTURE_2D, this.rainTexture);
+  //       gl.uniform1i(this.programContainer.getUniformLocation("rainTexture"), 17);
+  //     }
+
+  //     // Downscaled framebuffer
+  //     gl.activeTexture(gl.TEXTURE18);
+  //     gl.bindTexture(gl.TEXTURE_2D, this.downscaledFramebuffer.colorBuffer);
+  //     gl.uniform1i(this.programContainer.getUniformLocation("downscaledTexture"), 18);
+
+  //     // Set uniforms
+  //     gl.uniform1f(this.programContainer.getUniformLocation("iTime"), (new Date() - renderer.startTime) / 1000);
+  
+  //     if (gl.canvas.width !== _lastWidth || gl.canvas.height !== _lastHeight) {
+  //       _lastWidth = gl.canvas.width;
+  //       _lastHeight = gl.canvas.height;
+  //       gl.uniform2f(this.programContainer.getUniformLocation("SIZE"), gl.canvas.width, gl.canvas.height);
+  //     }
+
+  //     // if (this.exposure !== _lastExposure) {
+  //     //   _lastExposure = this.exposure;
+  //     //   gl.uniform1f(this.programContainer.getUniformLocation("exposure"), this.exposure);
+  //     // }
+
+  //     // if (this.gamma !== _lastGamma) {
+  //     //   _lastGamma = this.gamma;
+  //     //   gl.uniform1f(this.programContainer.getUniformLocation("gamma"), this.gamma);
+  //     // }
+
+  //     // if (this.motionBlurStrength !== _lastMotionBlurStrength) {
+  //     //   _lastMotionBlurStrength = this.motionBlurStrength;
+  //     //   gl.uniform1f(this.programContainer.getUniformLocation("motionBlurStrength"), this.motionBlurStrength);
+  //     //   gl.uniform1i(this.programContainer.getUniformLocation("enableMotionBlur"), this.motionBlurStrength < 1e-6 ? 0 : 1);
+  //     // }
+
+  //     // Camera properties
+  //     gl.uniform1f(this.programContainer.getUniformLocation("near"), camera.getNear());
+  //     gl.uniform1f(this.programContainer.getUniformLocation("far"), camera.getFar());
+
+  //     // Current FPS for motion blur
+  //     gl.uniform1f(this.programContainer.getUniformLocation("currentFPS"), 1 / renderer.frameTime);
+
+  //     // Bloom settings
+  //     gl.uniform1f(this.programContainer.getUniformLocation("bloomIntensity"), renderer.bloom.getIntensity());
+  //     // gl.uniform1i(this.programContainer.getUniformLocation("tonemapping"), this.tonemapping);
+  //     // gl.uniform1f(this.programContainer.getUniformLocation("saturation"), this.saturation);
+
+  //     for (var property of properties) {
+  //       property.update();
+  //     }
+
+  //     // Render
+  //     screenQuad.render();
+  //   };
+
+  //   function getShaderSource() {
+  //     var p = postprocessingSource["webgl" + renderer.version].postprocessing;
+  //     if (!p || !p.vertex || !p.fragment) {
+  //       console.error(`Program postprocessing not found for version ${renderer.version}!`);
+  //       return;
+  //     }
+  
+  //     var fragment = "";
+
+  //     if (renderer.version > 1) {
+  //       fragment += "#version 300 es\n";
+  //     }
+
+  //     if (renderer.version > 1 && postprocessing.motionBlurStrength.value > 1e-6) {
+  //       fragment += "#define ENABLE_MOTIONBLUR\n";
+  //     }
+
+  //     fragment += "#define TONEMAPPING " + postprocessing.tonemapping.value + "\n";
+
+  //     if (renderer.godrays) {
+  //       fragment += "#define ENABLE_GODRAYS\n";
+  //     }
+
+  //     if (renderer.bloom.getIntensity() > 1e-6) {
+  //       fragment += "#define ENABLE_BLOOM\n";
+  //     }
+
+  //     // if (Math.abs(postprocessing.saturation.value) > 1e-6) {
+  //     //   fragment += "#define ENABLE_COLORGRADING\n";
+  //     // }
+
+  //     fragment += p.fragment;
+
+  //     return {
+  //       vertex: p.vertex,
+  //       fragment: fragment,
+  //     };
+  //   }
+  // }
+
+  // function Bloom(programContainer) {
+  //   this.programContainer = programContainer;
+
+  //   var _enabled = true;
+  //   var _maxDownsamples = 7;
+  //   var _sampleScale = 1;
+  //   var _threshold = 1;
+  //   var _knee = 0.5;
+  //   var _clamp = 10;
+  //   var _intensity = 0.05;
+
+  //   var _cachedProperties = {
+  //     enabled: _enabled
+  //   };
+
+  //   this.downsampleFramebuffers = [];
+  //   this.upsampleFramebuffers = [];
+
+  //   // Screen quad
+  //   var vertices = new Float32Array([
+  //     -1.0,  1.0,
+  //     -1.0, -1.0,
+  //     1.0,  1.0,
+  //     1.0, -1.0,
+  //   ]);
+  //   var vertexBuffer = createBuffer(vertices);
+
+  //   useProgram(this.programContainer.program);
+  //   gl.uniform1i(this.programContainer.getUniformLocation("mainTexture"), 0);
+  //   gl.uniform1i(this.programContainer.getUniformLocation("secondTexture"), 1);
+
+  //   let getNrDownsamples = () => {
+  //     let minDim = Math.min(gl.canvas.width, gl.canvas.height);
+  //     let sizeLimit = Math.floor(Math.log(minDim) / Math.log(2));
+  //     let downsamples = Math.min(_maxDownsamples, sizeLimit);
+  //     return downsamples;
+  //   };
+
+  //   this.resizeFramebuffers = function() {
+  //     for (let i = 0; i < this.downsampleFramebuffers.length; i++) {
+  //       gl.deleteFramebuffer(this.downsampleFramebuffers[i].framebuffer);
+  //     }
+  //     for (let i = 0; i < this.upsampleFramebuffers.length; i++) {
+  //       gl.deleteFramebuffer(this.upsampleFramebuffers[i].framebuffer);
+  //     }
+
+  //     this.downsampleFramebuffers = [];
+  //     this.upsampleFramebuffers = [];
+
+  //     let downsamples = getNrDownsamples();
+
+  //     for (let i = 0; i < downsamples; i++) {
+  //       let scale = Math.pow(0.5, i + 1);
+  //       this.downsampleFramebuffers.push(createFramebuffer(Math.floor(gl.canvas.width * scale), Math.floor(gl.canvas.height * scale)));
+  //     }
+  
+  //     for (let i = 0; i < downsamples - 1; i++) {
+  //       let scale = Math.pow(0.5, downsamples - 1 - i);
+  //       this.upsampleFramebuffers.push(createFramebuffer(Math.floor(gl.canvas.width * scale), Math.floor(gl.canvas.height * scale)));
+  //     }
+  //   };
+
+  //   this.resizeFramebuffers();
+
+  //   this.render = function() {
+  //     if (!_enabled && _cachedProperties.enabled) {
+  //       this.clearBloom();
+  //     }
+  //     _cachedProperties.enabled = _enabled;
+
+  //     if (!_enabled) {
+  //       return;
+  //     }
+
+  //     useProgram(this.programContainer.program);
+
+  //     gl.uniform1f(this.programContainer.getUniformLocation("_SampleScale"), _sampleScale);
+  //     gl.uniform1f(this.programContainer.getUniformLocation("threshold"), _threshold);
+  //     gl.uniform1f(this.programContainer.getUniformLocation("knee"), _knee);
+  //     gl.uniform1f(this.programContainer.getUniformLocation("_Clamp"), _clamp);
+
+  //     let pl = this.programContainer.getAttribLocation("position");
+  //     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+  //     gl.enableVertexAttribArray(pl);
+  //     gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 8, 0);
+
+  //     gl.activeTexture(gl.TEXTURE0);
+
+  //     for (var i = 0; i < this.downsampleFramebuffers.length; i++) {
+  //       var framebuffer = this.downsampleFramebuffers[i];
+
+  //       gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer.framebuffer);
+  //       gl.viewport(0, 0, framebuffer.width, framebuffer.height);
+  //       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  //       gl.bindTexture(gl.TEXTURE_2D, i < 1 ? renderer.postprocessing.sceneRenderBuffer.colorTexture : this.downsampleFramebuffers[i - 1].colorBuffer);
+
+  //       if (this.programContainer.getUniformLocation("mainTextureSize")) {
+  //         gl.uniform2fv(this.programContainer.getUniformLocation("mainTextureSize"), i < 1 ? [gl.canvas.width, gl.canvas.height] : [this.downsampleFramebuffers[i - 1].width, this.downsampleFramebuffers[i - 1].height]);
+  //       }
+  //       gl.uniform2f(this.programContainer.getUniformLocation("screenSize"), framebuffer.width, framebuffer.height);
+  //       gl.uniform1i(this.programContainer.getUniformLocation("stage"), i == 0 ? 0 : 1);
+
+  //       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  //     }
+
+  //     gl.uniform1i(this.programContainer.getUniformLocation("stage"), 2);
+
+  //     for (let i = 0; i < this.upsampleFramebuffers.length; i++) {
+  //       let framebuffer = this.upsampleFramebuffers[i];
+
+  //       gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer.framebuffer);
+  //       gl.viewport(0, 0, framebuffer.width, framebuffer.height);
+  //       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  //       gl.activeTexture(gl.TEXTURE0);
+  //       gl.bindTexture(gl.TEXTURE_2D, i < 1 ? this.downsampleFramebuffers[this.downsampleFramebuffers.length - 1].colorBuffer : this.upsampleFramebuffers[i - 1].colorBuffer);
+
+  //       gl.activeTexture(gl.TEXTURE1);
+  //       gl.bindTexture(gl.TEXTURE_2D, this.downsampleFramebuffers[this.downsampleFramebuffers.length - 2 - i].colorBuffer);
+
+  //       if (this.programContainer.getUniformLocation("mainTextureSize")) {
+  //         let fbd = i < 1 ? this.downsampleFramebuffers[this.downsampleFramebuffers.length - 1] : this.upsampleFramebuffers[i - 1];
+  //         gl.uniform2f(this.programContainer.getUniformLocation("mainTextureSize"), fbd.width, fbd.height);
+  //       }
+  //       gl.uniform2f(this.programContainer.getUniformLocation("screenSize"), framebuffer.width, framebuffer.height);
+
+  //       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  //     }
+  //   };
+
+  //   this.clearBloom = function() {
+  //     gl.bindFramebuffer(gl.FRAMEBUFFER, this.upsampleFramebuffers[this.upsampleFramebuffers.length - 1].framebuffer);
+
+  //     var lastClearColor = currentClearColor;
+  //     clearColor(0, 0, 0, 1);
+  //     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  //     clearColor(...lastClearColor);
+  //   };
+
+  //   this.setProperties = function(properties) {
+  //     _enabled = properties.enabled;
+  //     _sampleScale = properties.sampleScale;
+  //     _threshold = properties.threshold;
+  //     _knee = properties.knee;
+  //     _clamp = properties.clamp;
+  //     _intensity = properties.intensity;
+  //   };
+
+  //   this.getIntensity = function() {
+  //     return _intensity;
+  //   };
+  // }
+
+  // function Godrays(programContainer) {
+  //   // this.material = new Material(programContainer);
+  //   this.material = new NewMaterial(programContainer);
+
+  //   var scale = 0.2;
+  //   this.framebufferData = createFramebuffer(gl.canvas.width * scale, gl.canvas.height * scale);
+
+  //   // Required for z sorting (better quality than above)
+  //   var depthBuffer = gl.createRenderbuffer();
+  //   gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+  //   gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, gl.canvas.width * scale, gl.canvas.height * scale);
+  //   gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+
+  //   this.render = function(scene, camera) {
+  //     gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebufferData.framebuffer);
+  //     gl.viewport(0, 0, this.framebufferData.width, this.framebufferData.height);
+  //     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  //     scene.render(camera, {
+  //       renderPass: ENUMS.RENDERPASS.OPAQUE,
+  //       materialOverride: this.material
+  //     });
+
+  //     renderer.skybox.render(camera, scene.skyboxCubemap);
+  //   };
+  // }
 
   function ShadowCascades(programContainers, levelSizes = [50, 8], levelBiases = [-0.0025, -0.0005], res = 1024) {
     var _this = this;
@@ -3415,9 +3804,9 @@ function Renderer(settings = {}) {
       gl.uniformMatrix4fv(this.uniformLocations.viewDirectionProjectionInverse, false, matrix);
       this.programContainer.setUniform("fogColor", scene.fogColor);
       this.programContainer.setUniform("fogIntensity", scene.skyboxFogIntensity);
-      this.programContainer.setUniform("iTime", renderer.getTime());
-      this.programContainer.setUniform("_SkyboxSpeed", scene.skyboxAnimation.speed);
-      this.programContainer.setUniform("_SkyboxDirection", Vector.toArray(scene.skyboxAnimation.direction));
+      // this.programContainer.setUniform("iTime", renderer.getTime());
+      // this.programContainer.setUniform("_SkyboxSpeed", scene.skyboxAnimation.speed);
+      // this.programContainer.setUniform("_SkyboxDirection", Vector.toArray(scene.skyboxAnimation.direction));
 
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap);
@@ -4188,18 +4577,18 @@ function Renderer(settings = {}) {
 
     // Material specific uniforms
     // if (!this.currentBoundMaterials.has(material)) {
-      programContainer.setUniform("opaque", material.opaque, false);
+    programContainer.setUniform("opaque", material.opaque, false);
 
-      for (let uniformKey in material.uniforms) {
-        if (programContainer.activeUniforms[uniformKey]) {
-          if (isTextureUniform(material.uniforms[uniformKey])) {
-            handleTextureBind(material.uniforms[uniformKey], uniformKey);
-          }
-          else {
-            programContainer.setUniform(uniformKey, material.uniforms[uniformKey]);
-          }
+    for (let uniformKey in material.uniforms) {
+      if (programContainer.activeUniforms[uniformKey]) {
+        if (isTextureUniform(material.uniforms[uniformKey])) {
+          handleTextureBind(material.uniforms[uniformKey], uniformKey);
+        }
+        else {
+          programContainer.setUniform(uniformKey, material.uniforms[uniformKey]);
         }
       }
+    }
 
     //   this.currentBoundMaterials.set(material, 1);
     // }
@@ -4437,14 +4826,23 @@ function Renderer(settings = {}) {
       //   matrixLocations.push(gl.getAttribLocation(mat.program, 'modelMatrix'));
       // }
 
-      this.needsBufferUpdate = false;
+      // Transform data
+      this._matrixNeedsUpdate = false;
       this.matrixBuffer = gl.createBuffer();
       this.matrices = [];
 
+      // Dither data
       this.enableDither = true;
       this.ditherBuffer = gl.createBuffer();
       this.ditherAmount = new WeakMap();
       this.ditherData = null;
+      this._ditherNeedsUpdate = true;
+
+      // Color data
+      this.instanceColorBuffer = gl.createBuffer();
+      this.instanceColors = new WeakMap();
+      this.instanceColorData = null;
+      this._colorNeedsUpdate = true;
     }
 
     // bruh bounding box does not take into account the size of each mesh, only its origin
@@ -4471,45 +4869,39 @@ function Renderer(settings = {}) {
       return dst;
     }
   
-    addInstance(instance/*, update = true*/) {
+    addInstance(instance, forceUpdate = false) {
       if (!Matrix.isMatrix(instance)) {
         throw new Error("Instance must be a matrix");
       }
 
-      var newMat = Matrix.copy(instance);
-      this.matrices.push(newMat);
-      this.needsBufferUpdate = true;
-
-      if (this.enableDither) {
-        this.ditherAmount.set(newMat, 0);
-      }
-  
-      // if (update) {
-      //   this.updateMatrixData();
-      // }
-  
-      return newMat;
+      const newMat = Matrix.copy(instance);
+      return this.addInstanceDontCopy(newMat, forceUpdate);
     }
 
-    addInstanceDontCopy(instance/*, update = true*/) {
-      this.matrices.push(instance);
-      this.needsBufferUpdate = true;
+    addInstanceDontCopy(instance, forceUpdate = false) {
+      this._matrixNeedsUpdate = true;
+      this._ditherNeedsUpdate = true;
+      this._colorNeedsUpdate = true;
 
+      this.matrices.push(instance);
+      this.instanceColors.set(instance, [1, 1, 1, 1]);
       if (this.enableDither) {
         this.ditherAmount.set(instance, 0);
       }
   
-      // if (update) {
-      //   this.updateMatrixData();
-      // }
+      if (forceUpdate) {
+        this._updateMatrixData();
+        this._updateColorBuffer();
+        this._updateDitherBuffer();
+      }
   
       return instance;
     }
   
     updateInstance(instance, newMatrix, updateBuffer = true) {
-      if (this.needsBufferUpdate) {
-        this.updateMatrixData();
-        this.needsBufferUpdate = false;
+      if (this._matrixNeedsUpdate) {
+        this._updateMatrixData();
+        this._matrixNeedsUpdate = false;
       }
 
       Matrix.copy(newMatrix, instance);
@@ -4519,26 +4911,62 @@ function Renderer(settings = {}) {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.matrixBuffer);
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.matrixData);
       }
+
+      this._ditherNeedsUpdate = true;
+      this._colorNeedsUpdate = true;
     }
   
     removeInstance(instance) {
-      var index = this.matrices.indexOf(instance);
-      if (index != -1) {
-        this.matrices.splice(index, 1);
-
-        this.needsBufferUpdate = true;
-        // this.updateMatrixData();
+      const index = this.matrices.indexOf(instance);
+      if (index === -1) {
+        return;
       }
+
+      this.matrices.splice(index, 1);
+
+      this._matrixNeedsUpdate = true;
+      this._ditherNeedsUpdate = true;
+      this._colorNeedsUpdate = true;
     }
 
     removeAllInstances() {
       this.matrices = [];
 
-      this.needsBufferUpdate = true;
-      // this.updateMatrixData();
+      this._matrixNeedsUpdate = true;
+      this._ditherNeedsUpdate = true;
+      this._colorNeedsUpdate = true;
+    }
+
+    /**
+     * Set the albedo color of an instance
+     * @param {Matrix} instance 
+     * @param {[number, number, number, number]} color 
+     */
+    setColor(instance, color) {
+      this.instanceColors.set(instance, color);
+      this._colorNeedsUpdate = true;
+    }
+
+    /**
+     * Set the dither amount of an instance
+     * @param {Matrix} instance 
+     * @param {number} ditherAmount 
+     */
+    setDitherAmount(instance, ditherAmount = 0) {
+      if (!this.enableDither) {
+        return;
+      }
+
+      this.ditherAmount.set(instance, ditherAmount);
+      this._ditherNeedsUpdate = true;
     }
   
-    updateMatrixData() {
+    _updateMatrixData() {
+      if (!this._matrixNeedsUpdate) {
+        return;
+      }
+      this._matrixNeedsUpdate = false;
+
       this.matrixData = new Float32Array(this.matrices.length * 16);
       for (var i = 0; i < this.matrices.length; i++) {
         this.matrixData.set(this.matrices[i], i * 16);
@@ -4548,18 +4976,38 @@ function Renderer(settings = {}) {
       gl.bufferData(gl.ARRAY_BUFFER, this.matrixData, gl.DYNAMIC_DRAW);
     }
 
-    setDitherAmount(instance, ditherAmount = 0) {
-      if (!this.enableDither) {
+    _updateColorBuffer() {
+      if (!this._colorNeedsUpdate) {
         return;
       }
+      this._colorNeedsUpdate = false;
 
-      this.ditherAmount.set(instance, ditherAmount);
+      this.instanceColorData = new Float32Array(this.matrices.length * 4); // 4 color channels (rgba) for each instance
+      this.instanceColorData.fill(1); // Default white
+
+      for (let i = 0; i < this.matrices.length; i++) {
+        // Only update part of array if the default color is overridden.
+        const colorLookup = this.instanceColors.get(this.matrices[i]);
+        if (!colorLookup) {
+          continue;
+        }
+
+        this.instanceColorData.set(colorLookup, i * 4);
+      }
+  
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceColorBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, this.instanceColorData, gl.STREAM_DRAW);
     }
 
-    updateDitherBuffer() {
+    _updateDitherBuffer() {
       if (!this.enableDither) {
         return;
       }
+
+      if (!this._ditherNeedsUpdate) {
+        return;
+      }
+      this._ditherNeedsUpdate = false;
 
       this.ditherData = new Float32Array(this.matrices.length);
       for (var i = 0; i < this.matrices.length; i++) {
@@ -4576,15 +5024,9 @@ function Renderer(settings = {}) {
         return;
       }
 
-      if (this.needsBufferUpdate) {
-        this.updateMatrixData();
-        this.needsBufferUpdate = false;
-      }
-
-      // Only update once instead of twice
-      if (shadowPass) {
-        this.updateDitherBuffer();
-      }
+      this._updateMatrixData();
+      this._updateDitherBuffer();
+      this._updateColorBuffer();
 
       if (this.matrices.length > 0) {
         for (var i = 0; i < this.meshData.length; i++) {
@@ -4607,12 +5049,22 @@ function Renderer(settings = {}) {
           useProgram(mat.programContainer.program);
           md.bindBuffers(mat.programContainer);
   
+          // Model matrix
           gl.bindBuffer(gl.ARRAY_BUFFER, this.matrixBuffer);
           var matrixLoc = mat.programContainer.getAttribLocation("modelMatrix");
           for (var j = 0; j < 4; j++) {
             const loc = matrixLoc + j;
             gl.enableVertexAttribArray(loc);
             gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 4 * 16, j * 16);
+            vertexAttribDivisor(loc, 1);
+          }
+
+          // Color
+          const loc = mat.programContainer.getAttribLocation("color");
+          if (loc) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceColorBuffer);
+            gl.enableVertexAttribArray(loc);
+            gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 4 * 4, 0);
             vertexAttribDivisor(loc, 1);
           }
 
@@ -5737,7 +6189,7 @@ function Renderer(settings = {}) {
 
   this.loadTextureAsync = loadTextureAsync;
   async function loadTextureAsync(url, settings = {}) {
-    var image;
+    let image;
     if (typeof url == "string") {
       image = await loadImage(url);
     }
@@ -6044,7 +6496,7 @@ function Renderer(settings = {}) {
 
         let pc = null;
         // if (renderer.renderpipeline instanceof ForwardPBRRenderpipeline) { // if-statement does not work with deferred
-          pc = renderer.programContainers.litSkinned;
+        pc = renderer.programContainers.litSkinned;
         // }
 
         let currentMat = skin.obj.meshRenderer.materials[j];
@@ -7298,6 +7750,13 @@ function Renderer(settings = {}) {
     this.renderer = renderer;
     const gl = this.renderer.gl;
   
+    /**
+     * Render scene using this renderpipeline
+     * @param {Camera} camera 
+     * @param {Camera[]} secondaryCameras 
+     * @param {Scene} scene 
+     * @param {{}} settings 
+     */
     this.render = function(camera, secondaryCameras, scene, settings) {
       if (typeof camera === "undefined") {
         throw new Error("Camera is not defined");
@@ -7432,7 +7891,7 @@ function Renderer(settings = {}) {
           }
           else {
             // Bind post processing framebuffer
-            if (this.renderer.postprocessing && _settings.enablePostProcessing) {
+            if (usePostProcessing) {
               this.renderer.postprocessing.bindFramebuffer();
             }
             else {
@@ -7458,23 +7917,10 @@ function Renderer(settings = {}) {
   
       gl.colorMask(true, true, true, true);
   
-      // Godrays
-      if (this.renderer.godrays) {
-        this.renderer.godrays.render(scene, camera);
-      }
-  
       bindVertexArray(null);
   
-      // Blit anti aliasing texture
-      if (this.renderer.postprocessing && _settings.enablePostProcessing) {
-        this.renderer.postprocessing.blitAA();
-      }
-  
-      // Bloom
-      if (this.renderer.bloom && _settings.enableBloom) this.renderer.bloom.render();
-  
       // Post processing
-      if (this.renderer.postprocessing && _settings.enablePostProcessing) this.renderer.postprocessing.render();
+      if (this.renderer.postprocessing && _settings.enablePostProcessing) this.renderer.postprocessing.render(camera);
     
       Matrix.copy(camera.viewMatrix, camera.prevViewMatrix);
 
@@ -7590,11 +8036,6 @@ function Renderer(settings = {}) {
 
       // gl.colorMask(true, true, true, true);
 
-      // // Godrays
-      // if (this.godrays) {
-      //   this.godrays.render(scene, camera);
-      // }
-
       // bindVertexArray(null);
 
       // // Blit anti aliasing texture
@@ -7606,7 +8047,7 @@ function Renderer(settings = {}) {
       // if (this.bloom && _settings.enableBloom) this.bloom.render();
 
       // // Post processing
-      // if (this.postprocessing && _settings.enablePostProcessing) this.postprocessing.render();
+      // if (this.postprocessing && _settings.enablePostProcessing) this.postprocessing.render(camera);
     
       // camera.prevViewMatrix = Matrix.copy(camera.viewMatrix);
     };
@@ -7714,12 +8155,12 @@ function Renderer(settings = {}) {
       bloomPass();
 
       bindVertexArray(null);
-      this.renderer.postprocessing.render();
+      this.renderer.postprocessing.render(camera);
 
       Matrix.copy(camera.viewMatrix, camera.prevViewMatrix);
     };
 
-    var gBufferPass = (camera, secondaryCameras, scene, settings) => {
+    var gBufferPass = (camera, secondaryCameras, scene, /*settings*/) => {
       gl.bindFramebuffer(gl.FRAMEBUFFER, gBuffer.framebuffer);
       gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -7755,9 +8196,9 @@ function Renderer(settings = {}) {
             let gBufferProgramContainer = gBufferProgramContainers.instanced;
             useProgram(gBufferProgramContainer.program);
 
-            if (mr.needsBufferUpdate) {
-              mr.updateMatrixData();
-              mr.needsBufferUpdate = false;
+            if (mr._matrixNeedsUpdate) {
+              mr._updateMatrixData();
+              mr._matrixNeedsUpdate = false;
             }
 
             if (mr.matrices.length > 0) {
@@ -7860,7 +8301,7 @@ function Renderer(settings = {}) {
       this.renderer.bloom?.render();
     };
 
-    var forwardPass = (targetFramebuffer, camera, secondaryCameras, scene, settings) => {
+    var forwardPass = (targetFramebuffer, camera, secondaryCameras, scene/*, settings*/) => {
       // gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.renderer.postprocessing.getFramebuffer());
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, targetFramebuffer);
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, gBuffer.framebuffer);
@@ -7945,7 +8386,7 @@ function Renderer(settings = {}) {
       gl.colorMask(true, true, true, true);
     };
     
-    var combinePass = (camera, secondaryCameras, scene, settings) => {
+    var combinePass = (camera, secondaryCameras, scene/*, settings*/) => {
       useProgram(combineProgramContainer.program);
 
       gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
@@ -8274,7 +8715,7 @@ function Renderer(settings = {}) {
         this.framebuffer = createFramebuffer(gl.canvas.width, gl.canvas.height);
       };
 
-      this.pass = function(camera, secondaryCameras, scene, settings) {
+      this.pass = function(camera/*, secondaryCameras, scene, settings*/) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer.framebuffer);
         gl.viewport(0, 0, gl.canvas.width * this.scale, gl.canvas.height * this.scale);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);

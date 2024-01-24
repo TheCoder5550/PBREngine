@@ -790,6 +790,22 @@ export default class Matrix {
 
   // Vector
 
+  static transform4DVector(m, v, dst) {
+    dst = dst || new Vector();
+
+    const vx = v.x;
+    const vy = v.y;
+    const vz = v.z;
+    const vw = v.w;
+
+    dst.x = m[0] * vx + m[4] * vy + m[8] * vz + m[12] * vw;
+    dst.y = m[1] * vx + m[5] * vy + m[9] * vz + m[13] * vw;
+    dst.z = m[2] * vx + m[6] * vy + m[10] * vz + m[14] * vw;
+    dst.w = m[3] * vx + m[7] * vy + m[11] * vz + m[15] * vw;
+
+    return dst;
+  }
+
   static transformVector(m, v, dst) {
     dst = dst || new Vector();
 

@@ -69,6 +69,8 @@ export default function FlyCamera(renderer, cameraSettings) {
 
     this.camera.transform.rotation = Quaternion.euler(this.eulerAngles.x, this.eulerAngles.y, this.eulerAngles.z);
   };
+
+  renderer.on("renderloop", (dt) => this.update(dt));
 }
 
 function flyCamera(renderer, camera, eulerAngles, dt = 1) {

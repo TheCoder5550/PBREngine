@@ -69,6 +69,7 @@ in vec3 tangent;
 in vec4 color;
 in vec2 uv;
 in mat4 modelMatrix;
+in float ditherAmount;
 
 // uniform mat4 projectionMatrix;
 // uniform mat4 viewMatrix;
@@ -86,12 +87,14 @@ out vec3 vNormal;
 out vec3 vTangent;
 out vec4 vColor;
 out vec2 vUV;
+out float vDitherAmount;
 
 void main() {
   vNormal = normal;
   vTangent = tangent;
   vUV = uv;
-  vColor = color;
+  vColor = 1. - color;
+  vDitherAmount = ditherAmount;
   vPosition = vec3(modelMatrix * vec4(position, 1.0));
   
   gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
@@ -116,6 +119,9 @@ in vec3 vTangent;
 in vec4 vColor;
 in vec2 vUV;
 
+in float vDitherAmount;
+uniform sampler2D ditherTexture;
+
 const int levels = 2;
 uniform sharedPerScene {
   mat4 projectionMatrix;
@@ -128,6 +134,13 @@ ${lit.fogBase}
 
 void main() {
   motionVector = vec2(0.5);
+
+  // Dither
+  float dither = texture(ditherTexture, gl_FragCoord.xy / 8.).r;
+  float d = 1. - vDitherAmount;
+  if (d + (d < 0. ? dither : -dither) < 0.) {
+    discard;
+  }
   
   vec4 currentAlbedo = useTexture ? texture(albedoTexture, vUV) : vec4(1);
   currentAlbedo *= albedo;

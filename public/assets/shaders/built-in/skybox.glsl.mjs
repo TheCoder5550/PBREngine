@@ -120,16 +120,17 @@ var output = {
           vec4 proj = viewDirectionProjectionInverse * vPosition;
           vec3 viewDir = normalize(proj.xyz / proj.w);
 
-          // vec3 col = texture(skybox, viewDir).rgb * environmentIntensity;
+          vec3 col = texture(skybox, viewDir).rgb * environmentIntensity;
 
-          vec3 curl = normalize(_SkyboxDirection);
-          float t = iTime * _SkyboxSpeed;
-          vec4 uvw1 = flowUVW(viewDir, curl, t, false);
-          vec4 uvw2 = flowUVW(viewDir, curl, t, true);
+          // Will missalign the skybox even with skyboxspeed = 0;
+          // vec3 curl = normalize(_SkyboxDirection);
+          // float t = iTime * _SkyboxSpeed;
+          // vec4 uvw1 = flowUVW(viewDir, curl, t, false);
+          // vec4 uvw2 = flowUVW(viewDir, curl, t, true);
 
-          vec3 sky = texture(skybox, uvw1.xyz).rgb * uvw1.w;
-          vec3 sky2 = texture(skybox, uvw2.xyz).rgb * uvw2.w;
-          vec3 col = (sky + sky2) * environmentIntensity;
+          // vec3 sky = texture(skybox, uvw1.xyz).rgb * uvw1.w;
+          // vec3 sky2 = texture(skybox, uvw2.xyz).rgb * uvw2.w;
+          // vec3 col = (sky + sky2) * environmentIntensity;
 
           // Fog
           col = mix(col, fogColor.rgb, fogIntensity * clamp(1. - viewDir.y * 10., 0., 1.));

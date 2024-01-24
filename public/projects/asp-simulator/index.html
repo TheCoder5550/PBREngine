@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASP Simulator</title>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="ui">
+    <div class="bottom">
+      <div class="gps">
+        <span>GPS</span>
+        <span id="mph">0</span>
+        <span>MPH</span>
+      </div>
+
+      <div class="statusBar">
+        <span class="active">[mic]</span>
+        <span id="brakesStatus">[brakes]</span>
+        <span id="lightsStatus">[lights]</span>
+        <span id="sirenStatus">[siren]</span>
+      </div>
+    </div>
+
+    <div class="autopilot" id="autopilot">
+      [AUTOPILOT]
+    </div>
+  </div>
+
+  <script src="main.js" type="module"></script>
+</body>
+</html>

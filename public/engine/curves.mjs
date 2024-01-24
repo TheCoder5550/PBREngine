@@ -106,6 +106,11 @@ export function CatmullRomCurve(points, alpha = 0.5, loop = false) {
     ));
   }
 
+  this.length = 0;
+  for (const segment of segments) {
+    this.length += segment.length;
+  }
+
   this.getTangent = function(t) {
     const a = this.getPoint(t);
     const b = this.getPoint(t + 0.01);
@@ -300,6 +305,20 @@ function CatmullRomSegment(p0, p1, p2, p3, alpha = 0.5) {
     Remap(k1, k2, B1, B2, u, dst);
     return dst;
   };
+
+  this.length = 0;
+
+  const tempPointA = new Vector();
+  const tempPointB = new Vector();
+  for (let i = 0; i < 50; i++) {
+    const t1 = i / 50;
+    const t2 = (i + 1) / 50;
+
+    this.getPoint(t1, tempPointA);
+    this.getPoint(t2, tempPointB);
+
+    this.length += Vector.distance(tempPointA, tempPointB);
+  }
 
   function Remap(a, b, c, d, u, dst) {
     return Vector.lerp(c, d, (u - a) / (b - a), dst);

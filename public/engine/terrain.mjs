@@ -53,8 +53,10 @@ function Terrain(scene, settings = {}) {
 
     var SRGBFormat = renderer.getSRGBFormats();
 
-    var grassAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/brown_mud_leaves_01_2k_jpg/brown_mud_leaves_01_diff_2k.jpg", { ...SRGBFormat });
-    var grassNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/brown_mud_leaves_01_2k_jpg/brown_mud_leaves_01_Nor_2k.jpg");
+    var grassAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/Grass_001_SD/Grass_001_COLOR.jpg", { ...SRGBFormat });
+    var grassNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/Grass_001_SD/Grass_001_NORM.jpg");
+    // var grassAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/brown_mud_leaves_01_2k_jpg/brown_mud_leaves_01_diff_2k.jpg", { ...SRGBFormat });
+    // var grassNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/brown_mud_leaves_01_2k_jpg/brown_mud_leaves_01_Nor_2k.jpg");
 
     var stoneAlbedo = await renderer.loadTextureAsync(renderer.path + "assets/textures/rocks_ground_06/diffuse.jpg", { ...SRGBFormat });
     var stoneNormal = await renderer.loadTextureAsync(renderer.path + "assets/textures/rocks_ground_06/normal.png");
@@ -66,6 +68,11 @@ function Terrain(scene, settings = {}) {
     this.terrainMat.setUniform("roughness", 1);
     this.terrainMat.setUniform("albedoTextures[0]", [ grassAlbedo, stoneAlbedo, snowAlbedo ]);
     this.terrainMat.setUniform("normalTextures[0]", [ grassNormal, stoneNormal, snowNormal ]);
+    this.terrainMat.setUniform("albedos[0]", [
+      1, 0.8, 1, 1,
+      1, 1, 1, 1,
+      1, 1, 1, 1,
+    ]);
   };
 
   let lastPosition;
@@ -249,9 +256,9 @@ function Terrain(scene, settings = {}) {
       chunk.terrain.isGenerated = true;
       chunk.whenDone();
     }
-    else if (e.data.messageType === MessageTypes.INIT) {
+    // else if (e.data.messageType === MessageTypes.INIT) {
 
-    }
+    // }
   };
   // console.log("posting!");
   // myWorker.postMessage({
@@ -284,6 +291,35 @@ function Terrain(scene, settings = {}) {
     var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * height * heightFalloff;
 
     return elevation;
+  };
+
+  // Steepness is the magnitude of the gradient
+  this.getSteepness = function(x, z) {
+    const step = 1;
+    const dx = (this.getHeight(x + step, z) - this.getHeight(x - step, z)) / (step * 2);
+    const dy = (this.getHeight(x, z + step) - this.getHeight(x, z - step)) / (step * 2);
+
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  this.getNormal = function(x, z, dst = new Vector()) {
+    const step = 1;
+    const dx = (this.getHeight(x + step, z) - this.getHeight(x - step, z)) / (step * 2);
+    const dz = (this.getHeight(x, z + step) - this.getHeight(x, z - step)) / (step * 2);
+
+    new Vector(
+      dx,
+      -1,
+      dz,
+      dst
+    );
+    Vector.normalizeTo(dst);
+    Vector.negateTo(dst);
+    return dst;
+  };
+
+  this.directionOfLeastChange = function(x, z) {
+    return Vector.cross(this.getNormal(x, z), Vector.up());
   };
 
   this.update = function(transform) {
@@ -618,12 +654,12 @@ function Terrain(scene, settings = {}) {
       }
 
       if (this.visInst) {
-        aabbVis.meshRenderer.removeInstance(this.visInst);
+        window.aabbVis.meshRenderer.removeInstance(this.visInst);
       }
     };
 
     this.highlight = function(highlightChildren = false) {
-      this.visInst = aabbVis.meshRenderer.addInstance(Matrix.transform([
+      this.visInst = window.aabbVis.meshRenderer.addInstance(Matrix.transform([
         ["translate", new Vector(this.position.x, 0, this.position.z)],
         ["sx", this.size / 2],
         ["sy", 20 / 2],
@@ -688,6 +724,7 @@ function Terrain(scene, settings = {}) {
     return [terrain, queueEntry];
   }
 
+  // eslint-disable-next-line no-unused-vars
   function createTerrainData(quadtree, neighbors, {w = 20, h = 20, res = 5, noiseOffset = Vector.zero(), uvOffset = Vector.zero(), uvScale = 20}) {
     var getHeight = _terrain.getHeight.bind(_terrain);
 

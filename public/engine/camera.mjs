@@ -1,7 +1,6 @@
 import { Transform } from "./transform.mjs";
 import Matrix from "./matrix.mjs";
 import Vector from "./vector.mjs";
-import Quaternion from "./quaternion.mjs";
 
 /**
  * @description Creates a camera
@@ -34,6 +33,8 @@ function Camera(settings = {}) {
   var _far = settings.far ?? 100;
   var _size = settings.size ?? 20;
   let _type = null;
+
+  this.projectionMatrix = null;
 
   this.updateFrustum = function() {
     Matrix.getPosition(this.transform.matrix, cameraPosition);

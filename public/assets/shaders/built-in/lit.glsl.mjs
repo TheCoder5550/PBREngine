@@ -600,7 +600,7 @@ void main() {
   vNormal = normal;
   vTangent = tangent;
   vUV = uv;
-  vColor = color;
+  vColor = 1. - color;
   vModelMatrix = modelMatrix;
   vDitherAmount = ditherAmount;
 
@@ -888,6 +888,7 @@ webgl2FragmentInstanced = webgl2FragmentInstanced.replace(/uniform mat4 vModelMa
 
 webgl2FragmentInstanced = webgl2FragmentInstanced.replace(/uniform float ditherAmount/g, "in float vDitherAmount");
 webgl2FragmentInstanced = webgl2FragmentInstanced.replace(/ditherAmount/g, "vDitherAmount");
+
 // bruh
 webgl2FragmentInstanced = webgl2FragmentInstanced.replace("motionVector = (NDCPos - PrevNDCPos).xy * 0.5 + 0.5;", "motionVector = vec2(0.5);");
 
