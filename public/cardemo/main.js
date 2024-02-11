@@ -396,6 +396,8 @@ document.addEventListener("DOMContentLoaded", async function () {
     shadowResolution: 1024 * 2,
     shadowSizes: [32 * 2, 256],
     shadowBiases: [1, 1],
+
+    logarithmicDepthBuffer: true,
   });
   renderer.disableContextMenu();
   renderer.canvas.style.position = "fixed";
@@ -1390,6 +1392,20 @@ document.addEventListener("DOMContentLoaded", async function () {
         var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * height;
 
         return lerp(-5, elevation, clamp01((Math.sqrt(i * i + j * j) - 700) / 200));
+      };
+
+      const tree = await renderer.loadGLTF(renderer.path + "assets/models/trees/wideTreeBillboard.glb");
+      tree.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.5);
+
+      const treeScatter = terrain.addScatter(tree, 6, 500 * 4, 200 * 4);
+      tree.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
+      treeScatter.minScale = 1 * 4;
+      treeScatter.maxScale = 1.8 * 4;
+      treeScatter.cross = true;
+      treeScatter.spawnProbability = (origin) => {
+        let p = 1 - clamp(mapValue(origin.y, 10, 50, 1, 0), 0, 0.95);
+        p *= 1 - smoothstep(origin.y, 60, 100);
+        return p;
       };
     
       await terrain.loadMaterials();

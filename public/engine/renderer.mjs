@@ -46,6 +46,7 @@ import * as shadowSource from "../assets/shaders/built-in/shadow.glsl.mjs";
 import * as equirectangularToCubemapSource from "../assets/shaders/built-in/equirectangularToCubemap.glsl.mjs";
 import * as diffuseCubemapSource from "../assets/shaders/built-in/cubemapConvolution.glsl.mjs";
 import * as specularCubemapSource from "../assets/shaders/built-in/prefilterCubemap.glsl.mjs";
+import { fragmentLogDepth, fragmentLogDepthMain, vertexLogDepth, vertexLogDepthMain } from "../assets/shaders/built-in/base.mjs";
 
 // bruh load shaders as javascript with import
 
@@ -62,6 +63,18 @@ import * as specularCubemapSource from "../assets/shaders/built-in/prefilterCube
 
 // bruh dont get all uniform locations when creating program, get the location when accessing a specific uniform and save that instead.
 
+/**
+ * Creates a renderer and a canvas
+ * @param {{
+ * renderScale?: number,
+ * debug?: boolean,
+ * catchProgramErrors?: boolean,
+ * logarithmicDepthBuffer?: boolean,
+ * path?: string,
+ * canvas?: HTMLCanvasElement,
+ * version?: number,
+ * }} settings 
+ */
 function Renderer(settings = {}) {
   var renderer = this;
   /** @type {WebGL2RenderingContext} */
@@ -70,6 +83,7 @@ function Renderer(settings = {}) {
   var renderScale = settings.renderScale ?? 1;
   this.debugMode = settings.debug ?? true;
   this.catchProgramErrors = settings.catchProgramErrors ?? (this.debugMode ? true : false);
+  this.logarithmicDepthBuffer = settings.logarithmicDepthBuffer ?? false;
 
   var frameNumber = 0;
   var time = 0;
@@ -1510,12 +1524,17 @@ function Renderer(settings = {}) {
   class CustomProgram {
     constructor(shader) {
       const s = shader["webgl" + renderer.version] ?? shader;
-      if (!s.vertex || !s.fragment) {
+      let vertex = s.vertex;
+      let fragment = s.fragment;
+
+      if (!vertex || !fragment) {
         console.error("Custom program does not have a vertex/fragment shader for version " + renderer.version);
         return;
       }
 
-      const program = renderer.createProgram(s.vertex, s.fragment);
+      [ vertex, fragment ] = injectLogDepth("", vertex, fragment);
+
+      const program = renderer.createProgram(vertex, fragment);
       return new renderer.ProgramContainer(program);
     }
   }
@@ -1685,7 +1704,9 @@ function Renderer(settings = {}) {
     if (!(name in _programContainers)) {
       console.log("Loading program:", name);
 
+      /** @type {String} */
       let vertex;
+      /** @type {String} */
       let fragment;
 
       if (source.vertex && source.fragment) {
@@ -1703,11 +1724,79 @@ function Renderer(settings = {}) {
         return;
       }
 
+      // Inject log depth handling into shaders
+      [ vertex, fragment ] = injectLogDepth(name, vertex, fragment);
+
       const program = renderer.createProgram(vertex, fragment);
       _programContainers[name] = new ProgramContainer(program);
     }
     
     return _programContainers[name];
+  }
+
+  /**
+   * Injects shader code for logarithmic depth
+   * @param {string} name 
+   * @param {string} vertex 
+   * @param {string} fragment 
+   * @returns [string, string]
+   */
+  function injectLogDepth(name, vertex, fragment) {
+    if (!renderer.logarithmicDepthBuffer) {
+      return [ vertex, fragment ];
+    }
+
+    if (
+      name === "shadow" ||
+      name === "shadowInstanced" ||
+      name === "shadowSkinned" ||
+      name === "skybox" ||
+      name === "equirectangularToCubemap"
+    ) {
+      return [ vertex, fragment ];
+    }
+
+    const mainRegex = /void\s+main\s*\(\s*\)\s*{/;
+    const mainEndRegex = /\{(?:[^}{]|\{(?:[^}{]|\{(?:[^}{]|\{[^}{]*\})*\})*\})*\}/; // Matches balanced curly brackets
+    
+    {
+      const findMain = mainRegex.exec(vertex);
+      if (!findMain) {
+        console.warn("Could not inject log depth");
+      }
+      else {
+        const mainBeginIndex = findMain.index;
+
+        let v = vertex.slice(mainBeginIndex); // Remove everyting before void main
+        v = v.split("\n").map(s => s.replace(/\s*\/\/.*/g, "")).join("\n"); // Remove comments
+        const findEndMain = mainEndRegex.exec(v);
+        
+        if (!findEndMain) {
+          console.warn("Could not find end of main");
+        }
+        else {
+          const endOfMainIndex = findEndMain.index + findEndMain[0].length - 1;
+          vertex = vertex.slice(0, mainBeginIndex) + `${vertexLogDepth}` + v.slice(0, endOfMainIndex) + `${vertexLogDepthMain}` + v.slice(endOfMainIndex);
+
+          // console.log(vertex);
+        }
+
+      }
+    }
+
+    {
+      const findMain = mainRegex.exec(fragment);
+      if (!findMain) {
+        console.warn("Could not inject log depth");
+      }
+      else {
+        const startIndex = findMain.index;
+        const endIndex = startIndex + findMain[0].length;
+        fragment = fragment.slice(0, startIndex) + `${fragmentLogDepth}\n\nvoid main() {\n${fragmentLogDepthMain}\n\n` + fragment.slice(endIndex);
+      }
+    }
+
+    return [ vertex, fragment ];
   }
 
   /*

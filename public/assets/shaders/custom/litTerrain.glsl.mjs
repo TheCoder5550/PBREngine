@@ -48,7 +48,6 @@ uniform mat4 prevViewMatrix;
 uniform mat4 prevModelMatrix;
 
 ${sharedUniforms}
-${vertexLogDepth}
 
 void main() {
   vNormal = normal;
@@ -109,8 +108,6 @@ void main() {
   
   gl_Position = projectionMatrix * viewMatrix * worldPosition;
 
-  ${vertexLogDepthMain}
-
   // Motion blur , bruh prev model matrix does not work!
   vec4 prevCs = projectionMatrix * prevViewMatrix * modelMatrix * vec4(position, 1.0);
   prevClipSpace = prevCs;
@@ -129,8 +126,6 @@ ${lit.fogBase}
 
 ${sharedUniforms}
 
-${fragmentLogDepth}
-
 const int nrTextures = 3;
 uniform sampler2D albedoTextures[nrTextures];
 uniform sampler2D normalTextures[nrTextures];
@@ -140,11 +135,10 @@ uniform vec4 albedos[nrTextures];
 
 uniform sampler2D heightmap;
 
-const float rockAltitude = 40.;
-const float snowAltitude = 300.;
+uniform float rockAltitude;
+uniform float snowAltitude;
 
 void main() {
-  ${fragmentLogDepthMain}
   ${lit.motionBlurMain}
 
   vec3 up = vec3(0, 1, 0);
@@ -155,7 +149,7 @@ void main() {
   float layeredNoise = LayeredNoise(currentUVs / 40.);
 
   float rockLerpFactor = smoothstep(0., 100., vPosition.y - rockAltitude) * (1. - smoothstep(0.4, 0.75, pow(dot(up, vNormal), 100.)));
-  float snowLerpFactor = smoothstep(snowAltitude, snowAltitude * 1.1, vPosition.y + layeredNoise * 30.);
+  float snowLerpFactor = smoothstep(snowAltitude, snowAltitude * 1.1, vPosition.y + layeredNoise * snowAltitude * 0.5);
 
   // Normals
   vec3 grassNormal = sampleTexture(normalTextures[0], currentUVs).rgb * 2. - 1.;

@@ -44,10 +44,7 @@ uniform sharedPerScene {
 
 ${lit.fogBase}
 
-${fragmentLogDepth}
-
 void main() {
-  ${fragmentLogDepthMain}
   motionVector = vec2(0.5);
 
   vec4 currentAlbedo = useTexture ? texture(albedoTexture, vUV) : vec4(1);
@@ -97,8 +94,6 @@ out vec4 vColor;
 out vec2 vUV;
 out float vDitherAmount;
 
-${vertexLogDepth}
-
 void main() {
   vNormal = normal;
   vTangent = tangent;
@@ -108,7 +103,6 @@ void main() {
   vPosition = vec3(modelMatrix * vec4(position, 1.0));
   
   gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
-  ${vertexLogDepthMain}
 }
 `;
 
@@ -145,10 +139,7 @@ uniform sharedPerScene {
 
 ${lit.fogBase}
 
-${fragmentLogDepth}
-
 void main() {
-  ${fragmentLogDepthMain}
   motionVector = vec2(0.5);
 
   // Dither

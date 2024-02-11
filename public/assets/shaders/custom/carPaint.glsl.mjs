@@ -104,10 +104,7 @@ vec3 getN(vec3 tangentNormal) {
   return N;
 }
 
-${fragmentLogDepth}
-
 void main() {
-  ${fragmentLogDepthMain}
   ${lit.motionBlurMain}
 
   // vec4 baseAlbedo = vec4(0, 0, 1, 1);

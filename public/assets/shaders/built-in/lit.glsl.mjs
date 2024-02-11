@@ -532,8 +532,6 @@ out vec4 projectedTexcoords[levels];
 
 ${vertexMotionBlur}
 
-${vertexLogDepth}
-
 void main() {
   //#main
 
@@ -560,8 +558,6 @@ void main() {
   vPosition = vec3(worldPosition);
   
   gl_Position = projectionMatrix * viewMatrix * worldPosition;
-
-  ${vertexLogDepthMain}
 
   ${vertexMotionBlurMain}
 }
@@ -604,8 +600,6 @@ out vec4 projectedTexcoords[levels];
 
 ${vertexMotionBlur}
 
-${vertexLogDepth}
-
 void main() {
   vNormal = normal;
   vTangent = tangent;
@@ -627,8 +621,6 @@ void main() {
   vPosition = vec3(worldPosition);
   
   gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
-
-  ${vertexLogDepthMain}
 
   ${vertexMotionBlurMain}
 }
@@ -693,8 +685,6 @@ mat4 getBoneMatrix(float jointNdx) {
 uniform mat4 textureMatrices[levels];
 out vec4 projectedTexcoords[levels];
 
-${vertexLogDepth}
-
 ${vertexMotionBlur}
 
 void main() {
@@ -731,8 +721,6 @@ void main() {
   
   gl_Position = projectionMatrix * viewMatrix * worldPosition;
   vPosition = worldPosition.xyz;
-
-  ${vertexLogDepthMain}
 
   vSkin = skinMatrix;
 
@@ -782,10 +770,7 @@ ${fogBase}
 uniform float ditherAmount;
 uniform sampler2D ditherTexture;
 
-${fragmentLogDepth}
-
 void main() {
-  ${fragmentLogDepthMain}
   ${motionBlurMain}
 
   // Debug

@@ -237,8 +237,34 @@ function Camera(settings = {}) {
     return _near;
   };
 
+  this.setNear = function(newNear) {
+    _near = newNear;
+   
+    Matrix.perspective({
+      fov: _fov * Math.PI / 180,
+      aspect: this.aspect,
+      near: _near,
+      far: _far
+    }, this.projectionMatrix);
+
+    this.updateFrustum();
+  };
+
   this.getFar = function() {
     return _far;
+  };
+
+  this.setFar = function(newFar) {
+    _far = newFar;
+   
+    Matrix.perspective({
+      fov: _fov * Math.PI / 180,
+      aspect: this.aspect,
+      near: _near,
+      far: _far
+    }, this.projectionMatrix);
+
+    this.updateFrustum();
   };
   
   /**

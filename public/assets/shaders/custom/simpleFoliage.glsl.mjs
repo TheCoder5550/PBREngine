@@ -15,13 +15,10 @@ ${lit.litBase}
 
 ${lit.fogBase}
 
-${fragmentLogDepth}
-
 uniform float ditherAmount;
 uniform sampler2D ditherTexture;
 
 void main() {
-  ${fragmentLogDepthMain}
   ${lit.motionBlurMain}
 
   // Dither

@@ -3531,6 +3531,7 @@ class PhotoCamera extends CameraController {
   #position = Vector.zero();
   #cameraEulerAngles = Vector.zero();
   #oldFOV = 45;
+  #wheelHandler = null;
 
   speed = 150;
 
@@ -3546,20 +3547,24 @@ class PhotoCamera extends CameraController {
     this.#oldFOV = this.car.mainCamera.getFOV();
     this.car.rb.frozen = true;
 
-    window.addEventListener("wheel", (e) => {
+    this.#wheelHandler = (e) => {
       const fovInc = 1 + 0.0005 * e.deltaY;
       
       const oldFov = camera.getFOV();
       let newFov = oldFov * fovInc;
       newFov = clamp(newFov, 0.1, 89);
-
+  
       camera.setFOV(newFov);
-    });
+    };
+
+    window.addEventListener("wheel", this.#wheelHandler);
   }
 
   onDeactivate() {
     this.car.mainCamera.setFOV(this.#oldFOV);
     this.car.rb.frozen = false;
+
+    window.removeEventListener("wheel", this.#wheelHandler);
   }
 
   update(camera, dt) {

@@ -1,3 +1,5 @@
+import { sharedUniforms } from "./base.mjs";
+
 var output = {
   webgl1: {
     particle: {
@@ -54,6 +56,8 @@ var output = {
       vertex: `
         #version 300 es
 
+        ${sharedUniforms}
+
         in vec3 position;
         in vec3 normal;
         in vec3 tangent;
@@ -81,6 +85,8 @@ var output = {
       fragment: `
         #version 300 es
         precision highp float;
+
+        ${sharedUniforms}
 
         layout (location = 0) out vec4 fragColor;
         layout (location = 1) out vec2 motionVector;

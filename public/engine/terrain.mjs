@@ -36,6 +36,9 @@ function Terrain(scene, settings = {}) {
   this.enableCollision = settings.enableCollision ?? true;
   let colliderDepthThreshold = settings.colliderDepthThreshold ?? 0;
 
+  this.rockAltitude = 40;
+  this.snowAltitude = 300;
+
   // var chunkOrders = [];
   this.meshPool = [];
   var chunkQueue = [];
@@ -74,6 +77,9 @@ function Terrain(scene, settings = {}) {
       1, 1, 1, 1,
       1, 1, 1, 1,
     ]);
+
+    this.terrainMat.setUniform("rockAltitude", this.rockAltitude);
+    this.terrainMat.setUniform("snowAltitude", this.snowAltitude);
   };
 
   let lastPosition;
