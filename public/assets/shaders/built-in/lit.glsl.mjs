@@ -4,7 +4,7 @@
 
 */
 
-import { shadowBase } from "./base.mjs";
+import { fragmentLogDepth, fragmentLogDepthMain, shadowBase, sharedUniforms, vertexLogDepth, vertexLogDepthMain } from "./base.mjs";
 
 var shaderBase = `
 #version 300 es
@@ -496,6 +496,8 @@ clipSpace = gl_Position;
 var webgl2Vertex = `
 ${shaderBase}
 
+${sharedUniforms}
+
 in vec3 position;
 in vec3 normal;
 in vec4 tangent; // in vec3 tangent;
@@ -530,6 +532,8 @@ out vec4 projectedTexcoords[levels];
 
 ${vertexMotionBlur}
 
+${vertexLogDepth}
+
 void main() {
   //#main
 
@@ -557,12 +561,16 @@ void main() {
   
   gl_Position = projectionMatrix * viewMatrix * worldPosition;
 
+  ${vertexLogDepthMain}
+
   ${vertexMotionBlurMain}
 }
 `;
 
 var webgl2VertexInstanced = `
 ${shaderBase}
+
+${sharedUniforms}
 
 in vec3 position;
 in vec3 normal;
@@ -596,6 +604,8 @@ out vec4 projectedTexcoords[levels];
 
 ${vertexMotionBlur}
 
+${vertexLogDepth}
+
 void main() {
   vNormal = normal;
   vTangent = tangent;
@@ -618,12 +628,16 @@ void main() {
   
   gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
 
+  ${vertexLogDepthMain}
+
   ${vertexMotionBlurMain}
 }
 `;
 
 var webgl2VertexSkinned = `
 ${shaderBase}
+
+${sharedUniforms}
 
 in vec3 position;
 in vec3 normal;
@@ -679,6 +693,8 @@ mat4 getBoneMatrix(float jointNdx) {
 uniform mat4 textureMatrices[levels];
 out vec4 projectedTexcoords[levels];
 
+${vertexLogDepth}
+
 ${vertexMotionBlur}
 
 void main() {
@@ -716,6 +732,8 @@ void main() {
   gl_Position = projectionMatrix * viewMatrix * worldPosition;
   vPosition = worldPosition.xyz;
 
+  ${vertexLogDepthMain}
+
   vSkin = skinMatrix;
 
   // Motion blur
@@ -742,6 +760,8 @@ ${fragColorName} = square ? vec4(1, 0, 1, 1) : vec4(0.5, 0, 0.5, 1);
 var webgl2Fragment = `
 ${shaderBase}
 
+${sharedUniforms}
+
 // #define DEBUG_OUTPUT
 // #define DEBUG_FOG
 // #define DEBUG_ALBEDO_TEXTURE
@@ -762,7 +782,10 @@ ${fogBase}
 uniform float ditherAmount;
 uniform sampler2D ditherTexture;
 
+${fragmentLogDepth}
+
 void main() {
+  ${fragmentLogDepthMain}
   ${motionBlurMain}
 
   // Debug

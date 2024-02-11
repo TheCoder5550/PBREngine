@@ -1,3 +1,4 @@
+import { fragmentLogDepth, fragmentLogDepthMain, sharedUniforms } from "../built-in/base.mjs";
 import * as lit from "../built-in/lit.glsl.mjs";
 
 const vertexInstanced = lit.webgl2.litInstanced.vertex;
@@ -6,16 +7,21 @@ const vertex = lit.webgl2.lit.vertex;
 let fragment = `
 ${lit.shaderBase}
 
+${sharedUniforms}
+
 ${lit.litAttributesAndUniforms}
 
 ${lit.litBase}
 
 ${lit.fogBase}
 
+${fragmentLogDepth}
+
 uniform float ditherAmount;
 uniform sampler2D ditherTexture;
 
 void main() {
+  ${fragmentLogDepthMain}
   ${lit.motionBlurMain}
 
   // Dither

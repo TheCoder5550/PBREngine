@@ -6,6 +6,7 @@ import Matrix from "../../engine/matrix.mjs";
 import PRNG from "../../PRNG.mjs";
 import TreeHandler from "../../engine/treeHandler.mjs";
 import Tonemapper from "../../engine/postprocessing-effects/tonemapper.mjs";
+import FlyCamera from "../../engine/flyCamera.mjs";
 
 const prng = new PRNG();
 
@@ -16,8 +17,8 @@ await scene.loadEnvironment({ hdrFolder: "../../assets/hdri/kloofendal_48d_partl
 const pp = renderer.postprocessing;
 pp.addEffect(new Tonemapper());
 
-const orbitCamera = new OrbitCamera(renderer, { far: 1000 });
-orbitCamera.setCenter(new Vector(0, 2, 0));
+const orbitCamera = new FlyCamera(renderer, { far: 1000 });
+// orbitCamera.setCenter(new Vector(0, 2, 0));
 const camera = orbitCamera.camera;
 
 const ground = scene.add(renderer.CreatePlane());

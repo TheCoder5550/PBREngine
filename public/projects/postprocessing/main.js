@@ -44,7 +44,7 @@ godrays.camera = camera;
 godrays.scene = scene;
 
 pp.addEffect(new Motionblur());
-// pp.addEffect(new Raindrops()).intensity = 0.3;
+pp.addEffect(new Raindrops()).intensity = 0.3;
 
 const bloom = pp.addEffect(new Bloom());
 const lensDirtTexture = await renderer.loadTextureAsync(renderer.path + "assets/textures/lensDirt.webp");

@@ -2498,7 +2498,8 @@ function Renderer(settings = {}) {
       // Depth texture
       const depthTexture = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, depthTexture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.DEPTH_COMPONENT : gl.DEPTH_COMPONENT16, targetTextureWidth, targetTextureHeight, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+      gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.DEPTH_COMPONENT : gl.DEPTH_COMPONENT32F, targetTextureWidth, targetTextureHeight, 0, gl.DEPTH_COMPONENT, gl.FLOAT, null);
+      // gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.DEPTH_COMPONENT : gl.DEPTH_COMPONENT16, targetTextureWidth, targetTextureHeight, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
       
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -2522,7 +2523,7 @@ function Renderer(settings = {}) {
     // Render scene to this buffer
     this.sceneRenderBuffer = createFramebufferForPostprocessing();
     
-    // We need double buffers to read from one and render to the other
+    // We need two buffers, to read from one and render to the other
     this.renderBuffers = [
       createFramebufferForPostprocessing(),
       createFramebufferForPostprocessing()
@@ -2733,7 +2734,7 @@ function Renderer(settings = {}) {
         gl.uniformMatrix4fv(programContainer.getUniformLocation("projectionMatrix"), false, camera.projectionMatrix);
         gl.uniformMatrix4fv(programContainer.getUniformLocation("viewMatrix"), false, camera.viewMatrix);
         
-        // Set uniform 
+        // Set uniforms
         for (const effect of programContainer.effects) {
           effect.setUniforms(programContainer, gl);
         }
@@ -4561,6 +4562,14 @@ function Renderer(settings = {}) {
         }
       }
       if (settings.prevViewMatrix)  programContainer.setUniform("prevViewMatrix", settings.prevViewMatrix, false);
+
+      // Camera properties
+      /** @type {Camera} */
+      const camera = settings.camera;
+      if (camera) {
+        if (getUniformLocation("cameraNear") != null) gl.uniform1f(getUniformLocation("cameraNear"), camera.getNear?.());
+        if (getUniformLocation("cameraFar") != null)  gl.uniform1f(getUniformLocation("cameraFar"), camera.getFar?.());
+      }
 
       // Shadows
       if (!settings.shadowPass) {

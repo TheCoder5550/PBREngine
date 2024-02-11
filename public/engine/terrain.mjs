@@ -26,6 +26,7 @@ function Terrain(scene, settings = {}) {
   }
   var renderer = this.scene.renderer;
 
+  this.castShadows = settings.castShadows ?? true;
   this.chunkUpdatesPerFrame = 1;
   this.chunkRes = 41;
   this.minimumChunkSize = 20;
@@ -260,26 +261,19 @@ function Terrain(scene, settings = {}) {
 
     // }
   };
-  // console.log("posting!");
-  // myWorker.postMessage({
-  //   w: 40,
-  //   h: 40,
-  //   res: 50,
-  //   heightFactor: 500,
-  //   noiseOffset: new Vector(0, 0, 0),
-  //   noiseScale: 0.001,
-  //   uvOffset: Vector.zero(),
-  //   uvScale: 1,
-  // });
+
+  this.useWorker = true;
 
   this.makeDataAccessible = function(data) {
+    if (!this.useWorker) {
+      return;
+    }
+
     myWorker.postMessage({
       messageType: MessageTypes.INIT,
       initData: JSONfn.stringify(data)
     });
   };
-
-  this.getHeightInit = function() {};
 
   this.getHeight = function(i, j) {
     var power = 1.5;
@@ -325,7 +319,7 @@ function Terrain(scene, settings = {}) {
   this.update = function(transform) {
     var t = transform || zeroTransform;
 
-    if (!hasSentHeight) {
+    if (this.useWorker && !hasSentHeight) {
       myWorker.postMessage({
         messageType: MessageTypes.TERRAIN_DATA,
         // eslint-disable-next-line no-undef
@@ -365,80 +359,81 @@ function Terrain(scene, settings = {}) {
     //   return da - db;
     // });
 
-    for (var i = 0; i < this.chunkUpdatesPerFrame; i++) {
+    for (let i = 0; i < this.chunkUpdatesPerFrame; i++) {
       if (chunkQueue.length > 0) {
-        var chunk;
+        let chunk;
         do {
           chunk = chunkQueue.shift();
         }
         while (chunk && chunk.isDeleted);
 
         if (!chunk.isDeleted) {
-          var neighbors = chunk.quadtree.getNeighbors();
+          let neighbors = chunk.quadtree.getNeighbors();
           chunk.quadtree.lastNeighborDepths = neighbors.map(n => n?.depth);
 
+          if (this.useWorker) {
+            let id = Math.floor(Math.random() * 1e7);
 
+            myWorker.postMessage({
+              messageType: MessageTypes.TERRAIN_DATA,
 
+              quadtreeDepth: chunk.quadtree.depth,
+              neighborDepths: neighbors.map(n => n?.depth),
+              w: chunk.chunkSize,
+              h: chunk.chunkSize,
+              res: chunk.chunkRes,
+              noiseOffset: new Vector(chunk.x, chunk.z, 0),
+              uvOffset: new Vector((chunk.x - chunk.chunkSize / 2) * this.uvScale, (chunk.z - chunk.chunkSize / 2) * this.uvScale, 0),
+              uvScale: chunk.chunkSize * this.uvScale,
 
-          var id = Math.floor(Math.random() * 1e7);
+              id,
+            });
 
-          myWorker.postMessage({
-            messageType: MessageTypes.TERRAIN_DATA,
+            chunkLookup.set(id, chunk);
+          }
+          else {
+            var terrainData = createTerrainData(chunk.quadtree, neighbors, {
+              w: chunk.chunkSize,
+              h: chunk.chunkSize,
+              res: chunk.chunkRes,
+              noiseOffset: new Vector(chunk.x, chunk.z, 0),
+              uvOffset: new Vector((chunk.x - chunk.chunkSize / 2) * this.uvScale, (chunk.z - chunk.chunkSize / 2) * this.uvScale, 0),
+              uvScale: chunk.chunkSize * this.uvScale,
+            });
 
-            w: chunk.chunkSize,
-            h: chunk.chunkSize,
-            res: chunk.chunkRes,
-            noiseOffset: new Vector(chunk.x, chunk.z, 0),
-            uvOffset: new Vector((chunk.x - chunk.chunkSize / 2) * this.uvScale, (chunk.z - chunk.chunkSize / 2) * this.uvScale, 0),
-            uvScale: chunk.chunkSize * this.uvScale,
+            if (!chunk.terrain.meshRenderer) {
+              chunk.terrain.meshRenderer = new this.scene.renderer.MeshRenderer(
+                this.terrainMat,
+                new renderer.MeshData(terrainData),
+              );
+            }
+            else {
+              chunk.terrain.meshRenderer.meshData[0].updateData(terrainData);
+              // console.log(chunk.terrain.getComponents("MeshCollider")[0].octree);
+              // chunk.terrain.getComponents("MeshCollider")[0].octree = null;
+            }
 
-            id,
-          });
+            // for (var comp of chunk.terrain.getComponents()) {
+            //   if (comp.componentType == "MeshCollider") {
+            //     chunk.terrain.removeComponent(comp);
+            //   }
+            // }
+            // chunk.terrain.addComponent(new MeshCollider());
 
-          chunkLookup.set(id, chunk);
+            chunk.terrain.visible = true;
 
-
-
-
-          // var terrainData = createTerrainData(chunk.quadtree, neighbors, {
-          //   w: chunk.chunkSize,
-          //   h: chunk.chunkSize,
-          //   res: chunk.chunkRes,
-          //   noiseOffset: new Vector(chunk.x, chunk.z, 0),
-          //   uvOffset: new Vector((chunk.x - chunk.chunkSize / 2) * this.uvScale, (chunk.z - chunk.chunkSize / 2) * this.uvScale, 0),
-          //   uvScale: chunk.chunkSize * this.uvScale,
-          // });
-
-          // if (!chunk.terrain.meshRenderer) {
-          //   chunk.terrain.meshRenderer = new this.scene.renderer.MeshRenderer(
-          //     this.terrainMat,
-          //     new renderer.MeshData(terrainData),
-          //   );
-          // }
-          // else {
-          //   chunk.terrain.meshRenderer.meshData[0].updateData(terrainData);
-          //   // console.log(chunk.terrain.getComponents("MeshCollider")[0].octree);
-          //   // chunk.terrain.getComponents("MeshCollider")[0].octree = null;
-          // }
-
-          // // for (var comp of chunk.terrain.getComponents()) {
-          // //   if (comp.componentType == "MeshCollider") {
-          // //     chunk.terrain.removeComponent(comp);
-          // //   }
-          // // }
-          // // chunk.terrain.addComponent(new MeshCollider());
-
-          // chunk.terrain.visible = true;
-
-          // // for (var neighbor of neighbors) {
-          // //   if (neighbor && neighbor.depth <= chunk.quadtree.depth) {
-          // //     neighbor.regenerateThisMesh();
-          // //   }
-          // // }
+            // for (var neighbor of neighbors) {
+            //   if (neighbor && neighbor.depth <= chunk.quadtree.depth) {
+            //     neighbor.regenerateThisMesh();
+            //   }
+            // }
+          }
         }
 
-        // chunk.terrain.isGenerated = true;
-        // chunk.whenDone();
+        if (!this.useWorker) {
+          chunk.terrain.isGenerated = true;
+          chunk.whenDone();
+        }
       }
       else {
         break;
@@ -712,6 +707,7 @@ function Terrain(scene, settings = {}) {
 
     terrain.transform.position = new Vector(x, 0, z);
     terrain.visible = false;
+    terrain.castShadows = _terrain.castShadows;
     if (_terrain.enableCollision && quadtree.depth >= colliderDepthThreshold) {
       terrain.addComponent(new MeshCollider());
     }

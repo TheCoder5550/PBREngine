@@ -13,6 +13,7 @@ import GamepadManager, { deadZone, quadraticCurve } from "./gamepadManager.js";
 import Perlin from "./engine/perlin.mjs";
 import GameCanvas from "./gameCanvas-5.0-module.mjs";
 import { AudioListener3D } from "./engine/audioListener3D.mjs";
+import { getSignedDistanceToPlane } from "./engine/algebra.mjs";
 
 const MPS_TO_MPH = 2.23693629;
 const radPerSecToRPM = 30 / Math.PI;
@@ -823,7 +824,7 @@ function Car(scene, physicsEngine, settings = {}) {
     }
 
     // Disable accelerator when changing gears
-    if (!this.canDriveWhenChangingGear && isChangingGear && clutchInput < 0.05) {
+    if (!this.canDriveWhenChangingGear && isChangingGear/* && clutchInput < 0.05*/) {
       driveInput = 0;
     }
     
@@ -1919,6 +1920,8 @@ function Car(scene, physicsEngine, settings = {}) {
     let totalForce = new Vector();
 
     var simulateSuspension = (dt) => {
+      const useWheelUp = true;
+
       for (const wheel of this.wheels) {
         const ray = wheel.ray;
         const hit = wheel.groundHit;
@@ -1929,25 +1932,23 @@ function Car(scene, physicsEngine, settings = {}) {
         if (wheel.isGrounded) {
           const rayDist = hit.distance;
 
-          let springError = wheel.suspensionTravel - (rayDist - wheel.radius);
-          Vector.multiply(ray.direction, springError * -wheel.suspensionForce, currentSpringForce);
-
-          // let springError = 1 - (rayDist - wheel.radius) / wheel.suspensionTravel;
-
-          // // Spring force
-          // const up = Vector.projectOnPlane(hit.normal, forward);
-          // const springError = -getSignedDistanceToPlane(
-          //   Vector.add(ray.origin, Vector.multiply(ray.direction, wheel.suspensionTravel)),
-          //   Vector.add(ray.origin, Vector.multiply(ray.direction, hit.distance - wheel.radius)),
-          //   hit.normal
-          // );
-          // Vector.multiply(up, springError * wheel.suspensionForce, currentSpringForce);
+          let springError = 0;
           
-          // window.Debug.Vector(
-          //   ray.origin,
-          //   up,
-          //   1
-          // );
+          if (useWheelUp) {
+            springError = wheel.suspensionTravel - (rayDist - wheel.radius);
+            // let springError = 1 - (rayDist - wheel.radius) / wheel.suspensionTravel;
+
+            Vector.multiply(ray.direction, springError * -wheel.suspensionForce, currentSpringForce);
+          }
+          else {
+            const up = Vector.projectOnPlane(hit.normal, forward);
+            springError = -getSignedDistanceToPlane(
+              Vector.add(ray.origin, Vector.multiply(ray.direction, wheel.suspensionTravel)),
+              Vector.add(ray.origin, Vector.multiply(ray.direction, hit.distance - wheel.radius)),
+              hit.normal
+            );
+            Vector.multiply(up, springError * wheel.suspensionForce, currentSpringForce);
+          }
 
           // Damping force
           Vector.projectOnPlane(this.rb.velocity, hit.normal, _tempVector);
@@ -3531,6 +3532,8 @@ class PhotoCamera extends CameraController {
   #cameraEulerAngles = Vector.zero();
   #oldFOV = 45;
 
+  speed = 150;
+
   constructor(car) {
     super();
     this.car = car;
@@ -3539,9 +3542,19 @@ class PhotoCamera extends CameraController {
   onReset() {
   }
 
-  onActivate() {
+  onActivate(camera) {
     this.#oldFOV = this.car.mainCamera.getFOV();
     this.car.rb.frozen = true;
+
+    window.addEventListener("wheel", (e) => {
+      const fovInc = 1 + 0.0005 * e.deltaY;
+      
+      const oldFov = camera.getFOV();
+      let newFov = oldFov * fovInc;
+      newFov = clamp(newFov, 0.1, 89);
+
+      camera.setFOV(newFov);
+    });
   }
 
   onDeactivate() {
@@ -3560,18 +3573,17 @@ class PhotoCamera extends CameraController {
     var vertical = quadraticCurve(deadZone(this.car.keybindings.gamepadManager.getAxis("LSVertical")));
     var horizontal = quadraticCurve(deadZone(this.car.keybindings.gamepadManager.getAxis("LSHorizontal")));
 
-    var speed = 15;
     var c = Math.cos(this.#cameraEulerAngles.x);
-    this.#position.x -= vertical * Math.cos(this.#cameraEulerAngles.y + Math.PI / 2) * speed * dt * c;
-    this.#position.z -= vertical * -Math.sin(this.#cameraEulerAngles.y + Math.PI / 2) * speed * dt * c;
-    this.#position.y -= vertical * Math.sin(this.#cameraEulerAngles.x) * speed * dt;
+    this.#position.x -= vertical * Math.cos(this.#cameraEulerAngles.y + Math.PI / 2) * this.speed * dt * c;
+    this.#position.z -= vertical * -Math.sin(this.#cameraEulerAngles.y + Math.PI / 2) * this.speed * dt * c;
+    this.#position.y -= vertical * Math.sin(this.#cameraEulerAngles.x) * this.speed * dt;
 
-    this.#position.x += horizontal * Math.cos(this.#cameraEulerAngles.y) * speed * dt;
-    this.#position.z += horizontal * -Math.sin(this.#cameraEulerAngles.y) * speed * dt;
+    this.#position.x += horizontal * Math.cos(this.#cameraEulerAngles.y) * this.speed * dt;
+    this.#position.z += horizontal * -Math.sin(this.#cameraEulerAngles.y) * this.speed * dt;
 
     camera.transform.position = this.#position;
 
-    flyCamera(this.car.renderer, camera, this.#cameraEulerAngles, dt);
+    flyCamera(this.car.renderer, camera, this.#cameraEulerAngles, dt, this.speed, 3 * clamp(oldFov / 45, 0, 1));
 
     this.#position = camera.transform.position;
 
@@ -3665,12 +3677,12 @@ export function NoInputCarController(car, settings = {}) {
  * Default car controller for contolling the car with keyboard/controller
  * @param {Car} car
  * @param {{
- * controlSceme: DefaultCarController.ControlScheme
+ * controlScheme: DefaultCarController.ControlScheme
  * }} settings Customize controller with these settings
  */
 export function DefaultCarController(car, settings = {}) {
   this.car = car;
-  this.controlScheme = settings.controlSceme ?? DefaultCarController.ControlScheme.Keyboard;
+  this.controlScheme = settings.controlScheme ?? DefaultCarController.ControlScheme.Keyboard;
 
   this.keybindings = settings.keybindings ?? new Keybindings(
     this.car.renderer,
@@ -3830,7 +3842,7 @@ export function DefaultCarController(car, settings = {}) {
     this.car.setBrakeInput(brakeInput);
     this.car.setEbrakeInput(ebrakeInput);
     this.car.setRawSteerInput(rawSteerInput);
-    this.car.setClutchInput(1);
+    // this.car.setClutchInput(1);
   };
 }
 

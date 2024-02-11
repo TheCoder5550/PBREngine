@@ -54,6 +54,8 @@ self.onmessage = async function(e) {
     return;
   }
 
+  const createTerrainData = createTerrainDataNew;
+
   self.postMessage({
     messageType: MessageTypes.TERRAIN_DATA,
     id: e.data.id,
@@ -63,7 +65,8 @@ self.onmessage = async function(e) {
     })
   });
 
-  function createTerrainData({
+  // eslint-disable-next-line no-unused-vars
+  function createTerrainDataOld({
     w = 20,
     h = 20,
     res = 5,
@@ -155,6 +158,302 @@ self.onmessage = async function(e) {
         size: 2
       }
     };
+    
+    return meshData;
+  }
+
+  function createTerrainDataNew({
+    neighborDepths,
+    quadtreeDepth,
+    w = 20,
+    h = 20,
+    res = 5,
+    noiseOffset = Vector.zero(),
+    uvOffset = Vector.zero(),
+    uvScale = 20,
+    getHeight = () => 0
+  }) {
+    var uvs = new Float32Array(res * res * 2);
+    var vertices = new Float32Array(res * res * 3);
+    var triangles = new Uint32Array((res - 1) * (res - 1) * 6);
+    var tangents = new Float32Array(res * res * 3);
+
+    var edgeVertexIndices = [[], [], [], []];
+
+    var normals = new Array(res * res);
+    for (let i = 0; i < normals.length; i++) {
+      normals[i] = [];
+    }
+
+    var counter = 0;
+    for (let i = 0; i < res; i++) {
+      for (let j = 0; j < res; j++) {
+        let x = mapValue(i, 0, res - 1, -w / 2, w / 2);
+        let z = mapValue(j, 0, res - 1, -h / 2, h / 2);
+
+        vertices[counter * 3 + 0] = x;
+        vertices[counter * 3 + 1] = getHeight(x + noiseOffset.x, z + noiseOffset.y);
+        vertices[counter * 3 + 2] = z;
+
+        uvs[counter * 2 + 0] = i / (res - 1) * uvScale + uvOffset.x;
+        uvs[counter * 2 + 1] = j / (res - 1) * uvScale + uvOffset.y;
+
+        if (i == 0) {
+          edgeVertexIndices[0].push(counter);
+        }
+        if (j == 0) {
+          edgeVertexIndices[1].push(counter);
+        }
+        if (i == res - 1) {
+          edgeVertexIndices[2].push(counter);
+        }
+        if (j == res - 1) {
+          edgeVertexIndices[3].push(counter);
+        }
+
+        counter++;
+      }
+    }
+
+    for (let i = 0; i < 4; i++) {
+      let neighborDepth = neighborDepths[i];
+      if (typeof neighborDepth !== "undefined" && quadtreeDepth > neighborDepth) {
+        let stepsize = Math.pow(2, quadtreeDepth - neighborDepth);
+
+        let currentHeight = getHeight(vertices[edgeVertexIndices[i][0] * 3 + 0] + noiseOffset.x, vertices[edgeVertexIndices[i][0] * 3 + 2] + noiseOffset.y);
+        let nextHeight = getHeight(vertices[edgeVertexIndices[i][stepsize] * 3 + 0] + noiseOffset.x, vertices[edgeVertexIndices[i][stepsize] * 3 + 2] + noiseOffset.y);
+
+        for (let j = 0; j < res; j++) {
+          if (j % stepsize == 0 && j != 0) {
+            currentHeight = nextHeight;
+            // nextHeight = getHeight(vertices[edgeVertexIndices[i][j + stepsize] * 3 + 0] + noiseOffset.x, vertices[edgeVertexIndices[i][j + stepsize] * 3 + 2] + noiseOffset.y);
+            nextHeight = getHeight(
+              vertices[edgeVertexIndices[i][Math.min(j + stepsize, res - 1)] * 3 + 0] + noiseOffset.x,
+              vertices[edgeVertexIndices[i][Math.min(j + stepsize, res - 1)] * 3 + 2] + noiseOffset.y
+            );
+
+            if (isNaN(nextHeight)) {
+              console.log(
+                "4",
+                nextHeight,
+                edgeVertexIndices[i],
+                edgeVertexIndices[i].length,
+                j + stepsize,
+                edgeVertexIndices[i][j + stepsize],
+                edgeVertexIndices[i][j + stepsize],
+              );
+            }
+
+            vertices[edgeVertexIndices[i][j] * 3 + 1] = currentHeight;
+          }
+          else {
+            const h = worker_lerp(currentHeight, nextHeight, (j % stepsize) / stepsize);
+            vertices[edgeVertexIndices[i][j] * 3 + 1] = h;
+          }
+        }
+      }
+    }
+
+    counter = 0;
+    for (let i = 0; i < res - 1; i++) {
+      for (let j = 0; j < res - 1; j++) {
+        let ind = j + i * res;
+        let indices = [
+          ind,
+          ind + 1,
+          ind + res,
+
+          ind + 1,
+          ind + res + 1,
+          ind + res
+        ];
+
+        triangles[counter * 6 + 0] = ind;
+        triangles[counter * 6 + 1] = ind + 1;
+        triangles[counter * 6 + 2] = ind + res;
+        triangles[counter * 6 + 3] = ind + 1;
+        triangles[counter * 6 + 4] = ind + res + 1;
+        triangles[counter * 6 + 5] = ind + res;
+
+        let t1Normal = getTriangleNormal([Vector.fromArray(vertices, indices[0] * 3), Vector.fromArray(vertices, indices[1] * 3), Vector.fromArray(vertices, indices[2] * 3)]);
+        let t2Normal = getTriangleNormal([Vector.fromArray(vertices, indices[3] * 3), Vector.fromArray(vertices, indices[4] * 3), Vector.fromArray(vertices, indices[5] * 3)]);
+
+        normals[indices[0]].push(t1Normal);
+        normals[indices[1]].push(t1Normal);
+        normals[indices[2]].push(t1Normal);
+        normals[indices[3]].push(t2Normal);
+        normals[indices[4]].push(t2Normal);
+        normals[indices[5]].push(t2Normal);
+
+        // let x = mapValue(i, 0, res - 1, -w / 2, w / 2);
+        // let z = mapValue(j, 0, res - 1, -h / 2, h / 2);
+        // let dx = w / res / 2;
+        // let dz = h / res / 2;
+
+        // normals[indices[0]].push(getNormal(x, z));
+        // normals[indices[1]].push(getNormal(x + dx, z));
+        // normals[indices[2]].push(getNormal(x, z + dz));
+        // normals[indices[4]].push(getNormal(x + dx, z + dz));
+
+        counter++;
+      }
+    }
+
+    for (let i = 0; i < 4; i++) {
+      let neighborDepth = neighborDepths[i];
+      if (typeof neighborDepth !== "undefined") {
+        for (let j = 0; j < res; j++) {
+          let vertex = Vector.fromArray(vertices, edgeVertexIndices[i][j] * 3);
+
+          if (i == 1) {
+            let step = new Vector(w / (res - 1), 0, h / (res - 1));
+            let t1Normal = getTriangleNormal([
+              vertex,
+              new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
+              new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
+            ]);
+
+            let t2Normal = getTriangleNormal([
+              vertex,
+              new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
+              new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
+            ]);
+
+            let t3Normal = getTriangleNormal([
+              vertex,
+              new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
+              new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
+            ]);
+
+            // t1Normal = Vector.negate(t1Normal);
+            // t2Normal = Vector.negate(t2Normal);
+            // t3Normal = Vector.negate(t3Normal);
+
+            normals[edgeVertexIndices[i][j]].push(t1Normal, t2Normal, t3Normal);
+          }
+
+          if (i == 3) {
+            let step = new Vector(w / (res - 1), 0, h / (res - 1));
+            let t1Normal = getTriangleNormal([
+              vertex,
+              new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
+              new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
+            ]);
+
+            let t2Normal = getTriangleNormal([
+              vertex,
+              new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
+              new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
+            ]);
+
+            let t3Normal = getTriangleNormal([
+              vertex,
+              new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
+              new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
+            ]);
+
+            t1Normal = Vector.negate(t1Normal);
+            t2Normal = Vector.negate(t2Normal);
+            t3Normal = Vector.negate(t3Normal);
+
+            normals[edgeVertexIndices[i][j]].push(t1Normal, t2Normal, t3Normal);
+          }
+
+          if (i == 0) {
+            let step = new Vector(w / (res - 1), 0, h / (res - 1));
+            let t1Normal = getTriangleNormal([
+              vertex,
+              new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
+              new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
+            ]);
+
+            let t2Normal = getTriangleNormal([
+              vertex,
+              new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
+              new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
+            ]);
+
+            let t3Normal = getTriangleNormal([
+              vertex,
+              new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
+              new Vector(vertex.x - step.x, getHeight(vertex.x - step.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
+            ]);
+
+            t1Normal = Vector.negate(t1Normal);
+            t2Normal = Vector.negate(t2Normal);
+            t3Normal = Vector.negate(t3Normal);
+
+            normals[edgeVertexIndices[i][j]].push(t1Normal, t2Normal, t3Normal);
+          }
+
+          if (i == 2) {
+            let step = new Vector(w / (res - 1), 0, h / (res - 1));
+            let t1Normal = getTriangleNormal([
+              vertex,
+              new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
+              new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z + step.z + noiseOffset.y), vertex.z + step.z),
+            ]);
+
+            let t2Normal = getTriangleNormal([
+              vertex,
+              new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
+              new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z + noiseOffset.y), vertex.z),
+            ]);
+
+            let t3Normal = getTriangleNormal([
+              vertex,
+              new Vector(vertex.x, getHeight(vertex.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
+              new Vector(vertex.x + step.x, getHeight(vertex.x + step.x + noiseOffset.x, vertex.z - step.z + noiseOffset.y), vertex.z - step.z),
+            ]);
+
+            t1Normal = Vector.negate(t1Normal);
+            t2Normal = Vector.negate(t2Normal);
+            t3Normal = Vector.negate(t3Normal);
+
+            normals[edgeVertexIndices[i][j]].push(t1Normal, t2Normal, t3Normal);
+          }
+        }
+      }
+    }
+
+    let outNormals = new Float32Array(res * res * 3);
+    for (let i = 0; i < normals.length; i++) {
+      let normal = Vector.divide(normals[i].reduce((a, b) => {
+        return Vector.add(a, b);
+      }, Vector.zero()), normals[i].length);
+
+      outNormals[i * 3 + 0] = normal.x;
+      outNormals[i * 3 + 1] = normal.y;
+      outNormals[i * 3 + 2] = normal.z;
+
+      tangents[i * 3 + 0] = normal.y;
+      tangents[i * 3 + 1] = normal.x;
+      tangents[i * 3 + 2] = normal.z;
+    }
+
+    let meshData = {
+      indices: {
+        bufferData: triangles,
+      },
+      position: {
+        bufferData: vertices,
+        size: 3
+      },
+      normal: {
+        bufferData: outNormals,
+        size: 3
+      },
+      tangent: {
+        bufferData: tangents,
+        size: 3
+      },
+      uv: {
+        bufferData: uvs,
+        size: 2
+      }
+    };
+
+    // console.log(meshData.position.bufferData);
     
     return meshData;
   }
@@ -495,6 +794,10 @@ class Vector {
       z: a.x * b.y - a.y * b.x
     };
   }
+}
+
+function worker_lerp(x, y, a) {
+  return x * (1 - a) + y * a;
 }
 
 function getTriangleNormal(triangle) {

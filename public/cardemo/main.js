@@ -9,10 +9,10 @@ import Vector from "../engine/vector.mjs";
 import Matrix from "../engine/matrix.mjs";
 import Quaternion from "../engine/quaternion.mjs";
 import { LerpCurve } from "../engine/curves.mjs";
-import { lerp, mapValue, clamp, loadImage, hideElement, showElement, getAngleBetween, getDistanceBetween, sleep, smoothstep } from "../engine/helper.mjs";
+import { lerp, mapValue, clamp, loadImage, hideElement, showElement, getAngleBetween, getDistanceBetween, sleep, smoothstep, clamp01 } from "../engine/helper.mjs";
 import Perlin from "../engine/perlin.mjs";
 import { GetMeshAABB, PhysicsEngine, MeshCollider } from "../engine/physics.mjs";
-import { Car } from "../car.js";
+import { Car, DefaultCarController } from "../car.js";
 import * as carSettings from "./carSettings.mjs";
 import Keybindings from "../keybindingsController.mjs";
 import GamepadManager, { quadraticCurve, deadZone } from "../gamepadManager.js";
@@ -32,6 +32,13 @@ import * as simpleFoliage from "../assets/shaders/custom/simpleFoliage.glsl.mjs"
 // import createInspector from "../engine/inspector/inspector.mjs";
 import City from "./city.mjs";
 import TreeHandler from "../engine/treeHandler.mjs";
+import Motionblur from "../engine/postprocessing-effects/motionBlur.mjs";
+import Bloom from "../engine/postprocessing-effects/bloom.mjs";
+import AutoExposure from "../engine/postprocessing-effects/autoExposure.mjs";
+import Tonemapper from "../engine/postprocessing-effects/tonemapper.mjs";
+import FXAA from "../engine/postprocessing-effects/fxaa.mjs";
+import ColorGrading from "../engine/postprocessing-effects/colorGrading.mjs";
+import Vignette from "../engine/postprocessing-effects/vignette.mjs";
 
 class ControllerUIInteraction {
   #tickPath = "../assets/sound/menu tick.wav";
@@ -393,28 +400,6 @@ document.addEventListener("DOMContentLoaded", async function () {
   renderer.disableContextMenu();
   renderer.canvas.style.position = "fixed";
 
-  renderer.on("mousemove", () => {
-    if (renderer.getActiveScene() !== garageScene) {
-      return;
-    }
-
-    if (!renderer.mouse.left) {
-      return;
-    }
-
-    carRotation += renderer.mouse.movement.x * 0.01;
-  });
-
-  renderer.on("scroll", () => {
-    if (renderer.getActiveScene() !== garageScene) {
-      return;
-    }
-
-    garageFOV += renderer.mouse.scroll.y * 0.01;
-    garageFOV = clamp(garageFOV, 10, 40);
-    garageCamera.setFOV(garageFOV);
-  });
-
   window.isDay = isDay;
   const settingsManager = new SettingsManager();
   const keybindings = new Keybindings(renderer, gamepadManager, bindsLookup);
@@ -425,17 +410,39 @@ document.addEventListener("DOMContentLoaded", async function () {
   const scene = new Scene("Playground");
   renderer.add(scene);
 
-  scene.fogColor = [0.4, 0.4, 0.5, 1];
-  scene.fogDensity = 0.001;
   scene.skyboxFogIntensity = 1;
   scene.environmentMinLight = 0.5;
   scene.skyboxAnimation.speed = 0.01;
 
-  scene.postprocessing.exposure = -1;
-  scene.postprocessing.vignette.amount = 0.3;
-  scene.postprocessing.vignette.falloff = 0.3;
-  // scene.postprocessing.saturation = 0.4;
-  // scene.postprocessing.rainTexture = await renderer.loadTextureAsync("../assets/textures/rain-normal-map.jpg");
+  // Post processing
+  const pp = renderer.postprocessing;
+  
+  // Motion blur
+  const motionBlur = pp.addEffect(new Motionblur());
+
+  // Bloom
+  const bloom = pp.addEffect(new Bloom());
+  const lensDirtTexture = await renderer.loadTextureAsync(renderer.path + "assets/textures/lensDirt.webp");
+  bloom.lensDirtTexture = lensDirtTexture;
+  bloom.lensDirtTextureWidth = 1280;
+  bloom.lensDirtTextureHeight = 720;
+  bloom.lensDirtIntensity = 5;
+
+  // Tonemapping
+  const tonemapper = pp.addEffect(new Tonemapper());
+  tonemapper.exposure = -1;
+
+  // FXAA
+  pp.addEffect(new FXAA());
+  
+  // Color graading
+  const colorGrading = pp.addEffect(new ColorGrading());
+  colorGrading.saturation = 0.4;
+  
+  // Vignette
+  const vignette = pp.addEffect(new Vignette());
+  vignette.amount = 0.3;
+  vignette.falloff = 0.3;
 
   renderer.shadowCascades.refreshRate = 0;
 
@@ -457,6 +464,28 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   const garageScene = new Scene("Garage");
   renderer.add(garageScene);
+
+  renderer.on("mousemove", () => {
+    if (renderer.getActiveScene() !== garageScene) {
+      return;
+    }
+
+    if (!renderer.mouse.left) {
+      return;
+    }
+
+    carRotation += renderer.mouse.movement.x * 0.01;
+  });
+
+  renderer.on("scroll", () => {
+    if (renderer.getActiveScene() !== garageScene) {
+      return;
+    }
+
+    garageFOV += renderer.mouse.scroll.y * 0.01;
+    garageFOV = clamp(garageFOV, 10, 40);
+    garageCamera.setFOV(garageFOV);
+  });
 
   garageScene.sunIntensity = Vector.zero();
   garageScene.environmentIntensity = 0.2;
@@ -800,7 +829,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           car.resetGame();
         }
 
-        car.update(frameTime);
+        // car.update(frameTime);
         car.renderUI(ui);
       }
 
@@ -1053,10 +1082,12 @@ document.addEventListener("DOMContentLoaded", async function () {
   async function loadCar(settings, model) {
     var car = new Car(scene, physicsEngine, {
       path: renderer.path,
-      keybindings,
-      controlScheme: Car.ControlScheme.Controller,
-
       ...settings
+    });
+    car.carController = new DefaultCarController(car, {
+      controlScheme: DefaultCarController.ControlScheme.Controller,
+      keybindings,
+      // ...settings
     });
 
     // model.castShadows = false;
@@ -1131,7 +1162,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     // Reset follow camera
     car.resetGame();
 
-    car.mainCamera = new Camera({near: 0.1, far: 15000, fov: 35});
+    car.mainCamera = new Camera({near: 0.1, far: 15_000, fov: 35});
     car.mainCamera.setAspect(renderer.aspect);
 
     car.ABS = settingsManager.getSettingValue("abs");
@@ -1203,7 +1234,8 @@ document.addEventListener("DOMContentLoaded", async function () {
   }
 
   function applyDaytimeEnvironment() {
-    scene.fogDensity = 0.001;
+    scene.fogColor = [0.4, 0.4, 0.6, 1];
+    scene.fogDensity = 0.0001;
     scene.environmentIntensity = 1.25;
     scene.sunIntensity = {x: 30, y: 24, z: 18};
 
@@ -1211,6 +1243,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   }
 
   function applyNighttimeEnvironment() {
+    scene.fogColor = [0.05, 0.05, 0.05, 1];
     scene.fogDensity = 0.005;
     scene.environmentIntensity = 0.01;
     scene.sunIntensity = Vector.fill(0.25);
@@ -1272,7 +1305,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   // Flat playground with jumps
   async function generatePlayground() {
-    scene.postprocessing.exposure = -0.5;
+    tonemapper.exposure = -0.75;
     scene.environmentIntensity = 1;
     scene.environmentMinLight = 0.2;
     scene.sunIntensity = Vector.fill(10);
@@ -1307,12 +1340,12 @@ document.addEventListener("DOMContentLoaded", async function () {
     roadSign.transform.position.y = 1;
     roadSign.transform.position.z = -10;
 
-    const treeHandler = new TreeHandler(scene, car.mainCamera, "../assets/models/trees/myFirstTreeLOD/myFirstTreeLOD.glb", [
+    const treeHandler = new TreeHandler(scene, car.mainCamera);
+    await treeHandler.addVariant(renderer.path + "assets/models/trees/myFirstTreeLOD/myFirstTreeLOD.glb", [
+      20,
       40,
-      80,
       Infinity
     ]);
-    await treeHandler.setup();
   
     const area = 500;
     for (let i = 0; i < 3_000; i++) {
@@ -1329,8 +1362,41 @@ document.addEventListener("DOMContentLoaded", async function () {
       Matrix.applyScale(scale, instance);
       Matrix.applyRotationY(rotationY, instance);
       
-      treeHandler.addTree(instance);
+      treeHandler.addRandomVariant(instance);
     }
+
+    async function createTerrain() {
+      const terrain = new Terrain(scene, {
+        terrainSize: 50_000,
+      });
+      terrain.castShadows = false;
+      terrain.enableCollision = false;
+      terrain.chunkRes = 11;
+      // terrain.chunkUpdatesPerFrame = 10;
+      terrain.minimumChunkSize = 200;
+      
+      terrain.makeDataAccessible({
+        lerp,
+        clamp01,
+        clamp,
+      });
+    
+      terrain.getHeight = function(i, j) {
+        var power = 1.5;
+        var noiseLayers = 5;
+        var noiseScale = 0.0003;
+        var height = 700;
+    
+        var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * height;
+
+        return lerp(-5, elevation, clamp01((Math.sqrt(i * i + j * j) - 700) / 200));
+      };
+    
+      await terrain.loadMaterials();
+    
+      return terrain;
+    }
+    const terrain = await createTerrain();
 
     // const simpleFoliageProgram = new renderer.CustomProgram(simpleFoliage.basic);
 
@@ -1368,7 +1434,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     // initSnow();
 
-    return { terrain: null }; 
+    return { terrain }; 
   }
 
   // Large savanna-like landscape without roads
@@ -3622,7 +3688,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       }, 0.2, 2, 0.05),
 
       motionBlur: new SliderSetting("Motion blur", 0.15, value => {
-        scene.postprocessing.motionBlurStrength = value;
+        motionBlur.strength = value;
         saveSettings();
       }, 0, 0.5, 0.01),
 

@@ -1,10 +1,10 @@
-var shaderBase = `
+export const shaderBase = `
 #version 300 es
 precision highp float;
 precision mediump int;
 `;
 
-var screenQuadVertex = `
+export const screenQuadVertex = `
 #version 300 es
 
 in vec2 position;
@@ -14,7 +14,12 @@ void main() {
 }
 `;
 
-var fogBase = `
+export const sharedUniforms = `
+uniform float cameraNear;
+uniform float cameraFar;
+`;
+
+export const fogBase = `
 #define USEFOG
 const vec4 fogColor = vec4(0.23, 0.24, 0.26, 1);
 uniform float fogDensity;// = 0.0035;
@@ -27,7 +32,7 @@ vec4 applyFog(vec4 color) {
 }
 `;
 
-var shadowBase = `
+export const shadowBase = `
 uniform float environmentMinLight;
 
 // const int levels = 2;
@@ -276,9 +281,22 @@ float getShadowAmount(vec3 worldPosition, float cosTheta) {
 }
 `;
 
-export {
-  shaderBase,
-  screenQuadVertex,
-  fogBase,
-  shadowBase,
-};
+export const vertexLogDepth = `
+out float flogz;
+`;
+
+export const vertexLogDepthMain = `
+// Logarithmic depth
+float FCOEF = 2.0 / log2(cameraFar + 1.0);
+gl_Position.z = log2(max(cameraNear, 1.0 + gl_Position.w)) * FCOEF - 1.0;
+flogz = 1.0 + gl_Position.w;
+`;
+
+export const fragmentLogDepth = `
+in float flogz;
+`;
+
+export const fragmentLogDepthMain = `
+float HALF_FCOEF = 2.0 / log2(cameraFar + 1.0) / 2.0;
+gl_FragDepth = log2(flogz) * HALF_FCOEF;
+`;

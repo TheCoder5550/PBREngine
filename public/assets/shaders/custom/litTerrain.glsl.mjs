@@ -1,3 +1,4 @@
+import { fragmentLogDepth, fragmentLogDepthMain, sharedUniforms, vertexLogDepth, vertexLogDepthMain } from "../built-in/base.mjs";
 import * as lit from "../built-in/lit.glsl.mjs";
 
 export const vertex = `
@@ -45,6 +46,9 @@ out vec4 clipSpace;
 out vec4 prevClipSpace;
 uniform mat4 prevViewMatrix;
 uniform mat4 prevModelMatrix;
+
+${sharedUniforms}
+${vertexLogDepth}
 
 void main() {
   vNormal = normal;
@@ -105,6 +109,8 @@ void main() {
   
   gl_Position = projectionMatrix * viewMatrix * worldPosition;
 
+  ${vertexLogDepthMain}
+
   // Motion blur , bruh prev model matrix does not work!
   vec4 prevCs = projectionMatrix * prevViewMatrix * modelMatrix * vec4(position, 1.0);
   prevClipSpace = prevCs;
@@ -121,6 +127,10 @@ ${lit.litBase}
 
 ${lit.fogBase}
 
+${sharedUniforms}
+
+${fragmentLogDepth}
+
 const int nrTextures = 3;
 uniform sampler2D albedoTextures[nrTextures];
 uniform sampler2D normalTextures[nrTextures];
@@ -130,7 +140,11 @@ uniform vec4 albedos[nrTextures];
 
 uniform sampler2D heightmap;
 
+const float rockAltitude = 40.;
+const float snowAltitude = 300.;
+
 void main() {
+  ${fragmentLogDepthMain}
   ${lit.motionBlurMain}
 
   vec3 up = vec3(0, 1, 0);
@@ -138,32 +152,57 @@ void main() {
 
   vec2 currentUVs = vPosition.xz * 0.2;//vUV;
 
+  float layeredNoise = LayeredNoise(currentUVs / 40.);
+
+  float rockLerpFactor = smoothstep(0., 100., vPosition.y - rockAltitude) * (1. - smoothstep(0.4, 0.75, pow(dot(up, vNormal), 100.)));
+  float snowLerpFactor = smoothstep(snowAltitude, snowAltitude * 1.1, vPosition.y + layeredNoise * 30.);
+
   // Normals
   vec3 grassNormal = sampleTexture(normalTextures[0], currentUVs).rgb * 2. - 1.;
+  grassNormal = setNormalStrength(grassNormal, 0.4);
+
   vec3 stoneNormal = sampleTexture(normalTextures[1], currentUVs).rgb * 2. - 1.;
   vec3 snowNormal = sampleTexture(normalTextures[2], currentUVs).rgb * 2. - 1.;
 
-  grassNormal = setNormalStrength(grassNormal, 0.4);
-
-  vec3 currentNormal = normalize(mix(stoneNormal, grassNormal, smoothstep(0.4, 0.75, pow(dot(up, vNormal), 100.))));
-  currentNormal = normalize(mix(currentNormal, snowNormal, smoothstep(80., 100., vPosition.y + LayeredNoise(currentUVs / 20.) * 30.)));
-  currentNormal = grassNormal;
+  // Final normal
+  vec3 currentNormal = normalize(mix(grassNormal, stoneNormal, rockLerpFactor));
+  currentNormal = normalize(mix(currentNormal, snowNormal, snowLerpFactor));
+  // currentNormal = grassNormal;
 
   // Colors
   vec3 grassAlbedo = sampleTexture(albedoTextures[0], currentUVs).rgb * albedos[0].rgb;
   vec3 stoneAlbedo = sampleTexture(albedoTextures[1], currentUVs).rgb * albedos[1].rgb;
   vec3 snowAlbedo = sampleTexture(albedoTextures[2], currentUVs).rgb * albedos[2].rgb;
 
+  float colorVariationFactor = clamp(layeredNoise, 0., 1.);
+
   // Large scale detail (grass color variation)
-  grassAlbedo *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(currentUVs / 40.), 0., 1.));
+  grassAlbedo *= mix(vec3(1.0), vec3(0.6, 0.8, 0.6), colorVariationFactor);
+  // grassAlbedo *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), colorVariationFactor);
 
-  currentAlbedo.rgb = grassAlbedo;
-
-  // // Steep terrain is rocky
-  // currentAlbedo.rgb = mix(stoneAlbedo, grassAlbedo, smoothstep(0.4, 0.75, pow(dot(up, vNormal), 100.)));
-
-  // // Top of mountains are snowy
-  // currentAlbedo.rgb = mix(currentAlbedo.rgb, snowAlbedo, smoothstep(80., 100., vPosition.y + LayeredNoise(vUV / 20.) * 30.));
+  // Large scale detail (rock color variation)
+  stoneAlbedo *= mix(vec3(1.0), vec3(0.5, 0.5, 0.5), colorVariationFactor);
+  
+  // Steep terrain is rocky
+  currentAlbedo.rgb = mix(grassAlbedo, stoneAlbedo, rockLerpFactor);
+  
+  // Top of mountains are snowy
+  currentAlbedo.rgb = mix(currentAlbedo.rgb, snowAlbedo, snowLerpFactor);
+  
+  // currentAlbedo.rgb = grassAlbedo;
+  
+  vec3 tangentNormal = currentNormal;
+  // vec3 tangentNormal = vec3(0, 0, 1);
+  tangentNormal = setNormalStrength(tangentNormal, 3.);
+  
+  vec4 litColor = lit(currentAlbedo, 0.5, vec3(0), tangentNormal, 0., 0.95, 1.);
+  
+  #ifdef USEFOG
+  litColor = applyFog(litColor);
+  #endif
+  
+  fragColor = litColor;
+  return;
 
   // vec3 steepness = normalize(mix(stoneNormal, grassAlbedo, smoothstep(0.8, 1., dot(up, vNormal))));
   // vec3 newNormal = normalize(mix(steepness, snowNormal, smoothstep(20., 35., vPosition.y)));
@@ -173,20 +212,7 @@ void main() {
 
   // fragColor = vec4(vNormal, 1);
   // return;
-
-  vec3 tangentNormal = currentNormal;
-  // vec3 tangentNormal = vec3(0, 0, 1);
-  tangentNormal = setNormalStrength(tangentNormal, 3.);
-
-  vec4 litColor = lit(currentAlbedo, 0.5, vec3(0), tangentNormal, 0., 0.95, 1.);
   
-  #ifdef USEFOG
-    litColor = applyFog(litColor);
-  #endif
-  
-  fragColor = litColor;
-  return;
-
   // vec3 up = vec3(0, 1, 0);
 
   // // grassAlbedo = mix(grassAlbedo * vec3(1, 1, 0.3), grassAlbedo, noise(currentUVs / 50.));
@@ -194,7 +220,7 @@ void main() {
   // grassAlbedo *= mix(vec3(1.0), vec3(0.4, 0.7, 0.4), clamp(LayeredNoise(currentUVs / 40.), 0., 1.));
 
   // vec3 steepness = mix(stoneAlbedo, grassAlbedo, smoothstep(0.7, 0.75, dot(up, vNormal)));
-  // currentAlbedo.xyz = mix(steepness, snowAlbedo, smoothstep(80., 100., vPosition.y + LayeredNoise(currentUVs / 20.) * 30.));
+  // currentAlbedo.xyz = mix(steepness, snowAlbedo, smoothstep(snowAltitude, snowAltitude * 1.1, vPosition.y + LayeredNoise(currentUVs / 20.) * 30.));
 
   // steepness = normalize(mix(stoneNormal, grassAlbedo, smoothstep(0.8, 1., dot(up, vNormal))));
   // vec3 newNormal = normalize(mix(steepness, snowNormal, smoothstep(20., 35., vPosition.y)));

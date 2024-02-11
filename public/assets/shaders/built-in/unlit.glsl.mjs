@@ -4,6 +4,7 @@
 
 */
 
+import { fragmentLogDepth, fragmentLogDepthMain, sharedUniforms, vertexLogDepth, vertexLogDepthMain } from "./base.mjs";
 import * as lit from "./lit.glsl.mjs";
 
 /*
@@ -15,6 +16,8 @@ import * as lit from "./lit.glsl.mjs";
 var webgl2Vertex = lit.webgl2.lit.vertex;
 var webgl2Fragment = `
 ${lit.shaderBase}
+
+${sharedUniforms}
 
 layout (location = 0) out vec4 fragColor;
 layout (location = 1) out vec2 motionVector;
@@ -41,7 +44,10 @@ uniform sharedPerScene {
 
 ${lit.fogBase}
 
+${fragmentLogDepth}
+
 void main() {
+  ${fragmentLogDepthMain}
   motionVector = vec2(0.5);
 
   vec4 currentAlbedo = useTexture ? texture(albedoTexture, vUV) : vec4(1);
@@ -62,6 +68,8 @@ void main() {
 
 var webgl2VertexInstanced = `
 ${lit.shaderBase}
+
+${sharedUniforms}
 
 in vec3 position;
 in vec3 normal;
@@ -89,6 +97,8 @@ out vec4 vColor;
 out vec2 vUV;
 out float vDitherAmount;
 
+${vertexLogDepth}
+
 void main() {
   vNormal = normal;
   vTangent = tangent;
@@ -98,11 +108,14 @@ void main() {
   vPosition = vec3(modelMatrix * vec4(position, 1.0));
   
   gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+  ${vertexLogDepthMain}
 }
 `;
 
 var webgl2FragmentInstanced = `
 ${lit.shaderBase}
+
+${sharedUniforms}
 
 layout (location = 0) out vec4 fragColor;
 layout (location = 1) out vec2 motionVector;
@@ -132,7 +145,10 @@ uniform sharedPerScene {
 
 ${lit.fogBase}
 
+${fragmentLogDepth}
+
 void main() {
+  ${fragmentLogDepthMain}
   motionVector = vec2(0.5);
 
   // Dither

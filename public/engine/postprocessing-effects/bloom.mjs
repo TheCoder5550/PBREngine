@@ -6,6 +6,8 @@ export default class Bloom extends PostProcessingEffect {
 
   lensDirtIntensity = 25;
   lensDirtTexture = null;
+  lensDirtTextureWidth = -1;
+  lensDirtTextureHeight = -1;
 
   sampleScale = 1;
   threshold = 1;
@@ -113,6 +115,10 @@ export default class Bloom extends PostProcessingEffect {
     gl.bindTexture(gl.TEXTURE_2D, this.upsampleFramebuffers[this.upsampleFramebuffers.length - 1].colorBuffer);
     gl.uniform1i(programContainer.getUniformLocation("newBloomTexture"), 5);
 
+    // Lens dirt aspect ratio
+    const lensDirtAspectRatio = this.lensDirtTextureWidth / this.lensDirtTextureHeight;
+    gl.uniform1f(programContainer.getUniformLocation("lensDirtAspectRatio"), lensDirtAspectRatio);
+
     // Lens dirt texture
     gl.activeTexture(gl.TEXTURE6);
     gl.bindTexture(gl.TEXTURE_2D, this.lensDirtTexture);
@@ -125,11 +131,12 @@ export default class Bloom extends PostProcessingEffect {
       uniform float bloomIntensity;
 
       uniform sampler2D lensDirtTexture;
+      uniform float lensDirtAspectRatio;
       uniform float lensDirtIntensity;
 
       vec4 mainImage(vec4 inColor, vec2 uv) {
         vec3 bloom = texture(newBloomTexture, uv).rgb;
-        vec3 lensDirt = texture(lensDirtTexture, uv * vec2(aspectRatio, 1)).rgb;
+        vec3 lensDirt = texture(lensDirtTexture, uv * vec2(aspectRatio / lensDirtAspectRatio, 1)).rgb;
 
         inColor.rgb += bloom.rgb * bloomIntensity * (1. + lensDirt * lensDirtIntensity);
 

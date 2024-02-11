@@ -1,9 +1,12 @@
+import { fragmentLogDepth, fragmentLogDepthMain, sharedUniforms } from "../built-in/base.mjs";
 import * as lit from "../built-in/lit.glsl.mjs";
 
 var vertex = lit.webgl2.lit.vertex;
 
 var fragment = `
 ${lit.shaderBase}
+
+${sharedUniforms}
 
 layout (location = 0) out vec4 fragColor;
 layout (location = 1) out vec2 motionVector;
@@ -101,7 +104,10 @@ vec3 getN(vec3 tangentNormal) {
   return N;
 }
 
+${fragmentLogDepth}
+
 void main() {
+  ${fragmentLogDepthMain}
   ${lit.motionBlurMain}
 
   // vec4 baseAlbedo = vec4(0, 0, 1, 1);

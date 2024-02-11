@@ -1,9 +1,12 @@
+import { fragmentLogDepth, fragmentLogDepthMain, sharedUniforms } from "../../assets/shaders/built-in/base.mjs";
 import * as lit from "../../assets/shaders/built-in/lit.glsl.mjs";
 
 var vertex = lit.webgl2.lit.vertex;
 
 var fragment = `
 ${lit.shaderBase}
+
+${sharedUniforms}
 
 ${lit.litAttributesAndUniforms}
 
@@ -28,7 +31,10 @@ float outerShoulderWidth = 0.15;
 float outerShoulderLineThickness = 0.007;
 vec3 outerShoulderColor = vec3(1);
 
+${fragmentLogDepth}
+
 void main() {
+  ${fragmentLogDepthMain}
   ${lit.motionBlurMain}
 
   vec4 currentAlbedo = vec4(0);

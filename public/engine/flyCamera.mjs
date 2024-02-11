@@ -73,8 +73,7 @@ export default function FlyCamera(renderer, cameraSettings) {
   renderer.on("renderloop", (dt) => this.update(dt));
 }
 
-function flyCamera(renderer, camera, eulerAngles, dt = 1) {
-  var speed = 15;
+function flyCamera(renderer, camera, eulerAngles, dt = 1, speed = 15, rotSpeed = 3) {
   if (renderer.getKey([87])) {
     let c = Math.cos(eulerAngles.x);
     camera.transform.position.x += Math.cos(eulerAngles.y + Math.PI / 2) * speed * dt * c;
@@ -96,7 +95,6 @@ function flyCamera(renderer, camera, eulerAngles, dt = 1) {
     camera.transform.position.z += -Math.sin(eulerAngles.y) * speed * dt;
   }
 
-  var rotSpeed = 3;
   if (renderer.getKey([37])) {
     eulerAngles.y += rotSpeed * dt;
   }
