@@ -97,6 +97,8 @@ var output = {
 
         uniform vec4 fogColor;
         uniform float fogIntensity;
+        uniform float fogHeight;
+        uniform float fogBlendFactor;
 
         uniform float _SkyboxSpeed;
         uniform vec3 _SkyboxDirection;
@@ -133,7 +135,8 @@ var output = {
           // vec3 col = (sky + sky2) * environmentIntensity;
 
           // Fog
-          col = mix(col, fogColor.rgb, fogIntensity * clamp(1. - viewDir.y * 10., 0., 1.));
+          col = mix(col, fogColor.rgb, fogIntensity * clamp(1. - (dot(viewDir, vec3(0, 1, 0)) - fogHeight) * fogBlendFactor, 0., 1.));
+          // col = mix(col, fogColor.rgb, fogIntensity * clamp(1. - viewDir.y * 10., 0., 1.));
 
           fragColor = vec4(col, 1);
         }

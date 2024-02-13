@@ -3894,6 +3894,8 @@ function Renderer(settings = {}) {
       gl.uniformMatrix4fv(this.uniformLocations.viewDirectionProjectionInverse, false, matrix);
       this.programContainer.setUniform("fogColor", scene.fogColor);
       this.programContainer.setUniform("fogIntensity", scene.skyboxFogIntensity);
+      this.programContainer.setUniform("fogHeight", scene.skyboxFogHeight);
+      this.programContainer.setUniform("fogBlendFactor", scene.skyboxFogBlendFactor);
       // this.programContainer.setUniform("iTime", renderer.getTime());
       // this.programContainer.setUniform("_SkyboxSpeed", scene.skyboxAnimation.speed);
       // this.programContainer.setUniform("_SkyboxDirection", Vector.toArray(scene.skyboxAnimation.direction));

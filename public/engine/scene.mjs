@@ -20,6 +20,8 @@ export function Scene(name) {
   this.environmentMinLight = 0.25;
   this.ambientColor = [0, 0, 0];
   this.skyboxFogIntensity = 0.8;
+  this.skyboxFogHeight = 0;
+  this.skyboxFogBlendFactor = 10;
   this.fogDensity = 0.0035;
   this.fogColor = [0.23, 0.24, 0.26, 1];
   this.shadowQuality = 2;

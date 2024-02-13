@@ -281,8 +281,11 @@ float getShadowAmount(vec3 worldPosition, float cosTheta) {
 }
 `;
 
+// Log depth
+
 export const vertexLogDepth = `
 out float flogz;
+// out float z;
 `;
 
 export const vertexLogDepthMain = `
@@ -290,10 +293,18 @@ export const vertexLogDepthMain = `
 float FCOEF = 2.0 / log2(cameraFar + 1.0);
 gl_Position.z = log2(max(cameraNear, 1.0 + gl_Position.w)) * FCOEF - 1.0;
 flogz = 1.0 + gl_Position.w;
+
+// // transform z to window coordinates
+// z = gl_Position.z / gl_Position.w;
+// z = (gl_DepthRange.diff * z + gl_DepthRange.near + gl_DepthRange.far) * 0.5;
+
+// // prevent z-clipping
+// gl_Position.z = 0.0;
 `;
 
 export const fragmentLogDepth = `
 in float flogz;
+// in float z;
 `;
 
 export const fragmentLogDepthMain = `
