@@ -1,0 +1,5 @@
+#?RADIANCE
+FORMAT=32-bit_rle_rgbe
+
+-Y 16 +X 32
+tƒ´€v„´€w†¶€zˆ·€zˆ¸€zˆ¹€{‰º€{Š»€|‹½€~Œ¿€ŽÂ€‚‘Æ€„”É€…•Ì€†—Î€‡˜Ï€ˆ™Ñ€‰šÒ€Š›Ó€Š›Ó€ˆ˜Ð€ƒ”Ì€€È€}Ä€zŠÁ€xˆ½€v†»€tƒ·€s‚¶€s´€s´€s‚³€Ye‘€Ye‘€Zf’€Yf‘€Ye‘€^j–€dpœ€gt €gu¢€jx¨€o~±€t…¼€~È€ƒ•Î€‚”Ð€“Ñ€ƒ–Õ€‹žÞ€—ªê€š­í€¢â€‰›Ù€‰›×€Š›Õ€ˆ˜Ï€€Ä€r¶€gvª€bp¢€_m€\i˜€Zf“€š¯ý²þž³þR]‚€R\‚€S^„€T`ˆ€UbŒ€\i”€bp€hw§€q´€s…¼€v‰Ä€•Ò€…™Ù€†œà€’¨í€²ö€œ±ô€ µø€–ªë€’¤á€’¤ß€ˆ—Í€t„¸€jxª€ht£€]i–€YdŽ€R]†€NY€€…–Ø~Ñ‘Ò’Óƒ–Ö‰œÝ’¨ëR]€€S_„€Q_‡€Tc€]l€l}±€t†À€€”Ð€ƒ™Û€˜¯ô€™°ö€¡·ü€T^€¡´ø€¤·ö€•§å€…–Ñ€zŠÀ€n}¯€ft¢€\g’€Va‰€Q[€“¦ïŒžãm|·ly²m}µk}´q€·yŠÂ}È…—ÓˆÝ—­òWc‰€Xh’€[l›€j|°€zÇ€—×€‚™Þ€Ž¦ì€Vb…£¸ý€T`¥é€‹ŸÛ€ƒ•Ì€yˆ¹€iw£€\h’€PZ€“¦íƒ•ØwˆÇt…Á_mŸbnž^l›coœbrŸfu¡p‚­r±vˆº{ÇŠ Þ‘ªðR_†€Xi—€iz¬€v‰Â€yÌ€ƒ™Ø€‹¡ä€™¯ð€…™Ø€~‘Í€~ŽÃ€q²€cpž€R_‰€Q\€€Ž ä€‘Ïr€¸fuªer¥T`ˆT_…U`…T`ƒ[eˆ\gˆ]lŒbp“mwœhx¡w†µ|ÅˆžÝ›µþO`Œ€Zl€fy­€r‚¸€{Ç€{È€yŠÁ€x‡¹€u‚°€hs€Yc‰€“¨í¡Ü}ŠÀnz¬co^h•]f–§å~—£à~“£Ú~Ÿ«Þ~Ÿ­Þ~§²Þ~¨µâ~¼Ëú~¸Å÷~³Åý~`kbqšo„µ‚˜Ñ“ªêP^„€\k•€]k˜€eu£€cqŸ€gu¡€`m•€Ubˆ€¤¹ûœ«äŠ”Èzƒ±lsž_jV_ƒ¦´ù~œ­í~„Œ¸~ƒŽ¹~‹±~{‡©~‹•´~˜´~”Ÿ¹~¤¾~ ¨Æ~¡¯Ñ~£²Ý~ ´ë~U`‚\m–j|¬{È’¨ç¢¸ù£»ý¢¸ûž¯ñš¬é’žÖŠ—Èz…±pyŸbhŠµ¾ù~£°ç~š Ô~”˜É~„¾~pqŒ~~z˜~npˆ~qq…~yzŒ~qw…~~{‡~z|‡~‚’~‚Šš~yˆ¡~ª~‚“½~‹ Ö~¤¸ø~Zd‰cršnz¦t„³ƒ‘¿|ˆ²u€©lr•dm_fƒž²â~œ¤Ï~”žÄ~‰’¶~„†¨~~Ÿ~sx–~¨­Í}§°Ð}¬±Ë}›¨¹}±²¿}½ÃÏ}¬¯´}»ÁÈ}ÉÌÕ}²ÁÈ}ÅÌã}ØÜÿ}ÀÔþ}nx•~w†«~€¼~’¡Ó~ž©Þ~¡µî~£·ð~¢³ê~®´æ~—¢Ï~“šÁ~––¹~€†¢~™~zx~km‚~on‚~ÉÊð}­±Ö}Ž‰š}Šƒ}‘‹•}ˆ…Š}ŠŽ’}ƒ……}Š‡}š’’}¦œ}‰Š}–‘–}’”¢}—˜­}˜£À}§±Ø}ª¼ë}^gƒ~dk‰~pw—~pv“~y|›~ms~npˆ~ln‚~ÅÃå}ÌÆå}¦«Å}³«Ã}£ ·}œ“¦}ŒŒ} }ÍÍÓ|ÚËÒ|×ÅÉ|É¾»|ÛÐË|êÉ¿|ÖÃ´|ßÑÂ|ÙÒÁ|ÏÆº|×ØÔ|à×Ù|ÔÓÜ|àâõ|sw…}w”}…‰¡}‘¬}”¯}–—±}¡ž·}ž“ª}›”§}ž”¥}œ›}‰ƒ}€€Š}}zƒ}ãÞï|ïâò|ÛÕä|ÐÄÒ|ª›˜|¬œ—|¥–‘|­™’|°‘‡|¥Ž‚|š€|¨œŒ|”‘€| –ˆ|©›‘|¤•|›“|¡™š|¨Ÿ¥|œ§|³­¹|Ã»È|ÌÄÓ|ÑÆÖ|×¹Ç|Ð»É|ÏÄÎ|À¾Å|½´¹|¾°²|Ê¯±|Ê¬­|©™›|ªšš|­œ›| |‡xr|†uo|‚qj|úßÎ{ìÚÅ{éÖ¿{çÔ¼{ïÜÃ{þéÒ{‚vl|þåÓ{ôÛÊ{ãÏÁ{ãÏÃ{èÓÉ{ñÝÖ{ýëç{‚zy|…}}|‰€€|Œ‚|Š€}|ƒyu|„xs|‹|y|’||•€||’~y|‹vq|‰uo|…vp|…wq|×¼°{Ö¼°{Ö¼°{×½²{×¾²{Ô¼°{Ó»¯{Òº®{Ð¹¬{Ï·«{Íµ¨{Ê±¥{Ê°¥{Í³¨{Ïµª{Ñ·¬{Ó¸®{Õº¯{×»±{Ù¼²{Û¿µ{Ü¿µ{Ý¿µ{Ý¿´{Ý½³{Û»±{Ù¸®{Õµ«{Ô¶¬{Öº¯{×»°{×¼±{

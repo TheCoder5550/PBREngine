@@ -24,6 +24,7 @@ import {
   rayToAABBTriangle,
   triangleTriangleIntersection,
   AABBTriangleToAABBTriangle,
+  triangleTriangleDistance,
 } from "./algebra.mjs";
 import { Scene } from "./scene.mjs";
 import { EventHandler } from "./eventHandler.mjs";
@@ -430,9 +431,11 @@ function AABB(bl, tr) {
 
   this.copy = function(dst) {
     let aabb = dst || new AABB();
-    aabb.bl = Vector.copy(this.bl); // bruh gc
-    aabb.tr = Vector.copy(this.tr); // ^
+
+    Vector.set(aabb.bl, this.bl);
+    Vector.set(aabb.tr, this.tr);
     aabb.isEmpty = this.isEmpty;
+
     return aabb;
   };
 
@@ -443,6 +446,8 @@ function AABB(bl, tr) {
     this.tr.x += padding;
     this.tr.y += padding;
     this.tr.z += padding;
+
+    return this;
   };
 
   this.extend = function(pointOrAABBorPadding) {
@@ -461,6 +466,8 @@ function AABB(bl, tr) {
     }
 
     this.isEmpty = false;
+
+    return this;
   };
 
   // this.extend = function(pointOrAABBorPadding) {
@@ -552,6 +559,7 @@ function AABB(bl, tr) {
       Matrix.transformVector(matrix, vertex, _transformedVertex);
       this.extend(_transformedVertex);
     }
+
     return this;
   };
 
@@ -640,6 +648,14 @@ function GetMeshAABB(gameObject, padding, ignoreGameObjects) {
   return aabb;
 }
 
+export function RaycastHit(distance = 0, normal = new Vector(), point = new Vector(), gameObject = null) {
+  this.hasHit = false;
+  this.distance = distance;
+  this.normal = normal;
+  this.point = point;
+  this.gameObject = gameObject;
+}
+
 function PhysicsEngine(scene, settings = {}) {
   if (typeof scene !== "undefined" && !(scene instanceof Scene)) {
     throw new Error("scene is not of class 'Scene'");
@@ -678,6 +694,10 @@ function PhysicsEngine(scene, settings = {}) {
     return component;
   };
 
+  const worldMatrix = new Matrix();
+  const currentOrigin = new Vector();
+  const currentDirection = new Vector();
+
   const v1 = new Vector();
   const v2 = new Vector();
   const v3 = new Vector();
@@ -689,24 +709,24 @@ function PhysicsEngine(scene, settings = {}) {
   ];
   const point = new Vector();
 
-  function RaycastHit(distance = 0, normal = new Vector(), point = new Vector(), gameObject = null) {
-    this.distance = distance;
-    this.normal = normal;
-    this.point = point;
-    this.gameObject = gameObject;
-  }
-
-  this.Raycast = function(origin, direction, raycastHit = new RaycastHit()) {
+  this.Raycast = function(origin, direction, raycastHit = new RaycastHit(), layer = 0b1111111111111111) {
     let smallestDistance = Infinity;
     let didHit = false;
 
     let gameObjectIndex;
     let octree;
+    let meshCollider; 
   
     var q = this.octree.query(origin, direction);
     if (q) {
       let triangles = q.triangles;
       for (let k = 0; k < triangles.length; k++) {
+        const currentGameObjectIndex = q.gameObjectIndices[k];
+        const gameObject = this.octree.getGameObjectFromIndex(currentGameObjectIndex);
+        if ("_colliderLayer" in gameObject && !(gameObject._colliderLayer & layer)) {
+          continue;
+        }
+
         let hitPoint = rayToTriangle(origin, direction, triangles[k][0], triangles[k][1], triangles[k][2]);
         if (hitPoint && hitPoint.distance < smallestDistance) {
           didHit = true;
@@ -718,7 +738,7 @@ function PhysicsEngine(scene, settings = {}) {
 
           Vector.set(point, hitPoint.point);
 
-          gameObjectIndex = q.gameObjectIndices[k];
+          gameObjectIndex = currentGameObjectIndex;
           octree = this.octree;
         }
       }
@@ -726,17 +746,36 @@ function PhysicsEngine(scene, settings = {}) {
 
     if (this.scene) {
       this.scene.root.traverseCondition(function(gameObject) {
-        const components = gameObject.getComponents();
+        const components = gameObject.getAllComponents();
         for (const component of components) {
-          if (component.type == "MeshCollider") {
-            const meshCollider = component;
-            const currentOctree = meshCollider.octree;
+          if (component.type === "MeshCollider") {
+            if (!(component.layer & layer)) {
+              continue;
+            }
+
+            if (component.isTrigger) {
+              continue;
+            }
+
+            const currentMeshCollider = component;
+            const currentOctree = currentMeshCollider.octree;
 
             if (currentOctree) {
               const arr = currentOctree.trianglesArray;
 
+              if (currentMeshCollider.dynamic) {
+                Matrix.copy(currentMeshCollider.gameObject.transform.worldMatrix, worldMatrix);
+                Matrix.inverse(worldMatrix, worldMatrix);
+                Matrix.transformVector(worldMatrix, origin, currentOrigin);
+                Matrix.transformDirection(worldMatrix, direction, currentDirection);
+              }
+              else {
+                Vector.copy(origin, currentOrigin);
+                Vector.copy(direction, currentDirection);
+              }
+
               const indices = []; // bruh gc
-              currentOctree._query((cAABB) => rayToAABB(origin, direction, cAABB), indices);
+              currentOctree._query((cAABB) => rayToAABB(currentOrigin, currentDirection, cAABB), indices);
 
               for (let i = 0; i < indices.length; i++) {
                 const index = indices[i];
@@ -753,11 +792,11 @@ function PhysicsEngine(scene, settings = {}) {
                 v3.y = arr[index + 7];
                 v3.z = arr[index + 8];
 
-                if (!rayToAABBTriangle(origin, direction, v1, v2, v3)) {
+                if (!rayToAABBTriangle(currentOrigin, currentDirection, v1, v2, v3)) {
                   continue;
                 }
 
-                const hitPoint = rayToTriangle(origin, direction, v1, v2, v3);
+                const hitPoint = rayToTriangle(currentOrigin, currentDirection, v1, v2, v3);
 
                 if (hitPoint && hitPoint.distance < smallestDistance) {
                   didHit = true;
@@ -771,6 +810,7 @@ function PhysicsEngine(scene, settings = {}) {
 
                   gameObjectIndex = currentOctree.gameObjectLookup[index / 9];
                   octree = currentOctree;
+                  meshCollider = currentMeshCollider;
                 }
               }
             }
@@ -784,10 +824,19 @@ function PhysicsEngine(scene, settings = {}) {
 
       const gameObject = octree.getGameObjectFromIndex(gameObjectIndex);
 
+      raycastHit.hasHit = true;
       raycastHit.distance = smallestDistance;
       getTriangleNormal(triangle, raycastHit.normal);
       Vector.set(raycastHit.point, point);
       raycastHit.gameObject = gameObject;
+
+      // Transform point, normal from local space to world space
+      // since dynamic colliders store local space
+      if (meshCollider && meshCollider.dynamic) {
+        const matrix = meshCollider.gameObject.transform.worldMatrix;
+        Matrix.transformVector(matrix, raycastHit.point, raycastHit.point);
+        Matrix.transformDirection(matrix, raycastHit.normal, raycastHit.normal);
+      }
 
       return raycastHit;
     }
@@ -865,75 +914,88 @@ function PhysicsEngine(scene, settings = {}) {
   //   return null;
   // };
 
-  this.RaycastAll = function(origin, direction, outArray) {
+  this.RaycastAll = function(origin, direction, outArray, layer = 0b1111111111111111) {
     outArray = outArray || [];
   
-    var q = this.octree.query(origin, direction);
+    const q = this.octree.query(origin, direction);
     if (q) {
-      let smallestDistance = Infinity;
-      let normal;
-      let point;
-      let gameObjectIndex;
-  
-      // bruh, keep all hits here
-      let triangles = q.triangles;
+      const triangles = q.triangles;
 
       for (let k = 0; k < triangles.length; k++) {
-        let hitPoint = rayToTriangle(origin, direction, triangles[k][0], triangles[k][1], triangles[k][2]);
-        if (hitPoint && hitPoint.distance < smallestDistance) {
-          smallestDistance = hitPoint.distance;
-          normal = getTriangleNormal(triangles[k]);
-          point = hitPoint.point;
-          gameObjectIndex = q.gameObjectIndices[k];
+        const currentGameObjectIndex = q.gameObjectIndices[k];
+        const gameObject = this.octree.getGameObjectFromIndex(currentGameObjectIndex);
+        if ("_colliderLayer" in gameObject && !(gameObject._colliderLayer & layer)) {
+          continue;
         }
-      }
-  
-      if (point) {
-        let d = {
-          distance: smallestDistance,
-          normal: normal,
-          point: point,
-          gameObject: this.octree.getGameObjectFromIndex(gameObjectIndex),
-        };
 
-        outArray.push(d);
+        const hitPoint = rayToTriangle(origin, direction, triangles[k][0], triangles[k][1], triangles[k][2]);
+        if (hitPoint) {
+          const smallestDistance = hitPoint.distance;
+          const normal = getTriangleNormal(triangles[k]);
+          const point = hitPoint.point;
+          const gameObjectIndex = q.gameObjectIndices[k];
+
+          const d = {
+            hasHit: true,
+            distance: smallestDistance,
+            normal: normal,
+            point: point,
+            gameObject: this.octree.getGameObjectFromIndex(gameObjectIndex),
+          };
+  
+          outArray.push(d);
+        }
       }
     }
 
     if (this.scene) {
       this.scene.root.traverseCondition(function(gameObject) {
-        // var meshColliders = gameObject.findComponents("MeshCollider");
-        var components = gameObject.getComponents();
+        var components = gameObject.getAllComponents();
         for (var component of components) {
           if (component.type == "MeshCollider") {
-          // if (component instanceof MeshCollider) {
-            var meshCollider = component;
+            if (!(component.layer & layer)) {
+              continue;
+            }
 
-            // if (!meshCollider.octree) {
-            //   meshCollider.setup();
-            // }
+            const currentMeshCollider = component;
+            const currentOctree = currentMeshCollider.octree;
 
-            if (meshCollider.octree) {
-              var q = meshCollider.octree.query(origin, direction);
+            if (currentOctree) {
+              let currentOrigin = origin;
+              let currentDirection = direction;
+
+              if (currentMeshCollider.dynamic) {
+                const matrix = Matrix.copy(currentMeshCollider.gameObject.transform.worldMatrix);
+                Matrix.inverse(matrix, matrix);
+                currentOrigin = Matrix.transformVector(matrix, origin);
+                currentDirection = Matrix.transformDirection(matrix, direction);
+              }
+
+              var q = currentMeshCollider.octree.query(currentOrigin, currentDirection);
               if (q) {
                 let triangles = q.triangles;
                 for (var k = 0; k < triangles.length; k++) {
-                  // if (!rayToAABBTriangle(origin, direction, q[k][0], q[k][1], q[k][2])) {
-                  //   continue;
-                  // }
-
-                  if (!rayToAABBTriangle(origin, direction, triangles[k][0], triangles[k][1], triangles[k][2])) {
+                  if (!rayToAABBTriangle(currentOrigin, currentDirection, triangles[k][0], triangles[k][1], triangles[k][2])) {
                     continue;
                   }
 
-                  var hitPoint = rayToTriangle(origin, direction, triangles[k][0], triangles[k][1], triangles[k][2]);
+                  var hitPoint = rayToTriangle(currentOrigin, currentDirection, triangles[k][0], triangles[k][1], triangles[k][2]);
                   if (hitPoint) {
-                    outArray.push({
+                    const raycastHit = {
+                      hasHit: true,
                       distance: hitPoint.distance,
                       normal: getTriangleNormal(triangles[k]),
                       point: hitPoint.point,
-                      gameObject: meshCollider.octree.getGameObjectFromIndex(q.gameObjectIndices[k]),
-                    });
+                      gameObject: currentMeshCollider.octree.getGameObjectFromIndex(q.gameObjectIndices[k]),
+                    };
+
+                    if (currentMeshCollider.dynamic) {
+                      const matrix = currentMeshCollider.gameObject.transform.worldMatrix;
+                      Matrix.transformVector(matrix, raycastHit.point, raycastHit.point);
+                      Matrix.transformDirection(matrix, raycastHit.normal, raycastHit.normal);
+                    }
+
+                    outArray.push(raycastHit);
                   }
                 }
               }
@@ -1001,6 +1063,8 @@ function PhysicsEngine(scene, settings = {}) {
       }
     }
 
+    outArray.sort((a, b) => a.distance - b.distance);
+
     // var smallestElement;
     // if (outArray.length > 0) {
     //   smallestElement = outArray.reduce(function(prev, curr) {
@@ -1037,18 +1101,25 @@ function PhysicsEngine(scene, settings = {}) {
     meshCollidersToAdd.push(gameObject);
   };
 
-  this.setupMeshCollider = function() {
+  this.setupMeshCollider = function(bounds = null) {
     var aabb;
 
-    if (settings.bounds) {
+    if (bounds !== null) {
+      aabb = bounds;
+    }
+    else if (settings.bounds) {
       aabb = settings.bounds;
     }
     else {
-      aabb = new AABB(Vector.zero(), Vector.zero()); // bruh should work without having the origin within the bounds
+      aabb = new AABB();
       for (let c of meshCollidersToAdd) {
         aabb.extend(GetMeshAABB(c, 0.1));
       }
     }
+    
+    // Make AABB a cube
+    aabb.bl = Vector.fill(Math.min(aabb.bl.x, aabb.bl.y, aabb.bl.z));
+    aabb.tr = Vector.fill(Math.max(aabb.tr.x, aabb.tr.y, aabb.tr.z));
 
     this.octree = new Octree(aabb, settings.octreeLevels ?? 4);
 
@@ -1061,12 +1132,12 @@ function PhysicsEngine(scene, settings = {}) {
 
   // bruh make private
   this._addMeshToOctree = function(gameObject) {
-    var nrTriangles = 0;
+    let nrTriangles = 0;
 
     gameObject.traverse(o => {
       if (o.meshRenderer) {
-        for (var j = 0; j < o.meshRenderer.meshData.length; j++) {
-          var md = o.meshRenderer.meshData[j].data;
+        for (let j = 0; j < o.meshRenderer.meshData.length; j++) {
+          const md = o.meshRenderer.meshData[j].data;
           nrTriangles += md.indices.bufferData.length / 3;
         }
       }
@@ -1127,15 +1198,19 @@ function PhysicsEngine(scene, settings = {}) {
         var rigidbodies = gameObject.findComponents("Rigidbody");
         var rigidbody = rigidbodies[0];
         if (rigidbody) {
+          if (!rigidbody.gameObject) {
+            return;
+          }
+
           allRigidbodies.push(rigidbody);
 
           rigidbody.grounded = false;
-          let hasConstraints = false;
+          // let hasConstraints = false;
 
           // Sphere to world
-          var sphereColliders = rigidbody.gameObject.findComponents("SphereCollider");
+          var sphereColliders = gameObject.findComponents("SphereCollider");
           for (let collider of sphereColliders) {
-            hasConstraints = true;
+            // hasConstraints = true;
 
             var mat = Matrix.removeTranslation(Matrix.copy(rigidbody.gameObject.transform.worldMatrix));
             var pos = Vector.add(rigidbody.position, Matrix.transformVector(mat, collider.offset));
@@ -1200,9 +1275,9 @@ function PhysicsEngine(scene, settings = {}) {
           }
 
           // Capsule to world
-          var capsuleColliders = rigidbody.gameObject.findComponents("CapsuleCollider");
+          var capsuleColliders = gameObject.findComponents("CapsuleCollider");
           for (let collider of capsuleColliders) {
-            hasConstraints = true;
+            // hasConstraints = true;
 
             let mat = Matrix.removeTranslation(Matrix.copy(rigidbody.gameObject.transform.worldMatrix));
             let a = Vector.add(rigidbody.position, Matrix.transformVector(mat, collider.a));
@@ -1260,6 +1335,9 @@ function PhysicsEngine(scene, settings = {}) {
           }
 
           let _tmpConstraintsToSolve = [];
+
+          // Capsule to Mesh
+          _tmpConstraintsToSolve.push(...this.capsuleToMeshCollision(gameObject, rigidbody));
 
           // // Box to plane
           // var boxColliders = rigidbody.gameObject.findComponents("BoxCollider");
@@ -1629,154 +1707,19 @@ function PhysicsEngine(scene, settings = {}) {
           // Box - box collision
           _tmpConstraintsToSolve.push(...this.boxToBoxCollision(gameObject, rigidbody));
 
+          // Box - mesh collision
+          // _tmpConstraintsToSolve.push(...this.boxToMeshCollision(gameObject, rigidbody));
+
           // Mesh to Mesh
-          let meshColliders = rigidbody.gameObject.findComponents("MeshCollider");
-          for (let collider of meshColliders) {
-            hasConstraints = true;
+          _tmpConstraintsToSolve.push(...this.meshToMeshCollision(gameObject, rigidbody));
 
-            let worldMatrix = gameObject.transform.worldMatrix;
-            // collider.setup();
-            let transformedAABB = collider.gameObject.meshRenderer.getAABB().approxTransform(worldMatrix);
-            // let transformedAABB = collider.gameObject.getAABB().copy();
+          // Box to Mesh trigger
+          this.boxToMeshTrigger(gameObject, rigidbody);
 
-            this.scene.root.traverseCondition(otherGameObject => {
-              // Don't collide with self
-              if (otherGameObject === gameObject) {
-                return;
-              }
-
-              let otherWorldMatrix = otherGameObject.transform.worldMatrix;
-              // let otherTransformedAABB = otherGameObject.meshRenderer.getAABB().approxTransform(otherWorldMatrix);
-              // if (!otherTransformedAABB || !AABBToAABB(transformedAABB, otherTransformedAABB)) {
-              //   return;
-              // }
-
-              let otherMeshColliders = otherGameObject.findComponents("MeshCollider");
-              for (let otherCollider of otherMeshColliders) {
-                var q = otherCollider.octree?.queryAABB(transformedAABB)?.triangles;
-                if (q) {
-                  console.log(q.length);
-                  for (var k = 0; k < q.length; k++) {
-                    let otherTriangle = q[k];
-
-                    if (collider.gameObject && collider.gameObject.meshRenderer) {
-                      for (let m = 0; m < collider.gameObject.meshRenderer.meshData.length; m++) {
-                        let md = collider.gameObject.meshRenderer.meshData[m].data;
-                
-                        for (let n = 0; n < md.indices.bufferData.length; n += 3) {
-                          let triangle = [];
-
-                          for (let o = 0; o < 3; o++) {
-                            let currentIndex = md.indices.bufferData[n + o] * 3;
-                            let vec = Vector.fromArray(md.position.bufferData, currentIndex);
-                            vec = {x: vec.x, y: vec.y, z: vec.z};
-                            let vertex = Matrix.transformVector(worldMatrix, vec);
-                            triangle.push(vertex);
-                          }
-
-                          if (AABBTriangleToAABBTriangle(triangle[0], triangle[1], triangle[2], otherTriangle[0], otherTriangle[1], otherTriangle[2])) {
-                            let intersectData = triangleTriangleIntersection(triangle, otherTriangle);
-                            if (intersectData) {
-                              for (let itersection of intersectData) {
-                                // console.log(itersection);
-
-                                if (window.gldebug) window.gldebug.Vector(itersection.point, itersection.normal, itersection.depth * -1000);
-
-                                // if (this.scene.renderer.getKey(32)) {
-                                _tmpConstraintsToSolve.push({
-                                  C: itersection.depth,
-                                  bodies: [
-                                    {
-                                      collider: collider,
-                                      body: rigidbody,
-                                      normal: itersection.normal,
-                                      p: itersection.point,
-                                    }
-                                  ]
-                                });
-                                // }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-
-                // if (otherCollider.gameObject && otherCollider.gameObject.meshRenderer) {
-                //   // let otherTransformedAABB = otherCollider.aabb;
-                //   let otherTransformedAABB = otherGameObject.meshRenderer.getAABB().approxTransform(otherWorldMatrix);
-                //   // let otherTransformedAABB = otherGameObject.getAABB().copy();
-                //   if (!otherTransformedAABB || !AABBToAABB(transformedAABB, otherTransformedAABB)) {
-                //     return;
-                //   }
-
-                //   for (let j = 0; j < otherCollider.gameObject.meshRenderer.meshData.length; j++) {
-                //     let md = otherCollider.gameObject.meshRenderer.meshData[j].data;
-            
-                //     for (let k = 0; k < md.indices.bufferData.length; k += 3) {
-                //       let otherTriangle = [];
-
-                //       for (let l = 0; l < 3; l++) {
-                //         let currentIndex = md.indices.bufferData[k + l] * 3;
-                //         let vec = Vector.fromArray(md.position.bufferData, currentIndex);
-                //         vec = {x: vec.x, y: vec.y, z: vec.z};
-                //         let vertex = Matrix.transformVector(otherWorldMatrix, vec);
-                //         otherTriangle.push(vertex);
-                //       }
-
-                //       if (collider.gameObject && collider.gameObject.meshRenderer) {
-                //         for (let m = 0; m < collider.gameObject.meshRenderer.meshData.length; m++) {
-                //           let md = collider.gameObject.meshRenderer.meshData[m].data;
-                  
-                //           for (let n = 0; n < md.indices.bufferData.length; n += 3) {
-                //             let triangle = [];
-
-                //             for (let o = 0; o < 3; o++) {
-                //               let currentIndex = md.indices.bufferData[n + o] * 3;
-                //               let vec = Vector.fromArray(md.position.bufferData, currentIndex);
-                //               vec = {x: vec.x, y: vec.y, z: vec.z};
-                //               let vertex = Matrix.transformVector(worldMatrix, vec);
-                //               triangle.push(vertex);
-                //             }
-
-                //             if (AABBTriangleToAABB(triangle[0], triangle[1], triangle[2], otherTransformedAABB) && AABBTriangleToAABBTriangle(triangle[0], triangle[1], triangle[2], otherTriangle[0], otherTriangle[1], otherTriangle[2])) {
-                //               let intersectData = triangleTriangleIntersection(triangle, otherTriangle);
-                //               if (intersectData) {
-                //                 for (let itersection of intersectData) {
-                //                   // console.log(itersection);
-
-                //                   if (window.gldebug) window.gldebug.Vector(itersection.point, itersection.normal, itersection.depth * -1000);
-
-                //                   // if (this.scene.renderer.getKey(32)) {
-                //                   _tmpConstraintsToSolve.push({
-                //                     C: itersection.depth,
-                //                     bodies: [
-                //                       {
-                //                         collider: collider,
-                //                         body: rigidbody,
-                //                         normal: itersection.normal,
-                //                         p: itersection.point,
-                //                       }
-                //                     ]
-                //                   });
-                //                   // }
-                //                 }
-                //               }
-                //             }
-                //           }
-                //         }
-                //       }
-                //     }
-                //   }
-                // }
-              }
-            });
-          }
           constraintsToSolve = constraintsToSolve.concat(_tmpConstraintsToSolve); // Linter does not like using "constraintsToSolve" in function above
 
-          if (hasConstraints) {
+          // if (hasConstraints) {
+          if (constraintsToSolve.length > 0) {
             rigidbodiesWithColliders.push(rigidbody);
           }
 
@@ -2275,6 +2218,65 @@ function PhysicsEngine(scene, settings = {}) {
   this.getLambda = getLambda;
   this.getEffectiveMass = getEffectiveMass;
 
+  this.capsuleToMeshCollision = function(gameObject, rigidbody) {
+    const _tmpConstraintsToSolve = [];
+
+    const capsuleColliders = rigidbody.gameObject.findComponents("CapsuleCollider");
+    for (let collider of capsuleColliders) {
+      let mat = Matrix.removeTranslation(Matrix.copy(rigidbody.gameObject.transform.worldMatrix));
+      let a = Vector.add(rigidbody.position, Matrix.transformVector(mat, collider.a));
+      let b = Vector.add(rigidbody.position, Matrix.transformVector(mat, collider.b));
+
+      let s = Vector.fill(collider.radius * 10);
+      let center = Vector.average(a, b);
+      const aabb = new AABB(
+        Vector.subtract(center, s),
+        Vector.add(center, s)
+      );
+
+      this.scene.root.traverseCondition(otherGameObject => {
+        // Don't collide with self
+        if (otherGameObject === gameObject) {
+          return;
+        }
+
+        let otherMeshColliders = otherGameObject.findComponents("MeshCollider");
+        for (let otherCollider of otherMeshColliders) {
+          var q = otherCollider.octree?.queryAABB(aabb)?.triangles;
+          if (q) {
+            for (let k = 0; k < q.length; k++) {
+              const col = capsuleToTriangle(a, b, collider.radius, q[k][0], q[k][1], q[k][2], true);
+              if (col) {
+                const normal = col.normal;
+                const depth = col.depth / Vector.dot(normal, col.normal);
+                const pA = Vector.add(col.point, Vector.multiply(col.normal, -col.depth));
+    
+                _tmpConstraintsToSolve.push({
+                  C: -depth,
+                  bodies: [
+                    {
+                      collider: collider,
+                      body: rigidbody,
+                      normal: normal,
+                      p: pA
+                    }
+                  ]
+                });
+    
+                if (Vector.dot(Vector.up(), normal) > 0.5) {
+                  rigidbody.grounded = true;
+                  rigidbody.groundNormal = normal;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    return _tmpConstraintsToSolve;
+  };
+
   this.boxToBoxCollision = function(gameObject, rigidbody) {
     const _tmpConstraintsToSolve = [];
 
@@ -2388,6 +2390,409 @@ function PhysicsEngine(scene, settings = {}) {
 
     return _tmpConstraintsToSolve;
   };
+
+  this.boxToMeshCollision = function(gameObject, rigidbody) {
+    const _tmpConstraintsToSolve = [];
+
+    const boxColliders = rigidbody.gameObject.findComponents("BoxCollider");
+    for (const boxCollider of boxColliders) {
+      if (!boxCollider.vclipGeometry) {
+        throw new Error("Missing vclip geometry in boxcollider");
+      }
+
+      this.scene.root.traverseCondition(otherGameObject => {
+        // Don't collide with self
+        if (otherGameObject === gameObject) {
+          return;
+        }
+
+        /**
+         * @type {MeshCollider[]}
+         */
+        const meshColliders = otherGameObject.findComponents("MeshCollider");
+        for (const meshCollider of meshColliders) {
+          if (!meshCollider.vclipGeometry) {
+            continue;
+          }
+
+          const otherGeometry = meshCollider.vclipGeometry;
+          otherGeometry.updateMatrix(otherGameObject.transform.matrix);
+
+          const getContact = (matrix) => {
+            const newBoxGeometry = boxCollider.vclipGeometry;
+            newBoxGeometry.updateMatrix(matrix);
+
+            const vclipData = VClip(otherGeometry, newBoxGeometry);
+            if (vclipData.status !== 1) { // 1 = Not intersecting
+              return null;
+            }
+
+            const { pointB, distance, vector } = computeDistance(vclipData.featureA, vclipData.featureB);
+
+            const margin = 0.1;
+            if (distance > margin * 2) {
+              return null;
+            }
+
+            const point = pointB;
+            const normal = Vector.normalize(vector);
+            const depth = -(distance - margin * 2);
+
+            return {
+              point,
+              normal,
+              depth
+            };
+          };
+
+          const perturbationAngle = Math.PI * 0.004 * 0.1;
+
+          const getPerturbationMatrix = (baseMatrix, x, z) => {
+            const matrix = Matrix.copy(baseMatrix);
+            Matrix.applyRotationX(perturbationAngle * x, matrix);
+            Matrix.applyRotationZ(perturbationAngle * z, matrix);
+            return matrix;
+          };
+
+          const matrices = [
+            getPerturbationMatrix(rigidbody.gameObject.transform.matrix, 1, 1),
+            getPerturbationMatrix(rigidbody.gameObject.transform.matrix, 1, -1),
+            getPerturbationMatrix(rigidbody.gameObject.transform.matrix, -1, 1),
+            getPerturbationMatrix(rigidbody.gameObject.transform.matrix, -1, -1),
+          ];
+
+          for (const matrix of matrices) {
+            const penetrationData = getContact(matrix);
+            if (!penetrationData) {
+              continue;
+            }
+
+            if (this.dt !== 0) {
+              _tmpConstraintsToSolve.push({
+                C: -penetrationData.depth,
+                bodies: [
+                  {
+                    collider: boxCollider,
+                    body: rigidbody,
+                    normal: penetrationData.normal,
+                    p: penetrationData.point,
+                  },
+                ]
+              });
+            }
+          }
+        }
+      });
+    }
+
+    return _tmpConstraintsToSolve;
+  };
+
+  this.boxToMeshTrigger = (() => {
+    const inverseBoxMatrix = new Matrix();
+    const transformedBox = new AABB();
+    const transformedTriangle = [
+      new Vector(),
+      new Vector(),
+      new Vector(),
+    ];
+
+    return (gameObject, rigidbody) => {
+      Matrix.inverse(gameObject.transform.worldMatrix, inverseBoxMatrix);
+
+      const boxColliders = rigidbody.gameObject.findComponents("BoxCollider");
+      for (const boxCollider of boxColliders) {
+        this.scene.root.traverseCondition(otherGameObject => {
+          // Don't collide with self
+          if (otherGameObject === gameObject) {
+            return;
+          }
+
+          /**
+           * @type {MeshCollider[]}
+           */
+          const meshColliders = otherGameObject.findComponents("MeshCollider");
+          meshLoop: for (const meshCollider of meshColliders) {
+            if (!meshCollider.isTrigger) {
+              continue;
+            }
+
+            boxCollider.aabb.copy(transformedBox);
+            transformedBox.approxTransform(gameObject.transform.worldMatrix);
+
+            const triangles = meshCollider.octree.queryAABB(transformedBox)?.triangles;
+            if (!triangles) {
+              continue;
+            }
+
+            for (const triangle of triangles) {
+              Matrix.transformVector(inverseBoxMatrix, triangle[0], transformedTriangle[0]);
+              Matrix.transformVector(inverseBoxMatrix, triangle[1], transformedTriangle[1]);
+              Matrix.transformVector(inverseBoxMatrix, triangle[2], transformedTriangle[2]);
+
+              if (AABBToTriangle(boxCollider.aabb, transformedTriangle)) {
+                meshCollider.eventHandler.fireEvent("trigger", gameObject);
+                continue meshLoop;
+              }
+            }
+          }
+        });
+      }
+    };
+  })();
+
+  this.meshToMeshCollision = (() => {
+    const triangle = [
+      new Vector(),
+      new Vector(),
+      new Vector(),
+    ];
+
+    const margin = 0.2;
+
+    const handleTriangles = (collider, rigidbody, a, b) => {
+      if (!AABBTriangleToAABBTriangle(
+        a[0], a[1], a[2],
+        b[0], b[1], b[2],
+        margin + 0.02
+      )) {
+        return [];
+      }
+
+      const pointA = new Vector();
+      const pointB = new Vector();
+      const distanceSqr = triangleTriangleDistance(a, b, pointA, pointB);
+      const distance = Math.sqrt(distanceSqr);
+
+      if (distance > margin * 2 || distance <= 0.0001) {
+        return [];
+      }
+
+      const point = pointB;
+      const normal = Vector.divide(Vector.subtract(pointA, pointB), distance);
+      const depth = -(distance - margin * 2);
+
+      return [
+        {
+          C: -depth,
+          bodies: [
+            {
+              collider: collider,
+              body: rigidbody,
+              normal: normal,
+              p: point,
+            },
+          ]
+        }
+      ];
+    };
+
+    return (gameObject, rigidbody) => {
+      const _tmpConstraintsToSolve = [];
+
+      const worldMatrix = gameObject.transform.worldMatrix;
+      const transformedAABB = gameObject.meshRenderer.getAABB().approxTransform(worldMatrix).addPadding(margin * 2 + 0.01);
+
+      var q = this.octree.queryAABB(transformedAABB);
+      if (!q) {
+        return _tmpConstraintsToSolve;
+      }
+      const otherTriangles = q.triangles;
+
+      const meshColliders = rigidbody.gameObject.findComponents("MeshCollider");
+      for (const collider of meshColliders) {
+        if (!collider.gameObject || !collider.gameObject.meshRenderer) {
+          continue;
+        }
+
+        for (let m = 0; m < collider.gameObject.meshRenderer.meshData.length; m++) {
+          let md = collider.gameObject.meshRenderer.meshData[m].data;
+  
+          for (let n = 0; n < md.indices.bufferData.length; n += 3) {
+            for (let o = 0; o < 3; o++) {
+              const currentIndex = md.indices.bufferData[n + o] * 3;
+              Vector.fromArray(md.position.bufferData, currentIndex, 1, 3, triangle[o]);
+              Matrix.transformVector(worldMatrix, triangle[o], triangle[o]);
+            }
+
+            for (let k = 0; k < otherTriangles.length; k++) {
+              const otherTriangle = otherTriangles[k];
+              _tmpConstraintsToSolve.push(...handleTriangles(
+                collider,
+                rigidbody,
+                triangle,
+                otherTriangle
+              ));
+            }
+          }
+        }
+      }
+
+      return _tmpConstraintsToSolve;
+    };
+  })();
+
+  // this.meshToMeshCollision = function(gameObject, rigidbody) {
+  //   const _tmpConstraintsToSolve = [];
+
+  //   const triangle = [
+  //     new Vector(),
+  //     new Vector(),
+  //     new Vector(),
+  //   ];
+
+  //   let worldMatrix = gameObject.transform.worldMatrix;
+
+  //   let meshColliders = rigidbody.gameObject.findComponents("MeshCollider");
+  //   for (let collider of meshColliders) {
+  //     // hasConstraints = true;
+
+  //     // collider.setup();
+  //     let transformedAABB = collider.gameObject.meshRenderer.getAABB().approxTransform(worldMatrix);
+  //     // let transformedAABB = collider.gameObject.getAABB().copy();
+
+  //     this.scene.root.traverseCondition(otherGameObject => {
+  //       // Don't collide with self
+  //       if (otherGameObject === gameObject) {
+  //         return;
+  //       }
+
+  //       let otherWorldMatrix = otherGameObject.transform.worldMatrix;
+  //       // let otherTransformedAABB = otherGameObject.meshRenderer.getAABB().approxTransform(otherWorldMatrix);
+  //       // if (!otherTransformedAABB || !AABBToAABB(transformedAABB, otherTransformedAABB)) {
+  //       //   return;
+  //       // }
+
+  //       let otherMeshColliders = otherGameObject.findComponents("MeshCollider");
+  //       for (let otherCollider of otherMeshColliders) {
+  //         var q = otherCollider.octree?.queryAABB(transformedAABB)?.triangles;
+  //         if (q) {
+  //           // console.log(q.length);
+  //           for (var k = 0; k < q.length; k++) {
+  //             let otherTriangle = q[k];
+
+  //             if (collider.gameObject && collider.gameObject.meshRenderer) {
+  //               for (let m = 0; m < collider.gameObject.meshRenderer.meshData.length; m++) {
+  //                 let md = collider.gameObject.meshRenderer.meshData[m].data;
+          
+  //                 for (let n = 0; n < md.indices.bufferData.length; n += 3) {
+  //                   for (let o = 0; o < 3; o++) {
+  //                     const currentIndex = md.indices.bufferData[n + o] * 3;
+  //                     Vector.fromArray(md.position.bufferData, currentIndex, 1, 3, triangle[o]);
+  //                     Matrix.transformVector(worldMatrix, triangle[o], triangle[o]);
+  //                   }
+
+  //                   if (!AABBTriangleToAABBTriangle(
+  //                     triangle[0], triangle[1], triangle[2],
+  //                     otherTriangle[0], otherTriangle[1], otherTriangle[2],
+  //                     0.1
+  //                   )) {
+  //                     continue;
+  //                   }
+
+  //                   // if (AABBTriangleToAABBTriangle(triangle[0], triangle[1], triangle[2], otherTriangle[0], otherTriangle[1], otherTriangle[2])) {
+  //                   //   let intersectData = triangleTriangleIntersection(triangle, otherTriangle);
+  //                   //   if (intersectData) {
+  //                   //     for (let itersection of intersectData) {
+  //                   //       // console.log(itersection);
+
+  //                   //       if (window.gldebug) window.gldebug.Vector(itersection.point, itersection.normal, itersection.depth * -1000);
+
+  //                   //       // if (this.scene.renderer.getKey(32)) {
+  //                   //       _tmpConstraintsToSolve.push({
+  //                   //         C: itersection.depth,
+  //                   //         bodies: [
+  //                   //           {
+  //                   //             collider: collider,
+  //                   //             body: rigidbody,
+  //                   //             normal: itersection.normal,
+  //                   //             p: itersection.point,
+  //                   //           }
+  //                   //         ]
+  //                   //       });
+  //                   //       // }
+  //                   //     }
+  //                   //   }
+  //                   // }
+  //                 }
+  //               }
+  //             }
+  //           }
+  //         }
+
+  //         // if (otherCollider.gameObject && otherCollider.gameObject.meshRenderer) {
+  //         //   // let otherTransformedAABB = otherCollider.aabb;
+  //         //   let otherTransformedAABB = otherGameObject.meshRenderer.getAABB().approxTransform(otherWorldMatrix);
+  //         //   // let otherTransformedAABB = otherGameObject.getAABB().copy();
+  //         //   if (!otherTransformedAABB || !AABBToAABB(transformedAABB, otherTransformedAABB)) {
+  //         //     return;
+  //         //   }
+
+  //         //   for (let j = 0; j < otherCollider.gameObject.meshRenderer.meshData.length; j++) {
+  //         //     let md = otherCollider.gameObject.meshRenderer.meshData[j].data;
+      
+  //         //     for (let k = 0; k < md.indices.bufferData.length; k += 3) {
+  //         //       let otherTriangle = [];
+
+  //         //       for (let l = 0; l < 3; l++) {
+  //         //         let currentIndex = md.indices.bufferData[k + l] * 3;
+  //         //         let vec = Vector.fromArray(md.position.bufferData, currentIndex);
+  //         //         vec = {x: vec.x, y: vec.y, z: vec.z};
+  //         //         let vertex = Matrix.transformVector(otherWorldMatrix, vec);
+  //         //         otherTriangle.push(vertex);
+  //         //       }
+
+  //         //       if (collider.gameObject && collider.gameObject.meshRenderer) {
+  //         //         for (let m = 0; m < collider.gameObject.meshRenderer.meshData.length; m++) {
+  //         //           let md = collider.gameObject.meshRenderer.meshData[m].data;
+            
+  //         //           for (let n = 0; n < md.indices.bufferData.length; n += 3) {
+  //         //             let triangle = [];
+
+  //         //             for (let o = 0; o < 3; o++) {
+  //         //               let currentIndex = md.indices.bufferData[n + o] * 3;
+  //         //               let vec = Vector.fromArray(md.position.bufferData, currentIndex);
+  //         //               vec = {x: vec.x, y: vec.y, z: vec.z};
+  //         //               let vertex = Matrix.transformVector(worldMatrix, vec);
+  //         //               triangle.push(vertex);
+  //         //             }
+
+  //         //             if (AABBTriangleToAABB(triangle[0], triangle[1], triangle[2], otherTransformedAABB) && AABBTriangleToAABBTriangle(triangle[0], triangle[1], triangle[2], otherTriangle[0], otherTriangle[1], otherTriangle[2])) {
+  //         //               let intersectData = triangleTriangleIntersection(triangle, otherTriangle);
+  //         //               if (intersectData) {
+  //         //                 for (let itersection of intersectData) {
+  //         //                   // console.log(itersection);
+
+  //         //                   if (window.gldebug) window.gldebug.Vector(itersection.point, itersection.normal, itersection.depth * -1000);
+
+  //         //                   // if (this.scene.renderer.getKey(32)) {
+  //         //                   _tmpConstraintsToSolve.push({
+  //         //                     C: itersection.depth,
+  //         //                     bodies: [
+  //         //                       {
+  //         //                         collider: collider,
+  //         //                         body: rigidbody,
+  //         //                         normal: itersection.normal,
+  //         //                         p: itersection.point,
+  //         //                       }
+  //         //                     ]
+  //         //                   });
+  //         //                   // }
+  //         //                 }
+  //         //               }
+  //         //             }
+  //         //           }
+  //         //         }
+  //         //       }
+  //         //     }
+  //         //   }
+  //         // }
+  //       }
+  //     });
+  //   }
+
+  //   return _tmpConstraintsToSolve;
+  // };
 }
 
 class Collider {
@@ -2395,7 +2800,13 @@ class Collider {
     this.componentType = "Collider";
     this.gameObject = null;
 
+    this.eventHandler = new EventHandler();
+    this.on = this.eventHandler.on.bind(this.eventHandler);
+
+    this.layer = 0b1;
+    this.isTrigger = false;
     this.isStatic = false;
+
     this.friction = 0.5;
     this.disableRotationImpulse = false;
   }
@@ -2407,12 +2818,13 @@ class MeshCollider extends Collider {
   #_octree = null;
   #_vclipGeometry = null;
 
-  constructor() {
+  constructor(dynamic = false) {
     super();
     this.componentType = "MeshCollider";
     this.type = "MeshCollider";
 
-    this.convex = false;
+    this.dynamic = dynamic;
+    this.convex = true;
   }
 
   get octree() {
@@ -2466,7 +2878,9 @@ class MeshCollider extends Collider {
       var trianglesArray = new Float32Array(nrTriangles * 3 * 3);
       var triangleIndex = 0;
 
-      var worldMatrix = this.gameObject.transform.worldMatrix;
+      var worldMatrix = this.dynamic ?
+        Matrix.identity() :
+        this.gameObject.transform.worldMatrix;
 
       for (let j = 0; j < this.gameObject.meshRenderer.meshData.length; j++) {
         let md = this.gameObject.meshRenderer.meshData[j].data;
@@ -2507,12 +2921,17 @@ class MeshCollider extends Collider {
 
       // bruh allow for multiple meshdatas
       if (this.convex) {
-        this.#_vclipGeometry = new MeshGeometry(this.gameObject.transform.matrix, this.gameObject.meshRenderer.meshData[0]);
+        this.#_vclipGeometry = new MeshGeometry(
+          this.gameObject.transform.matrix,
+          this.gameObject.meshRenderer.meshData[0],
+          true
+        );
       }
     }
     else {
       this.#_octree = null;
       this.aabb = null;
+      this.#_vclipGeometry = null;
     }
   }
 }

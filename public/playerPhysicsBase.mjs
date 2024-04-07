@@ -106,6 +106,13 @@ class PlayerPhysicsBase {
       this.position = this.startPosition;
       this.velocity = Vector.zero();
     }
+
+    if (Vector.isNaN(this.velocity)) {
+      Vector.zero(this.velocity);
+    }
+    if (Vector.isNaN(this.position)) {
+      Vector.zero(this.position);
+    }
   }
 
   solveCollisions() {
@@ -187,7 +194,7 @@ class PlayerPhysicsBase {
         z: -horizontal
       }, {x: 0, y: 1, z: 0}, -this.getHeadRotation().y + Math.PI / 2);
   
-      if (this.grounded) {
+      if (this.grounded && Vector.isVectorIsh(this.realGroundNormal)) {
         direction = Vector.normalize(Vector.projectOnPlane(direction, this.realGroundNormal));
       }
       else {
@@ -201,7 +208,7 @@ class PlayerPhysicsBase {
       // if (this.getCurrentWeapon()) {
       //   currentAcceleration *= this.getCurrentWeapon().getSpeed();
       // }
-
+      
       this.velocity = Vector.add(this.velocity, Vector.multiply(direction, currentAcceleration * dt));
     }
   

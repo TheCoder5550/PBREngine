@@ -1,3 +1,5 @@
+import { sharedUniforms } from "./base.mjs";
+
 var output = {
   webgl1: {
     diffuseCubemap: {
@@ -66,6 +68,8 @@ var output = {
         uniform mat4 projectionMatrix;
         uniform mat4 viewMatrix;
 
+        ${sharedUniforms}
+
         void main()
         {
             localPos = position;
@@ -84,6 +88,8 @@ var output = {
         const float sampleDelta = 0.025 / 3.;
 
         const float PI = 3.14159265359;
+
+        ${sharedUniforms}
 
         void main() {		
             // the sample direction equals the hemisphere's orientation 

@@ -189,38 +189,33 @@ function Terrain(scene, settings = {}) {
   
       // grassMesh.transform.position = new Vector(x, 0, z);
   
+      const origin = new Vector();
+      const scale = new Vector();
+
       for (var i = 0; i < this.density; i++) {
-        var origin = new Vector(
+        new Vector(
           x + (Math.random() - 0.5) * this.chunkSize,
           0,
-          z + (Math.random() - 0.5) * this.chunkSize
+          z + (Math.random() - 0.5) * this.chunkSize,
+          origin
         );
         origin.y = _terrain.getHeight(origin.x, origin.z);
   
         // if (!physicsEngine.Raycast(new Vector(origin.x, 100, origin.z), Vector.down()) && perlin.noise(origin.x / 30, origin.z / 30) * 0.5 + 0.5 > Math.random() + 0.2) {
         if (Math.random() < this.spawnProbability(origin)) {
-          let scale =  Vector.fill(this.minScale + Math.random() * (this.maxScale - this.minScale));
-          let ry = Math.random() * 2 * Math.PI;
+          Vector.fill(this.minScale + Math.random() * (this.maxScale - this.minScale), scale);
+          const ry = Math.random() * 2 * Math.PI;
 
-          // if (this.cross && origin.y > 20)
-          // Vector.compMultiplyTo(scale, new Vector(10, 1, 10));
-          
-          meshRenderer.addInstance(Matrix.transform([
-            ["translate", origin],
-            ["scale", scale],
-            ["ry", ry],
-            ["rx", (Math.random() - 0.5) * 0.09],
-            ["rz", (Math.random() - 0.5) * 0.09],
-          ]));
+          const instance = Matrix.identity();
+          Matrix.applyTranslation(origin, instance);
+          Matrix.applyScale(scale, instance);
+          Matrix.applyRotationY(ry, instance);
+          meshRenderer.addInstanceDontCopy(instance);
 
           if (this.cross) {
-            meshRenderer.addInstance(Matrix.transform([
-              ["translate", origin],
-              ["scale", scale],
-              ["ry", ry + Math.PI / 2],
-              ["rx", (Math.random() - 0.5) * 0.09],
-              ["rz", (Math.random() - 0.5) * 0.09],
-            ]));
+            const otherInstance = Matrix.copy(instance);
+            Matrix.applyRotationY(Math.PI / 2, otherInstance);
+            meshRenderer.addInstanceDontCopy(otherInstance);
           }
         }
       }
@@ -428,8 +423,9 @@ function Terrain(scene, settings = {}) {
 
             chunk.terrain.visible = true;
 
+            // // Force neighbors to regenerate
             // for (var neighbor of neighbors) {
-            //   if (neighbor && neighbor.depth <= chunk.quadtree.depth) {
+            //   if (neighbor/* && neighbor.depth <= chunk.quadtree.depth*/) {
             //     neighbor.regenerateThisMesh();
             //   }
             // }
@@ -787,27 +783,62 @@ function Terrain(scene, settings = {}) {
       }
     }
 
-    for (let i = 0; i < 4; i++) {
-      let neighbor = neighbors[i];
-      if (neighbor && quadtree.depth > neighbor.depth) {
-        let stepsize = Math.pow(2, quadtree.depth - neighbor.depth);
+    // for (let i = 0; i < 4; i++) {
+    //   let neighbor = neighbors[i];
+    //   if (neighbor && quadtree.depth > neighbor.depth) {
+    //     let stepsize = Math.pow(2, quadtree.depth - neighbor.depth);
 
-        let currentHeight = getHeight(vertices[edgeVertexIndices[i][0] * 3 + 0] + noiseOffset.x, vertices[edgeVertexIndices[i][0] * 3 + 2] + noiseOffset.y);
-        let nextHeight = getHeight(vertices[edgeVertexIndices[i][stepsize] * 3 + 0] + noiseOffset.x, vertices[edgeVertexIndices[i][stepsize] * 3 + 2] + noiseOffset.y);
+    //     let currentHeight = getHeight(vertices[edgeVertexIndices[i][0] * 3 + 0] + noiseOffset.x, vertices[edgeVertexIndices[i][0] * 3 + 2] + noiseOffset.y);
+    //     let nextHeight = getHeight(vertices[edgeVertexIndices[i][stepsize] * 3 + 0] + noiseOffset.x, vertices[edgeVertexIndices[i][stepsize] * 3 + 2] + noiseOffset.y);
 
-        for (let j = 0; j < res; j++) {
-          if (j % stepsize == 0 && j != 0) {
-            currentHeight = nextHeight;
-            nextHeight = getHeight(vertices[edgeVertexIndices[i][j + stepsize] * 3 + 0] + noiseOffset.x, vertices[edgeVertexIndices[i][j + stepsize] * 3 + 2] + noiseOffset.y);
+    //     // for (let j = 0; j < res; j++) {
+    //     //   if (j % stepsize == 0 && j != 0) {
+    //     //     currentHeight = nextHeight;
+    //     //     nextHeight = getHeight(vertices[edgeVertexIndices[i][j + stepsize] * 3 + 0] + noiseOffset.x, vertices[edgeVertexIndices[i][j + stepsize] * 3 + 2] + noiseOffset.y);
 
-            vertices[edgeVertexIndices[i][j] * 3 + 1] = currentHeight;
-          }
-          else {
-            vertices[edgeVertexIndices[i][j] * 3 + 1] = lerp(currentHeight, nextHeight, (j % stepsize) / stepsize);
-          }
-        }
-      }
-    }
+    //     //     vertices[edgeVertexIndices[i][j] * 3 + 1] = currentHeight;
+    //     //   }
+    //     //   else {
+    //     //     vertices[edgeVertexIndices[i][j] * 3 + 1] = lerp(currentHeight, nextHeight, (j % stepsize) / stepsize);
+    //     //   }
+    //     // }
+
+    //     // let count = 1;
+    //     for (let j = 0; j < res; j++) {
+    //       if (j % stepsize == 0 && j != 0) {
+    //         currentHeight = nextHeight;
+    //         nextHeight = getHeight(
+    //           vertices[edgeVertexIndices[i][Math.min(j + stepsize, res - 1)] * 3 + 0] + noiseOffset.x,
+    //           vertices[edgeVertexIndices[i][Math.min(j + stepsize, res - 1)] * 3 + 2] + noiseOffset.y
+    //         );
+
+    //         // const a = new Vector(
+    //         //   vertices[edgeVertexIndices[i][0] * 3 + 0],
+    //         //   0,
+    //         //   vertices[edgeVertexIndices[i][0] * 3 + 2]
+    //         // );
+    //         // const b = new Vector(
+    //         //   vertices[edgeVertexIndices[i][Math.min(stepsize, res - 1)] * 3 + 0],
+    //         //   0,
+    //         //   vertices[edgeVertexIndices[i][Math.min(stepsize, res - 1)] * 3 + 2]
+    //         // );
+    //         // const dir = Vector.subtract(b, a);
+
+    //         // nextHeight = getHeight(
+    //         //   vertices[edgeVertexIndices[i][0] * 3 + 0] + dir.x * count + noiseOffset.x,
+    //         //   vertices[edgeVertexIndices[i][0] * 3 + 2] + dir.z * count + noiseOffset.y
+    //         // );
+    //         // count++;
+
+    //         vertices[edgeVertexIndices[i][j] * 3 + 1] = currentHeight;
+    //       }
+    //       else {
+    //         const h = lerp(currentHeight, nextHeight, (j % stepsize) / stepsize);
+    //         vertices[edgeVertexIndices[i][j] * 3 + 1] = h;
+    //       }
+    //     }
+    //   }
+    // }
 
     counter = 0;
     for (let i = 0; i < res - 1; i++) {

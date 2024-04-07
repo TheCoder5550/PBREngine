@@ -316,13 +316,15 @@ function Camera(settings = {}) {
   };
 
   // Init
-  this.type = settings.type ?? Camera.Type.Perspective;
+  this.type = Camera.Type[settings.type] ?? Camera.Type.Perspective;
   this.transform.onUpdateMatrix = onUpdateMatrix;
   onUpdateMatrix();
   //
 }
 
 Camera.Type = {
+  "0": 0,
+  "1": 1,
   Perspective: 0,
   Orthographic: 1,
 };

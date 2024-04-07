@@ -181,8 +181,8 @@ function objectIsEmpty(obj) {
 function loadImage(url) {
   return new Promise((resolve, reject) => {
     let img = new Image();
-    img.addEventListener('load', e => resolve(img));
-    img.addEventListener('error', () => {
+    img.addEventListener("load", () => resolve(img));
+    img.addEventListener("error", () => {
       reject(new Error(`Failed to load image's URL: ${url}`));
     });
     img.src = url;
@@ -202,7 +202,7 @@ function getImagePixelData(image, width, height) {
 
 function removeChildren(parent) {
   while (parent.firstChild) {
-    parent.firstChild.remove()
+    parent.firstChild.remove();
   }
 }
 
@@ -224,8 +224,16 @@ function showElement(element) {
   element.classList.remove("hidden");
 }
 
+export function hideCursor() {
+  document.documentElement.style.cursor = "none";
+}
+
+export function showCursor() {
+  document.documentElement.style.cursor = "auto";
+}
+
 function resetAnimations(element) {
-  element.style.animation = 'none';
+  element.style.animation = "none";
   element.offsetHeight; /* trigger reflow */
   element.style.animation = null; 
 }
@@ -249,14 +257,14 @@ function cloneCanvas(canvas, top = 0, left = 0) {
 }
 
 function saveCanvasAsImage(canvas, name = "download") {
-  var link = document.createElement('a');
+  var link = document.createElement("a");
   link.download = name + ".png";
-  link.href = canvas.toDataURL()
+  link.href = canvas.toDataURL();
   link.click();
 }
 
 function downloadURL(url, name = "download") {
-  var link = document.createElement('a');
+  var link = document.createElement("a");
   link.download = name + ".png";
   link.href = url;
   link.click();

@@ -1,5 +1,290 @@
-import { saturate } from "./helper.mjs";
+import { clamp, saturate } from "./helper.mjs";
 import Vector from "./vector.mjs";
+
+export const edgeEdgeDistance = (() => {
+  const _temp = new Vector();
+  const normA = new Vector();
+  const normB = new Vector();
+  const c = new Vector();
+  const d = new Vector();
+  const rA = new Vector();
+  const rB = new Vector();
+
+  return (edgeA0, edgeA1, edgeB0, edgeB1, p, q) => {
+    Vector.subtract(edgeA1, edgeA0, normA);
+    const lengthA = Vector.length(normA);
+
+    Vector.subtract(edgeB1, edgeB0, normB);
+    const lengthB = Vector.length(normB);
+
+    Vector.divideTo(normA, lengthA);
+    Vector.divideTo(normB, lengthB);
+
+    Vector.cross(normA, normB, c);
+    Vector.normalizeTo(c);
+
+    Vector.subtract(edgeB0, edgeA0, d);
+
+    Vector.copy(d, rB);
+    Vector.subtractTo(rB, Vector.multiply(normA, Vector.dot(d, normA), _temp));
+    Vector.subtractTo(rB, Vector.multiply(c, Vector.dot(d, c), _temp));
+    const lengthRB = Vector.length(rB);
+    let tB = -lengthRB / Vector.dot(normB, Vector.divide(rB, lengthRB, _temp));
+
+    Vector.copy(d, rA);
+    Vector.subtractTo(rA, Vector.multiply(normB, Vector.dot(d, normB), _temp));
+    Vector.subtractTo(rA, Vector.multiply(c, Vector.dot(d, c), _temp));
+    const lengthRA = Vector.length(rA);
+    let tA = lengthRA / Vector.dot(normA, Vector.divide(rA, lengthRA, _temp));
+
+    if (Vector.lengthSqr(c) <= 1e-6) {
+      const getSignedDistanceToPlane = function(point, origin, normal) {
+        return Vector.dot(normal, Vector.subtract(point, origin));
+      };
+
+      const d = getSignedDistanceToPlane(edgeB0, edgeA0, normA);
+      const t = Vector.distance(edgeA0, edgeA1);
+      tA = t;
+      tB = d - t;
+
+      console.warn("hiack");
+    }
+
+    if (Vector.lengthSqr(rA) < 1e-6) {
+      tA = 0;
+    }
+
+    if (Vector.lengthSqr(rB) < 1e-6) {
+      tB = 0;
+    }
+
+    tA = clamp(tA, 0, lengthA);
+    tB = clamp(tB, 0, lengthB);
+
+    Vector.set(p, edgeA0);
+    Vector.addTo(p, Vector.multiply(normA, tA, _temp));
+
+    Vector.set(q, edgeB0);
+    Vector.addTo(q, Vector.multiply(normB, tB, _temp));
+
+    // return Vector.distanceSqr(p, q);
+  };
+})();
+
+// function edgeEdgeDistance(edgeA0, edgeA1, edgeB0, edgeB1, p, q) {
+//   const normA = Vector.tangent(edgeA0, edgeA1);
+//   const normB = Vector.tangent(edgeB0, edgeB1);
+//   const c = Vector.normalize(Vector.cross(normA, normB));
+//   const d = Vector.subtract(edgeB0, edgeA0);
+
+//   const rB = Vector.copy(d);
+//   Vector.subtractTo(rB, Vector.multiply(normA, Vector.dot(d, normA)));
+//   Vector.subtractTo(rB, Vector.multiply(c, Vector.dot(d, c)));
+//   let tB = -Vector.length(rB) / Vector.dot(normB, Vector.normalize(rB));
+
+//   const rA = Vector.copy(d);
+//   Vector.subtractTo(rA, Vector.multiply(normB, Vector.dot(d, normB)));
+//   Vector.subtractTo(rA, Vector.multiply(c, Vector.dot(d, c)));
+//   let tA = Vector.length(rA) / Vector.dot(normA, Vector.normalize(rA));
+
+//   if (Vector.lengthSqr(c) <= 1e-6) {
+//     const getSignedDistanceToPlane = function(point, origin, normal) {
+//       return Vector.dot(normal, Vector.subtract(point, origin));
+//     };
+
+//     const d = getSignedDistanceToPlane(edgeB0, edgeA0, normA);
+//     const t = Vector.distance(edgeA0, edgeA1);
+//     tA = t;
+//     tB = d - t;
+
+//     console.warn("hiack");
+//   }
+
+//   if (Vector.lengthSqr(rA) < 1e-6) {
+//     tA = 0;
+//   }
+
+//   if (Vector.lengthSqr(rB) < 1e-6) {
+//     tB = 0;
+//   }
+
+//   tA = clamp(tA, 0, Vector.distance(edgeA0, edgeA1));
+//   tB = clamp(tB, 0, Vector.distance(edgeB0, edgeB1));
+
+//   Vector.set(p, edgeA0);
+//   Vector.addTo(p, Vector.multiply(normA, tA));
+
+//   Vector.set(q, edgeB0);
+//   Vector.addTo(q, Vector.multiply(normB, tB));
+
+//   return Vector.distance(p, q);
+// }
+
+export function triangleTriangleDistance(p, q, cp, cq) {
+  const Sv = [
+    Vector.subtract(p[1], p[0]),
+    Vector.subtract(p[2], p[1]),
+    Vector.subtract(p[0], p[2]),
+  ];
+  const Tv = [
+    Vector.subtract(q[1], q[0]),
+    Vector.subtract(q[2], q[1]),
+    Vector.subtract(q[0], q[2]),
+  ];
+
+  const minP = new Vector();
+  const minQ = new Vector();
+  let shownDisjoint = false;
+
+  let mindd = Infinity;
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      edgeEdgeDistance(
+        p[i], Vector.add(p[i], Sv[i]),
+        q[j], Vector.add(q[j], Tv[j]),
+        cp, cq
+      );
+      const V = Vector.subtract(cq, cp);
+      const dd = Vector.dot(V, V);
+
+      if (dd <= mindd) {
+        Vector.set(minP, cp);
+        Vector.set(minQ, cq);
+        mindd = dd;
+
+        let id = i + 2;
+        if (id >= 3)
+          id -= 3;
+
+        let Z = Vector.subtract(p[id], cp);
+        let a = Vector.dot(Z, V);
+        id = j + 2;
+        if (id >= 3)
+          id -= 3;
+
+        Z = Vector.subtract(q[id], cq);
+        let b = Vector.dot(Z, V);
+
+        if((a<=0.0) && (b>=0.0))
+          return Vector.dot(V, V);
+
+        if(a<=0.0) a = 0.0;
+        else if(b>0.0) b = 0.0;
+
+        if((mindd - a + b) > 0.0)
+          shownDisjoint = true;
+      }
+    }
+  }
+
+  let Sn = Vector.cross(Sv[0], Sv[1]);
+  let Snl = Vector.dot(Sn, Sn);
+
+  if(Snl>1e-15)
+  {
+    const Tp = [
+      Vector.dot(Vector.subtract(p[0], q[0]), Sn),
+      Vector.dot(Vector.subtract(p[0], q[1]), Sn),
+      Vector.dot(Vector.subtract(p[0], q[2]), Sn),
+    ];
+
+    let index = -1;
+    if((Tp[0]>0.0) && (Tp[1]>0.0) && (Tp[2]>0.0))
+    {
+      if(Tp[0]<Tp[1])		index = 0; else index = 1;
+      if(Tp[2]<Tp[index])	index = 2;
+    }
+    else if((Tp[0]<0.0) && (Tp[1]<0.0) && (Tp[2]<0.0))
+    {
+      if(Tp[0]>Tp[1])		index = 0; else index = 1;
+      if(Tp[2]>Tp[index])	index = 2;
+    }
+
+    if(index >= 0) 
+    {
+      shownDisjoint = true;
+
+      let qIndex = q[index];
+
+      let V = Vector.subtract(qIndex, p[0]);
+      let Z = Vector.cross(Sn, Sv[0]);
+      if(Vector.dot(V, Z)>0.0)
+      {
+        V = Vector.subtract(qIndex, p[1]);
+        Z = Vector.cross(Sn, Sv[1]);
+        if(Vector.dot(V, Z)>0.0)
+        {
+          V = Vector.subtract(qIndex, p[2]);
+          Z = Vector.cross(Sn, Sv[2]);
+          if(Vector.dot(V, Z)>0.0)
+          {
+            Vector.add(qIndex, Vector.multiply(Sn, Tp[index]/Snl), cp);
+            Vector.copy(qIndex, cq);
+            return Vector.distanceSqr(cp, cq);
+          }
+        }
+      }
+    }
+  }
+
+  let Tn = Vector.cross(Tv[0], Tv[1]);
+  let Tnl = Vector.dot(Tn, Tn);
+  
+  if(Tnl>1e-15)
+  {
+    const Sp = [
+      Vector.dot(Vector.subtract(q[0], p[0]), Tn),
+      Vector.dot(Vector.subtract(q[0], p[1]), Tn),
+      Vector.dot(Vector.subtract(q[0], p[2]), Tn),
+    ];
+
+    let index = -1;
+    if((Sp[0]>0.0) && (Sp[1]>0.0) && (Sp[2]>0.0))
+    {
+      if(Sp[0]<Sp[1])		index = 0; else index = 1;
+      if(Sp[2]<Sp[index])	index = 2;
+    }
+    else if((Sp[0]<0.0) && (Sp[1]<0.0) && (Sp[2]<0.0))
+    {
+      if(Sp[0]>Sp[1])		index = 0; else index = 1;
+      if(Sp[2]>Sp[index])	index = 2;
+    }
+
+    if(index >= 0)
+    { 
+      shownDisjoint = true;
+
+      let pIndex = p[index];
+
+      let V = Vector.subtract(pIndex, q[0]);
+      let Z = Vector.cross(Tn, Tv[0]);
+      if(Vector.dot(V, Z)>0.0)
+      {
+        V = Vector.subtract(pIndex, q[1]);
+        Z = Vector.cross(Tn, Tv[1]);
+        if(Vector.dot(V, Z)>0.0)
+        {
+          V = Vector.subtract(pIndex, q[2]);
+          Z = Vector.cross(Tn, Tv[2]);
+          if(Vector.dot(V, Z)>0.0)
+          {
+            Vector.copy(pIndex, cp);
+            Vector.add(pIndex, Vector.multiply(Tn, Sp[index]/Tnl), cq);
+            return Vector.distanceSqr(cp, cq);
+          }
+        }
+      }
+    }
+  }
+
+  if(shownDisjoint)
+  {
+    Vector.set(cp, minP);
+    Vector.set(cq, minQ);
+    return mindd;
+  }
+  else return 0.0;
+}
 
 function triangleTriangleIntersection(a, b) {
   let AIntersections = [];
@@ -204,7 +489,7 @@ function triangleTriangleIntersection(a, b) {
         }
       }
       else {
-        console.log("test1", edgeClosestData)
+        console.log("test1", edgeClosestData);
         return [ edgeClosestData ];
       }
     }
@@ -295,7 +580,7 @@ function triangleTriangleIntersection(a, b) {
     console.info("2 b inters", a, b);
 
     const reverseCollision = triangleTriangleIntersection(b, a);
-    console.log(reverseCollision)
+    console.log(reverseCollision);
     if (!reverseCollision) {
       return null;
     }
@@ -395,7 +680,7 @@ function closestPointOnTriangle(p, a, b, c) {
 
   var denom = (dot00 * dot11 - dot01 * dot01);
   if (Math.abs(denom) < 1.0e-30) {
-      return null;
+    return null;
   }
 
   var invDenom = 1 / denom;
@@ -500,77 +785,186 @@ function rayToPlane(origin, direction, planePosition, planeNormal, line = false)
   return d;
 }
 
-var boxNormals = [
-  new Vector(1,0,0),
-  new Vector(0,1,0),
-  new Vector(0,0,1)
-];
-var coords = ["x", "y", "z"];
+/**
+ * Intersection test between AABB and triangle
+ * @param {AABB} box 
+ * @param {[Vector, Vector, Vector]} triangle 
+ */
+export const AABBToTriangle = (() => {
+  const _v0 = new Vector();
+  const _v1 = new Vector();
+  const _v2 = new Vector();
 
-// This function might be correct...
-function AABBToTriangle(box, triangle) {
-  // Triangle vertices
-  for (let i = 0; i < 3; i++) {
-    if (pointInsideAABB(box, triangle[i])) {
-    // if (box.pointInside(triangle[i])) {
-      return true;
+  const ab = new Vector();
+  const bc = new Vector();
+  const ca = new Vector();
+
+  const a00 = new Vector();
+  const a01 = new Vector();
+  const a02 = new Vector();
+  const a10 = new Vector();
+  const a11 = new Vector();
+  const a12 = new Vector();
+  const a20 = new Vector();
+  const a21 = new Vector();
+  const a22 = new Vector();
+
+  const x = new Vector(1, 0, 0);
+  const y = new Vector(0, 1, 0);
+  const z = new Vector(0, 0, 1);
+
+  const abxbc = new Vector();
+
+  function AABB_Tri_Intersect(v0, v1, v2, aabbCentre, aabbExtents) {
+    Vector.subtract(v0, aabbCentre, _v0);
+    Vector.subtract(v1, aabbCentre, _v1);
+    Vector.subtract(v2, aabbCentre, _v2);
+    
+    Vector.subtract(_v1, _v0, ab);
+    Vector.subtract(_v2, _v1, bc);
+    Vector.subtract(_v0, _v2, ca);
+    Vector.normalizeTo(ab);
+    Vector.normalizeTo(bc);
+    Vector.normalizeTo(ca);
+    
+    //Cross ab, bc, and ca with (1, 0, 0)
+    new Vector(0, -ab.z, ab.y, a00);
+    new Vector(0, -bc.z, bc.y, a01);
+    new Vector(0, -ca.z, ca.y, a02);
+    
+    //Cross ab, bc, and ca with (0, 1, 0)
+    new Vector(ab.z, 0, -ab.x, a10);
+    new Vector(bc.z, 0, -bc.x, a11);
+    new Vector(ca.z, 0, -ca.x, a12);
+    
+    //Cross ab, bc, and ca with (0, 0, 1)
+    new Vector(-ab.y, ab.x, 0, a20);
+    new Vector(-bc.y, bc.x, 0, a21);
+    new Vector(-ca.y, ca.x, 0, a22);
+    
+    if (
+      !AABB_Tri_SAT(_v0, _v1, _v2, aabbExtents, a00) ||
+      !AABB_Tri_SAT(_v0, _v1, _v2, aabbExtents, a01) ||
+      !AABB_Tri_SAT(_v0, _v1, _v2, aabbExtents, a02) ||
+      !AABB_Tri_SAT(_v0, _v1, _v2, aabbExtents, a10) ||
+      !AABB_Tri_SAT(_v0, _v1, _v2, aabbExtents, a11) ||
+      !AABB_Tri_SAT(_v0, _v1, _v2, aabbExtents, a12) ||
+      !AABB_Tri_SAT(_v0, _v1, _v2, aabbExtents, a20) ||
+      !AABB_Tri_SAT(_v0, _v1, _v2, aabbExtents, a21) ||
+      !AABB_Tri_SAT(_v0, _v1, _v2, aabbExtents, a22) ||
+      !AABB_Tri_SAT(_v0, _v1, _v2, aabbExtents, x) ||
+      !AABB_Tri_SAT(_v0, _v1, _v2, aabbExtents, y) ||
+      !AABB_Tri_SAT(_v0, _v1, _v2, aabbExtents, z) ||
+      !AABB_Tri_SAT(_v0, _v1, _v2, aabbExtents, Vector.cross(ab, bc, abxbc))
+    ) {
+      return false;
     }
+  
+    return true;
+  }
+  
+  function AABB_Tri_SAT(v0, v1, v2, aabbExtents, axis) {
+    const p0 = Vector.dot(v0, axis);
+    const p1 = Vector.dot(v1, axis);
+    const p2 = Vector.dot(v2, axis);
+    
+    const r = (
+      aabbExtents.x * Math.abs(axis.x) +
+      aabbExtents.y * Math.abs(axis.y) +
+      aabbExtents.z * Math.abs(axis.z)
+    );
+    
+    const maxP = Math.max(p0, Math.max(p1, p2));
+    const minP = Math.min(p0, Math.min(p1, p2));
+    
+    return !(Math.max(-maxP, minP) > r);
   }
 
-  // var triangleMin, triangleMax;
-  // var boxMin, boxMax;
+  const extents = new Vector();
+  const center = new Vector();
 
-  // var boxVertices = box.getVertices();
-  var boxVertices = getAABBVertices(box);
+  return (box, triangle) => {
+    Vector.subtract(box.tr, box.bl, extents);
+    Vector.divideTo(extents, 2);
 
-  // Test the box normals (x-, y- and z-axes)
-  for (let i = 0; i < 3; i++) {
-    let [triangleMin, triangleMax] = Project(triangle, boxNormals[i]);
+    Vector.subtract(box.tr, extents, center);
 
-    if (triangleMax < box.bl[coords[i]] || triangleMin > box.tr[coords[i]]) // check <<
-      return false; // No intersection possible.
-  }
+    return AABB_Tri_Intersect(triangle[0], triangle[1], triangle[2], center, extents);
+  };
+})();
 
-  // Test the triangle normal
-  var triangleNormal = getTriangleNormal(triangle);
-  var triangleOffset = Vector.dot(triangleNormal, triangle[0]);
-  var [boxMin, boxMax] = Project(boxVertices, triangleNormal);
-  if (boxMax < triangleOffset || boxMin > triangleOffset)
-    return false; // No intersection possible.
+// // Does not always work !!!
+//
+// var boxNormals = [
+//   new Vector(1,0,0),
+//   new Vector(0,1,0),
+//   new Vector(0,0,1)
+// ];
+// var coords = ["x", "y", "z"];
+//
+// export function AABBToTriangle(box, triangle) {
+//   // Triangle vertices
+//   for (let i = 0; i < 3; i++) {
+//     if (pointInsideAABB(box, triangle[i])) {
+//     // if (box.pointInside(triangle[i])) {
+//       return true;
+//     }
+//   }
 
-  // Test the nine edge cross-products
-  var triangleEdges = [
-    Vector.subtract(triangle[0], triangle[1]),
-    Vector.subtract(triangle[1], triangle[2]),
-    Vector.subtract(triangle[2], triangle[0])
-  ];
-  for (let i = 0; i < 3; i++) {
-    for (let j = 0; j < 3; j++) {
-      // The box normals are the same as it's edge tangents
-      let axis = Vector.cross(triangleEdges[i], boxNormals[i]);
-      let [boxMin, boxMax] = Project(boxVertices, axis);
-      let [triangleMin, triangleMax] = Project(triangle, axis);
-      if (boxMax < triangleMin || boxMin > triangleMax)
-      // if (boxMax <= triangleMin || boxMin >= triangleMax)
-        return false; // No intersection possible
-    }
-  }
+//   // var triangleMin, triangleMax;
+//   // var boxMin, boxMax;
 
-  // No separating axis found.
-  return true;
-}
+//   // var boxVertices = box.getVertices();
+//   var boxVertices = getAABBVertices(box);
 
-function Project(points, axis) {
-  var min = Infinity;
-  var max = -Infinity;
-  for (var p of points) {
-    var val = Vector.dot(axis, p);
-    if (val < min) min = val;
-    if (val > max) max = val;
-  }
+//   // Test the box normals (x-, y- and z-axes)
+//   for (let i = 0; i < 3; i++) {
+//     let [triangleMin, triangleMax] = Project(triangle, boxNormals[i]);
 
-  return [min, max];
-}
+//     if (triangleMax < box.bl[coords[i]] || triangleMin > box.tr[coords[i]]) // check <<
+//       return false; // No intersection possible.
+//   }
+
+//   // Test the triangle normal
+//   var triangleNormal = getTriangleNormal(triangle);
+//   var triangleOffset = Vector.dot(triangleNormal, triangle[0]);
+//   var [boxMin, boxMax] = Project(boxVertices, triangleNormal);
+//   if (boxMax < triangleOffset || boxMin > triangleOffset)
+//     return false; // No intersection possible.
+
+//   // Test the nine edge cross-products
+//   var triangleEdges = [
+//     Vector.subtract(triangle[0], triangle[1]),
+//     Vector.subtract(triangle[1], triangle[2]),
+//     Vector.subtract(triangle[2], triangle[0])
+//   ];
+//   for (let i = 0; i < 3; i++) {
+//     for (let j = 0; j < 3; j++) {
+//       // The box normals are the same as it's edge tangents
+//       let axis = Vector.cross(triangleEdges[i], boxNormals[i]);
+//       let [boxMin, boxMax] = Project(boxVertices, axis);
+//       let [triangleMin, triangleMax] = Project(triangle, axis);
+//       if (boxMax < triangleMin || boxMin > triangleMax)
+//       // if (boxMax <= triangleMin || boxMin >= triangleMax)
+//         return false; // No intersection possible
+//     }
+//   }
+
+//   // No separating axis found.
+//   return true;
+// }
+
+// function Project(points, axis) {
+//   var min = Infinity;
+//   var max = -Infinity;
+//   for (var p of points) {
+//     var val = Vector.dot(axis, p);
+//     if (val < min) min = val;
+//     if (val > max) max = val;
+//   }
+
+//   return [min, max];
+// }
 
 function AABBTriangleToAABB(a, b, c, aabb) {
   return Math.max(a.x, b.x, c.x) >= aabb.bl.x && Math.min(a.x, b.x, c.x) <= aabb.tr.x && 
@@ -578,29 +972,29 @@ function AABBTriangleToAABB(a, b, c, aabb) {
          Math.max(a.z, b.z, c.z) >= aabb.bl.z && Math.min(a.z, b.z, c.z) <= aabb.tr.z;
 }
 
-function AABBTriangleToAABBTriangle(a, b, c, u, v, w) {
-  return Math.max(a.x, b.x, c.x) >= Math.min(u.x, v.x, w.x) && Math.min(a.x, b.x, c.x) <= Math.max(u.x, v.x, w.x) && 
-         Math.max(a.y, b.y, c.y) >= Math.min(u.y, v.y, w.y) && Math.min(a.y, b.y, c.y) <= Math.max(u.y, v.y, w.y) && 
-         Math.max(a.z, b.z, c.z) >= Math.min(u.z, v.z, w.z) && Math.min(a.z, b.z, c.z) <= Math.max(u.z, v.z, w.z);
+function AABBTriangleToAABBTriangle(a, b, c, u, v, w, padding = 0) {
+  return Math.max(a.x, b.x, c.x) + padding >= Math.min(u.x, v.x, w.x) - padding && Math.min(a.x, b.x, c.x) - padding <= Math.max(u.x, v.x, w.x) + padding && 
+         Math.max(a.y, b.y, c.y) + padding >= Math.min(u.y, v.y, w.y) - padding && Math.min(a.y, b.y, c.y) - padding <= Math.max(u.y, v.y, w.y) + padding && 
+         Math.max(a.z, b.z, c.z) + padding >= Math.min(u.z, v.z, w.z) - padding && Math.min(a.z, b.z, c.z) - padding <= Math.max(u.z, v.z, w.z) + padding;
 }
 
-function pointInsideAABB(aabb, point) {
+export function pointInsideAABB(aabb, point) {
   return point.x >= aabb.bl.x && point.y >= aabb.bl.y && point.z >= aabb.bl.z &&
          point.x <= aabb.tr.x && point.y <= aabb.tr.y && point.z <= aabb.tr.z;
 }
 
-function getAABBVertices(aabb) {
-  return [
-    {x: aabb.bl.x, y: aabb.bl.y, z: aabb.bl.z},
-    {x: aabb.tr.x, y: aabb.bl.y, z: aabb.bl.z},
-    {x: aabb.tr.x, y: aabb.bl.y, z: aabb.tr.z},
-    {x: aabb.bl.x, y: aabb.bl.y, z: aabb.tr.z},
-    {x: aabb.bl.x, y: aabb.tr.y, z: aabb.bl.z},
-    {x: aabb.tr.x, y: aabb.tr.y, z: aabb.bl.z},
-    {x: aabb.tr.x, y: aabb.tr.y, z: aabb.tr.z},
-    {x: aabb.bl.x, y: aabb.tr.y, z: aabb.tr.z},
-  ];
-}
+// function getAABBVertices(aabb) {
+//   return [
+//     {x: aabb.bl.x, y: aabb.bl.y, z: aabb.bl.z},
+//     {x: aabb.tr.x, y: aabb.bl.y, z: aabb.bl.z},
+//     {x: aabb.tr.x, y: aabb.bl.y, z: aabb.tr.z},
+//     {x: aabb.bl.x, y: aabb.bl.y, z: aabb.tr.z},
+//     {x: aabb.bl.x, y: aabb.tr.y, z: aabb.bl.z},
+//     {x: aabb.tr.x, y: aabb.tr.y, z: aabb.bl.z},
+//     {x: aabb.tr.x, y: aabb.tr.y, z: aabb.tr.z},
+//     {x: aabb.bl.x, y: aabb.tr.y, z: aabb.tr.z},
+//   ];
+// }
 
 // var aabbEdges = [
 //   [0, 1],
@@ -811,7 +1205,7 @@ function capsuleToTriangle(A, B, radius, p0, p1, p2, doubleSided = false) {
   var CapsuleNormal = Vector.normalize(Vector.subtract(B, A));
   var LineEndOffset = Vector.multiply(CapsuleNormal, radius);
   var base = Vector.subtract(A, LineEndOffset);
-  var tip = Vector.add(B, LineEndOffset);
+  // var tip = Vector.add(B, LineEndOffset);
   
   // Then for each triangle, ray-plane intersection:
   //  N is the triangle plane normal (it was computed in sphere – triangle intersection case)
@@ -922,7 +1316,6 @@ export {
   rayToPlane,
   AABBTriangleToAABB,
   AABBTriangleToAABBTriangle,
-  AABBToTriangle,
   rayToAABBTriangle,
   rayToAABB,
   getTriangleArea,

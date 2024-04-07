@@ -32,13 +32,13 @@
       <input type="radio" id="radioLoadout" value="radioLoadout" name="mainTab">
       <input type="radio" id="radioSettings" value="radioSettings" name="mainTab">
 
-      <span class="title">Long Game Title</span>
+      <span class="title">WebGL Shooter Demo</span>
 
       <!-- <span class="title">Header</span> -->
       <div class="tabsWrapper">
-        <label for="radioPlay">Play</label>
-        <label for="radioLoadout">Loadout</label>
-        <label for="radioSettings">Settings</label>
+        <label for="radioPlay">PLAY</label>
+        <label for="radioLoadout">LOADOUT</label>
+        <label for="radioSettings">SETTINGS</label>
       </div>
 
       <div class="pages">
@@ -49,9 +49,15 @@
               <!-- <a href="#" class="glass">Shop</a>
               <a href="#" class="glass">Item</a> -->
             </div>
-            <div>
-              <input id="username" placeholder="Username" />
-              <button onclick="flashButton(this)" id="deploy">Deploy</button>
+            <div class="deployGrid">
+              <div style="grid-area: a;">
+                <span>Game mode</span>
+                <h3>FFA</h3>
+              </div>
+              <div style="grid-area: b;">
+                Name <input id="username" placeholder="Username" />
+              </div>
+              <button style="grid-area: c;" onclick="flashButton(this)" id="deploy">Deploy</button>
             </div>
           </div>
         </div>
@@ -73,6 +79,8 @@
                 </div>
                 <button class="selectClass">Select class</button>
               </div>
+              
+              <canvas id="weaponInspector" style="width: 100%; height: 100%;"></canvas>
             </div>
           </div>
       
@@ -85,8 +93,14 @@
         </div>
 
         <div class="settingsUI">
-          <h1>Settings here</h1>
           <div class="settingsList">
+          </div>
+
+          <div class="tooltipWrapper">
+            <div>
+              <img src="../assets/textures/keyIcons/Esc_Key_Dark.png" />
+              <span>Back</span>
+            </div>
           </div>
         </div>
       </div>
@@ -125,25 +139,27 @@
     </div>
   </template>
 
-  <div class="gameUI">
-    <div class="bottomLeft">
-      <span>Player name</span>
-      <div class="healthContainer">
-        <div class="healthAnimation"></div>
-        <div class="currentHealth"></div>
-      </div>
-    </div>
-
-    <div class="bottomRight">
-      <span class="ammo">
-        <span class="current">30</span>
-        <span>/</span>
-        <span class="max">30</span>
-      </span>
-    </div>
-
+  <div class="gameUI hidden">
     <div class="topRight">
       <span class="kills">0 kills</span>
+    </div>
+
+    <div class="aliveScreen">
+      <div class="bottomLeft">
+        <span data-myname>Player name</span>
+        <div class="healthContainer">
+          <div class="healthAnimation"></div>
+          <div class="currentHealth"></div>
+        </div>
+      </div>
+  
+      <div class="bottomRight">
+        <span class="ammo">
+          <span class="current">30</span>
+          <span>/</span>
+          <span class="max">30</span>
+        </span>
+      </div>
     </div>
 
     <div class="hidden killAlert">
@@ -173,7 +189,7 @@
 
         <template class="itemTemplate">
           <div>
-            <span class="name">Player name</span>
+            <span class="name leaderboardName">Player name</span>
             <div>
               <span class="kills">0</span>
               <span class="deaths">0</span>
@@ -207,10 +223,10 @@
   </div>
 
   <script src="dragToScroll.js"></script>
-  <script src="../perlin.js"></script>
-  <script src="../fakeConsole.js"></script>
-  <script src="../Stats.js"></script>
-  <script src="../gameCanvas-5.0.js"></script>
+  <!-- <script src="../perlin.js"></script> -->
+  <!-- <script src="../fakeConsole.js"></script> -->
+  <!-- <script src="../Stats.js"></script> -->
+  <!-- <script src="../gameCanvas-5.0.js"></script> -->
   <script src='webgl.js' type="module"></script>
 </body>
 </html>

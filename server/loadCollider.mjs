@@ -150,6 +150,10 @@ export async function CreateGameObjectFromGLTF(path, globalOptions = {}) {
 
         mainParent.addChildren(outObjects);
 
+        mainParent.traverse(o => {
+          o.transform.matrix = o.transform.matrix;
+        });
+
         resolve([mainParent]);
       }
 

@@ -14,27 +14,43 @@ ${lit.litBase}
 
 ${lit.fogBase}
 
-int lanes = 3;
-float dashScale = 2.;
-float dashPercentage = 0.3;
-float laneLineThickness = 0.007;
-vec3 laneColor = vec3(1);
+// int lanes = 3;
+// float dashScale = 2.;
+// float dashPercentage = 0.3;
+// float laneLineThickness = 0.007;
+// vec3 laneColor = vec3(1);
 
-float rumbleStripScale = 50.;
-float rumbleStripWidth = 0.025;
+// float rumbleStripScale = 50.;
+// float rumbleStripWidth = 0.025;
 
-float innerShoulderWidth = 0.1;
-float innerShoulderLineThickness = 0.007;
-vec3 innerShoulderColor = vec3(1, 0.15, 0);
+// float innerShoulderWidth = 0.1;
+// float innerShoulderLineThickness = 0.007;
+// vec3 innerShoulderColor = vec3(1, 0.15, 0);
 
-float outerShoulderWidth = 0.15;
-float outerShoulderLineThickness = 0.007;
-vec3 outerShoulderColor = vec3(1);
+// float outerShoulderWidth = 0.15;
+// float outerShoulderLineThickness = 0.007;
+// vec3 outerShoulderColor = vec3(1);
 
-${fragmentLogDepth}
+uniform int lanes;
+uniform float dashScale;
+uniform float dashPercentage;
+uniform float laneLineThickness;
+uniform vec3 laneColor;
+
+uniform float rumbleStripScale;
+uniform float rumbleStripWidth;
+
+uniform float innerShoulderWidth;
+uniform float innerShoulderLineThickness;
+uniform vec3 innerShoulderColor;
+
+uniform float outerShoulderWidth;
+uniform float outerShoulderLineThickness;
+uniform vec3 outerShoulderColor;
+
+uniform float wornRoughness;
 
 void main() {
-  ${fragmentLogDepthMain}
   ${lit.motionBlurMain}
 
   vec4 currentAlbedo = vec4(0);
@@ -106,7 +122,7 @@ void main() {
   // ) {
     float worn = pow(abs(mod(laneX * 2., 1.0) - 0.5), 1.0);
     currentAlbedo.rgb *= 1. - 0.6 * worn;
-    _roughness *= 0.7 + 0.3 * worn;
+    _roughness *= wornRoughness + (1. - wornRoughness) * worn;
   // }
 
   vec3 _tangentNormal = texture(normalTexture, textureUV).rgb * 2. - 1.;

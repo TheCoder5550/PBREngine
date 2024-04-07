@@ -563,6 +563,39 @@ export default class Matrix {
     return dst;
   }
 
+  static applyTranslationX(x, dst) {
+    dst = dst || Matrix.identity();
+
+    dst[12] += dst[0] * x;
+    dst[13] += dst[1] * x;
+    dst[14] += dst[2] * x;
+    dst[15] += dst[3] * x;
+
+    return dst;
+  }
+
+  static applyTranslationY(y, dst) {
+    dst = dst || Matrix.identity();
+
+    dst[12] += dst[4] * y;
+    dst[13] += dst[5] * y;
+    dst[14] += dst[6] * y;
+    dst[15] += dst[7] * y;
+
+    return dst;
+  }
+
+  static applyTranslationZ(z, dst) {
+    dst = dst || Matrix.identity();
+
+    dst[12] += dst[8]  * z;
+    dst[13] += dst[9]  * z;
+    dst[14] += dst[10] * z;
+    dst[15] += dst[11] * z;
+
+    return dst;
+  }
+
   static applyRotationX(rx = 0, dst) {
     dst = dst || Matrix.identity();
 

@@ -1,3 +1,5 @@
+import { sharedUniforms } from "./base.mjs";
+
 var output = {
   webgl1: {
     specularCubemap: {
@@ -157,6 +159,8 @@ var output = {
         uniform mat4 projectionMatrix;
         uniform mat4 viewMatrix;
 
+        ${sharedUniforms}
+
         void main()
         {
             localPos = position;
@@ -185,6 +189,8 @@ var output = {
         const uint SAMPLE_COUNT = 1024u;//4096u * 4u;
         const vec3 maxBrightness = vec3(50);
         // --------
+
+        ${sharedUniforms}
           
         void main()
         {		

@@ -72,6 +72,8 @@ import { fragmentLogDepth, fragmentLogDepthMain, vertexLogDepth, vertexLogDepthM
  * logarithmicDepthBuffer?: boolean,
  * path?: string,
  * canvas?: HTMLCanvasElement,
+ * width?: number,
+ * height?: number,
  * version?: number,
  * }} settings 
  */
@@ -90,6 +92,7 @@ function Renderer(settings = {}) {
   var lastUpdate;
   this.frameTime = 1 / 60;
   this.startTime = new Date();
+  let targetFPS = 240;
 
   this.eventHandler = new EventHandler();
 
@@ -161,7 +164,6 @@ function Renderer(settings = {}) {
 
   var _settings = {
     enableShadows: true,
-    enablePostProcessing: true,
     loadTextures: true
   };
 
@@ -173,9 +175,6 @@ function Renderer(settings = {}) {
         renderer.shadowCascades.clearShadowmaps();
       }
     },
-    
-    get enablePostProcessing() { return _settings.enablePostProcessing; },
-    set enablePostProcessing(val) { _settings.enablePostProcessing = val; },
 
     get loadTextures() { return _settings.loadTextures; },
     set loadTextures(val) { _settings.loadTextures = val; },
@@ -379,6 +378,9 @@ function Renderer(settings = {}) {
       this.sRGBExt = this.getExtension("EXT_sRGB");
       this.VAOExt = this.getExtension("OES_vertex_array_object");
       this.instanceExt = this.getExtension("ANGLE_instanced_arrays");
+
+      // Enable writing to gl_FragDepthEXT
+      this.getExtension("EXT_frag_depth");
     }
 
     this.gl.enable(this.gl.DEPTH_TEST);
@@ -441,39 +443,81 @@ function Renderer(settings = {}) {
     logGLError("Dither");
 
     lastUpdate = performance.now();
+    then = performance.now();
     requestAnimationFrame(loop);
   };
 
-  function loop() {
-    const ft = renderer.frameTime = getFrameTime();
-    time += ft;
+  let then = window.performance.now();
 
-    // Stats
-    drawCalls = 0;
-
-    // for (let glFunction of glFunctions) {
-    //   functionCallStats[glFunction] = 0;
-    // }
-
-    renderer.eventHandler.fireEvent("renderloop", ft, time, frameNumber);
-
-    let drawCallsSpan = document.querySelector("#debug_drawCalls");
-    if (drawCallsSpan) {
-      drawCallsSpan.textContent = drawCalls;
-    }
-
-    // let sortable = [];
-    // for (let value in functionCallStats) {
-    //   sortable.push([ value, functionCallStats[value] ]);
-    // }
-    // sortable.sort(function(a, b) {
-    //   return b[1] - a[1];
-    // });
-    // console.info(sortable);
-
-    frameNumber++;
+  function loop(now) {
     requestAnimationFrame(loop);
+
+    const elapsed = now - then;
+    const fpsInterval = 1000 / targetFPS;
+
+    if (elapsed > fpsInterval) {
+      then = now - (elapsed % fpsInterval);
+
+      const ft = renderer.frameTime = elapsed / 1000;
+      time += ft;
+
+      // Stats
+      drawCalls = 0;
+
+      // for (let glFunction of glFunctions) {
+      //   functionCallStats[glFunction] = 0;
+      // }
+
+      renderer.eventHandler.fireEvent("renderloop", ft, time, frameNumber);
+
+      let drawCallsSpan = document.querySelector("#debug_drawCalls");
+      if (drawCallsSpan) {
+        drawCallsSpan.textContent = drawCalls;
+      }
+
+      // let sortable = [];
+      // for (let value in functionCallStats) {
+      //   sortable.push([ value, functionCallStats[value] ]);
+      // }
+      // sortable.sort(function(a, b) {
+      //   return b[1] - a[1];
+      // });
+      // console.info(sortable);
+
+      frameNumber++;
+    }
   }
+
+  // function loop() {
+  //   const ft = renderer.frameTime = getFrameTime();
+  //   time += ft;
+
+  //   // Stats
+  //   drawCalls = 0;
+
+  //   // for (let glFunction of glFunctions) {
+  //   //   functionCallStats[glFunction] = 0;
+  //   // }
+
+  //   renderer.eventHandler.fireEvent("renderloop", ft, time, frameNumber);
+
+  //   let drawCallsSpan = document.querySelector("#debug_drawCalls");
+  //   if (drawCallsSpan) {
+  //     drawCallsSpan.textContent = drawCalls;
+  //   }
+
+  //   // let sortable = [];
+  //   // for (let value in functionCallStats) {
+  //   //   sortable.push([ value, functionCallStats[value] ]);
+  //   // }
+  //   // sortable.sort(function(a, b) {
+  //   //   return b[1] - a[1];
+  //   // });
+  //   // console.info(sortable);
+
+  //   frameNumber++;
+  //   requestAnimationFrame(loop);
+  // }
 
   function getFrameTime() {
     var now = performance.now();
@@ -482,6 +526,14 @@ function Renderer(settings = {}) {
   
     return frameTime;
   }
+
+  this.getFrameNumber = function() {
+    return frameNumber;
+  };
+
+  this.setTargetFPS = function(fps) {
+    targetFPS = fps;
+  };
 
   this.getTime = function() {
     return time;
@@ -538,7 +590,7 @@ function Renderer(settings = {}) {
       throw new Error("No active scene");
     }
 
-    scene.update(frameTime);
+    scene.update(frameTime, frameNumber);
   };
 
   this.render = function(camera, secondaryCameras = null, settings = {}) {
@@ -552,6 +604,10 @@ function Renderer(settings = {}) {
 
   Object.defineProperty(this, "aspect", {
     get: function() {
+      if (gl.canvas.clientWidth === 0 || gl.canvas.clientHeight === 0) {
+        return 1;
+      }
+
       return gl.canvas.clientWidth / gl.canvas.clientHeight;
     }
   });
@@ -1283,6 +1339,11 @@ function Renderer(settings = {}) {
     return newCubemap;
   };
 
+  this.saveEnvironmentAsHDRs = async function(scene) {
+    await this.saveSpecularCubemapAsHDR(scene.specularCubemap, 5, 256);
+    await this.saveCubemapAsHDR(scene.diffuseCubemap, 32, 0, "diffuse");
+  };
+
   this.saveSpecularCubemapAsHDR = async function(cubemap, mipmapLevels = 5, res = 128) {
     for (var i = 0; i < mipmapLevels; i++) {
       var currentRes = res * Math.pow(0.5, i);
@@ -1758,7 +1819,19 @@ function Renderer(settings = {}) {
 
     const mainRegex = /void\s+main\s*\(\s*\)\s*{/;
     const mainEndRegex = /\{(?:[^}{]|\{(?:[^}{]|\{(?:[^}{]|\{[^}{]*\})*\})*\})*\}/; // Matches balanced curly brackets
-    
+
+    const correctVersionVertexLogDepth = vertex.indexOf("#version 300 es") === -1 ?
+      vertexLogDepth.replace(/out/g, "varying") :
+      vertexLogDepth;
+
+    const correctVersionFragmentLogDepth = fragment.indexOf("#version 300 es") === -1 ?
+      fragmentLogDepth.replace(/in/g, "varying") :
+      fragmentLogDepth;
+
+    const correctVersionFragmentLogDepthMain = fragment.indexOf("#version 300 es") === -1 ?
+      fragmentLogDepthMain.replace(/gl_FragDepthEXT/g, "gl_FragDepth").replace(/gl_FragDepth/g, "gl_FragDepthEXT") :
+      fragmentLogDepthMain;
+
     {
       const findMain = mainRegex.exec(vertex);
       if (!findMain) {
@@ -1776,7 +1849,7 @@ function Renderer(settings = {}) {
         }
         else {
           const endOfMainIndex = findEndMain.index + findEndMain[0].length - 1;
-          vertex = vertex.slice(0, mainBeginIndex) + `${vertexLogDepth}` + v.slice(0, endOfMainIndex) + `${vertexLogDepthMain}` + v.slice(endOfMainIndex);
+          vertex = vertex.slice(0, mainBeginIndex) + `${correctVersionVertexLogDepth}` + v.slice(0, endOfMainIndex) + `${vertexLogDepthMain}` + v.slice(endOfMainIndex);
 
           // console.log(vertex);
         }
@@ -1792,7 +1865,7 @@ function Renderer(settings = {}) {
       else {
         const startIndex = findMain.index;
         const endIndex = startIndex + findMain[0].length;
-        fragment = fragment.slice(0, startIndex) + `${fragmentLogDepth}\n\nvoid main() {\n${fragmentLogDepthMain}\n\n` + fragment.slice(endIndex);
+        fragment = fragment.slice(0, startIndex) + `${correctVersionFragmentLogDepth}\n\nvoid main() {\n${correctVersionFragmentLogDepthMain}\n\n` + fragment.slice(endIndex);
       }
     }
 
@@ -2558,6 +2631,8 @@ function Renderer(settings = {}) {
   }
 
   function PostProcessing() {
+    this.enabled = true;
+
     /** @type {PostProcessingEffect[]} */
     this.effects = [];
     let needsRecompiling = true;
@@ -2566,6 +2641,9 @@ function Renderer(settings = {}) {
 
     let targetTextureWidth = gl.canvas.width;
     let targetTextureHeight = gl.canvas.height;
+
+    const depthFormat = gl.DEPTH_COMPONENT32F;
+    const depthType = gl.FLOAT;
 
     const createFramebufferForPostprocessing = () => {
       // Framebuffer
@@ -2587,7 +2665,7 @@ function Renderer(settings = {}) {
       // Depth texture
       const depthTexture = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, depthTexture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.DEPTH_COMPONENT : gl.DEPTH_COMPONENT32F, targetTextureWidth, targetTextureHeight, 0, gl.DEPTH_COMPONENT, gl.FLOAT, null);
+      gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.DEPTH_COMPONENT : depthFormat, targetTextureWidth, targetTextureHeight, 0, gl.DEPTH_COMPONENT, depthType, null);
       // gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.DEPTH_COMPONENT : gl.DEPTH_COMPONENT16, targetTextureWidth, targetTextureHeight, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
       
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -2743,7 +2821,7 @@ function Renderer(settings = {}) {
     };
 
     /**
-     * 
+     * Do post processing pass
      * @param {Camera} camera 
      */
     this.render = function(camera) {
@@ -2849,6 +2927,13 @@ function Renderer(settings = {}) {
     };
 
     const recompile = () => {
+      for (const effect of this.effects) {
+        if (effect.needsUpdating) {
+          needsRecompiling = true;
+        }
+        effect.needsUpdating = false;
+      }
+
       if (needsRecompiling) {
         needsRecompiling = false;
 
@@ -2857,6 +2942,10 @@ function Renderer(settings = {}) {
         const currentEffects = [];
 
         for (const effect of this.effects) {
+          if (!effect.enabled) {
+            continue;
+          }
+
           if (!doesEffectNeedSplit(effect)) {
             currentEffects.push(effect);
             continue;
@@ -2920,7 +3009,7 @@ function Renderer(settings = {}) {
 
         // Depth texture
         gl.bindTexture(gl.TEXTURE_2D, renderBuffer.depthTexture);
-        gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.DEPTH_COMPONENT : gl.DEPTH_COMPONENT16, gl.canvas.width, gl.canvas.height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+        gl.texImage2D(gl.TEXTURE_2D, 0, renderer.version == 1 ? gl.DEPTH_COMPONENT : depthFormat, gl.canvas.width, gl.canvas.height, 0, gl.DEPTH_COMPONENT, depthType, null);
 
         // Velocity texture
         if (renderBuffer.velocityTexture) {
@@ -4013,7 +4102,7 @@ function Renderer(settings = {}) {
     };
 
     this.getUniformLocation = function(uniformName) {
-      var u = this.activeUniforms[uniformName];
+      const u = this.activeUniforms[uniformName];
       if (u) {
         return u.location;
       }
@@ -4029,22 +4118,71 @@ function Renderer(settings = {}) {
         return;
       }
 
-      if (u.setType.indexOf("Matrix") !== -1) {
-      // if (u.setType.toLowerCase().indexOf("matrix") !== -1) {
-        if (!ArrayBuffer.isView(value)) {
-          console.error(value);
-          throw new Error(`Cannot set matrix uniform: ${uniformName}. Matrix must be Float32Array`);
+      // if (u.setType.indexOf("Matrix") !== -1) {
+      // // if (u.setType.toLowerCase().indexOf("matrix") !== -1) {
+      //   if (!ArrayBuffer.isView(value)) {
+      //     console.error(value);
+      //     throw new Error(`Cannot set matrix uniform: ${uniformName}. Matrix must be Float32Array`);
+      //   }
+
+      //   gl["uniform" + u.setType](u.location, false, value);
+      //   return;
+      // }
+
+      // Set matrices
+      if (
+        u.setType === "Matrix2fv" ||
+        u.setType === "Matrix3fv" ||
+        u.setType === "Matrix4fv"
+      ) {
+        if (u.setType === "Matrix2fv") gl.uniformMatrix2fv(u.location, false, value);
+        else if (u.setType === "Matrix3fv") gl.uniformMatrix3fv(u.location, false, value);
+        else if (u.setType === "Matrix4fv") gl.uniformMatrix4fv(u.location, false, value);
+        
+        else {
+          throw new Error("Invalid uniform type: " + u.setType);
         }
 
-        gl["uniform" + u.setType](u.location, false, value);
         return;
       }
 
+      // Set non-array
       if (!Array.isArray(value)) {
-        gl["uniform" + u.setType](u.location, value);
+        if (u.setType === "1f") gl.uniform1f(u.location, value);
+        else if (u.setType === "1i") gl.uniform1i(u.location, value);
+        else if (u.setType === "2f") gl.uniform2f(u.location, value);
+        else if (u.setType === "2i") gl.uniform2i(u.location, value);
+        else if (u.setType === "3f") gl.uniform3f(u.location, value);
+        else if (u.setType === "3i") gl.uniform3i(u.location, value);
+        else if (u.setType === "4f") gl.uniform4f(u.location, value);
+        else if (u.setType === "4i") gl.uniform4i(u.location, value);
+
+        else {
+          throw new Error("Invalid uniform type: " + u.setType);
+        }
+
+        // gl["uniform" + u.setType](u.location, value);
       }
+      // Set array
       else {
-        gl["uniform" + u.setType + "v"](u.location, value);
+        if (u.setType === "1f") gl.uniform1fv(u.location, value);
+        else if (u.setType === "1i") gl.uniform1iv(u.location, value);
+        else if (u.setType === "2f") gl.uniform2fv(u.location, value);
+        else if (u.setType === "2i") gl.uniform2iv(u.location, value);
+        else if (u.setType === "3f") gl.uniform3fv(u.location, value);
+        else if (u.setType === "3i") gl.uniform3iv(u.location, value);
+        else if (u.setType === "4f") gl.uniform4fv(u.location, value);
+        else if (u.setType === "4i") gl.uniform4iv(u.location, value);
+
+        // else if (u.setType === "Matrix2fv") gl.uniformMatrix2fv(u.location, value);
+        // else if (u.setType === "Matrix3fv") gl.uniformMatrix3fv(u.location, value);
+        // else if (u.setType === "Matrix4fv") gl.uniformMatrix4fv(u.location, value);
+
+        else {
+          throw new Error("Invalid uniform type: " + u.setType);
+        }
+
+        // gl["uniform" + u.setType + "v"](u.location, value);
       }
     };
 
@@ -4516,33 +4654,29 @@ function Renderer(settings = {}) {
   let _sunDirectionArray = [ 0, 0, 0 ];
   let _sunIntensityArray = [ 0, 0, 0 ];
   let bindSharedLitUniforms = (scene, programContainer) => {
-    let getUniformLocation = (loc) => {
-      return programContainer.getUniformLocation(loc);
-    };
-
-    if (getUniformLocation("iTime")) gl.uniform1f(getUniformLocation("iTime"), time);
+    if (programContainer.getUniformLocation("iTime")) gl.uniform1f(programContainer.getUniformLocation("iTime"), time);
 
     // bruh
-    var lights = scene.getLights();
-    if (getUniformLocation("nrLights")) gl.uniform1i(getUniformLocation("nrLights"), lights.length);
+    const lights = scene.getLights();
+    if (programContainer.getUniformLocation("nrLights")) gl.uniform1i(programContainer.getUniformLocation("nrLights"), lights.length);
 
     for (let i = 0; i < lights.length; i++) {
       let light = lights[i];
 
-      if (getUniformLocation(`lights[${i}].type`))      gl.uniform1i(getUniformLocation(`lights[${i}].type`), light.type);
-      if (getUniformLocation(`lights[${i}].position`))  gl.uniform3f(getUniformLocation(`lights[${i}].position`), light.position.x, light.position.y, light.position.z);
-      if (getUniformLocation(`lights[${i}].direction`)) if (light.direction) gl.uniform3f(getUniformLocation(`lights[${i}].direction`), light.direction.x, light.direction.y, light.direction.z);
-      if (getUniformLocation(`lights[${i}].angle`))     if ("angle" in light) gl.uniform1f(getUniformLocation(`lights[${i}].angle`), light.angle);
-      if (getUniformLocation(`lights[${i}].color`))     gl.uniform3f(getUniformLocation(`lights[${i}].color`), light.color[0], light.color[1], light.color[2]);
+      if (programContainer.getUniformLocation(`lights[${i}].type`))      gl.uniform1i(programContainer.getUniformLocation(`lights[${i}].type`), light.type);
+      if (programContainer.getUniformLocation(`lights[${i}].position`))  gl.uniform3f(programContainer.getUniformLocation(`lights[${i}].position`), light.position.x, light.position.y, light.position.z);
+      if (programContainer.getUniformLocation(`lights[${i}].direction`)) if (light.direction) gl.uniform3f(programContainer.getUniformLocation(`lights[${i}].direction`), light.direction.x, light.direction.y, light.direction.z);
+      if (programContainer.getUniformLocation(`lights[${i}].angle`))     if ("angle" in light) gl.uniform1f(programContainer.getUniformLocation(`lights[${i}].angle`), light.angle);
+      if (programContainer.getUniformLocation(`lights[${i}].color`))     gl.uniform3f(programContainer.getUniformLocation(`lights[${i}].color`), light.color[0], light.color[1], light.color[2]);
     }
 
-    if (getUniformLocation("sunDirection") != null)         gl.uniform3fv(getUniformLocation("sunDirection"), Vector.toArray(scene.sunDirection, _sunDirectionArray));
-    if (getUniformLocation("sunIntensity") != null)         gl.uniform3fv(getUniformLocation("sunIntensity"), Vector.toArray(scene.sunIntensity, _sunIntensityArray));
-    if (getUniformLocation("environmentIntensity") != null) gl.uniform1f(getUniformLocation("environmentIntensity"), scene.environmentIntensity);
-    if (getUniformLocation("environmentMinLight") != null)  gl.uniform1f(getUniformLocation("environmentMinLight"), scene.environmentMinLight);
-    if (getUniformLocation("ambientColor") != null)         gl.uniform3fv(getUniformLocation("ambientColor"), scene.ambientColor);
-    if (getUniformLocation("fogDensity") != null)           gl.uniform1f(getUniformLocation("fogDensity"), scene.fogDensity);
-    if (getUniformLocation("fogColor") != null)             gl.uniform4fv(getUniformLocation("fogColor"), scene.fogColor);
+    if (programContainer.getUniformLocation("sunDirection") != null)         gl.uniform3f(programContainer.getUniformLocation("sunDirection"), scene.sunDirection.x, scene.sunDirection.y, scene.sunDirection.z);
+    if (programContainer.getUniformLocation("sunIntensity") != null)         gl.uniform3f(programContainer.getUniformLocation("sunIntensity"), scene.sunIntensity.x, scene.sunIntensity.y, scene.sunIntensity.z);
+    if (programContainer.getUniformLocation("environmentIntensity") != null) gl.uniform1f(programContainer.getUniformLocation("environmentIntensity"), scene.environmentIntensity);
+    if (programContainer.getUniformLocation("environmentMinLight") != null)  gl.uniform1f(programContainer.getUniformLocation("environmentMinLight"), scene.environmentMinLight);
+    if (programContainer.getUniformLocation("ambientColor") != null)         gl.uniform3fv(programContainer.getUniformLocation("ambientColor"), scene.ambientColor);
+    if (programContainer.getUniformLocation("fogDensity") != null)           gl.uniform1f(programContainer.getUniformLocation("fogDensity"), scene.fogDensity);
+    if (programContainer.getUniformLocation("fogColor") != null)             gl.uniform4fv(programContainer.getUniformLocation("fogColor"), scene.fogColor);
   };
 
   let isTextureUniform = (materialUniform) => {
@@ -4635,17 +4769,21 @@ function Renderer(settings = {}) {
     // }
     // if (settings.prevViewMatrix)  programContainer.setUniform("prevViewMatrix", settings.prevViewMatrix, false);
 
-    // Scene specific uniforms
+    // for (let _ = 0; _ < 1000; _++) {
+    //   gl.uniform3f(programContainer.activeUniforms.ambientColor?.location, scene.ambientColor[0], scene.ambientColor[1], scene.ambientColor[2]);
+    // }
+
     if (!this.currentBoundLitPrograms.has(programContainer)) {
+      // Scene specific uniforms
       bindSharedLitUniforms(scene, programContainer);
 
       // Camera
-      let sps = programContainer.uniformBuffers["sharedPerScene"];
+      const sps = programContainer.uniformBuffers["sharedPerScene"];
       if (sps && scene.sharedUBO) {
         gl.uniformBlockBinding(programContainer.program, sps.blockIndex, scene.sharedUBO.location);
       }
       else {
-        let camera = settings.camera;
+        const camera = settings.camera;
         if (camera) {
           if (getUniformLocation("projectionMatrix") != null)  gl.uniformMatrix4fv(getUniformLocation("projectionMatrix"), false, camera.projectionMatrix);
           if (getUniformLocation("inverseViewMatrix") != null) gl.uniformMatrix4fv(getUniformLocation("inverseViewMatrix"), false, camera.inverseViewMatrix);
@@ -4664,7 +4802,7 @@ function Renderer(settings = {}) {
 
       // Shadows
       if (!settings.shadowPass) {
-        gl.uniform1i(programContainer.getUniformLocation("shadowQuality"), settings.shadowQuality ?? 0);
+        // gl.uniform1i(programContainer.getUniformLocation("shadowQuality"), settings.shadowQuality ?? 0);
         gl.uniform1f(programContainer.getUniformLocation("shadowSampleRadius"), scene.shadowSampleRadius);
         
         if (renderer.shadowCascades && renderer.renderpipeline instanceof ForwardPBRRenderpipeline) {
@@ -4673,6 +4811,11 @@ function Renderer(settings = {}) {
       }
 
       this.currentBoundLitPrograms.set(programContainer, 1);
+    }
+
+    // Shadows
+    if (!settings.shadowPass) {
+      gl.uniform1i(programContainer.getUniformLocation("shadowQuality"), settings.shadowQuality ?? 0);
     }
 
     // Material specific uniforms
@@ -4702,6 +4845,9 @@ function Renderer(settings = {}) {
 
   this.Skin = Skin;
   function Skin(joints, inverseBindMatrixData) {
+    this.updateRate = 1;
+    this.updateOffset = 0;
+
     this.joints = joints;
     this.inverseBindMatrixData = inverseBindMatrixData;
 
@@ -4734,7 +4880,11 @@ function Renderer(settings = {}) {
       return s;
     };
 
-    this.update = function() {
+    this.update = function(dt, frameNumber) {
+      if (frameNumber % this.updateRate !== this.updateOffset) {
+        return;
+      }
+
       // if (initialUpdate) {
       //   this.updateMatrixTexture();
       //   initialUpdate = false;
@@ -4834,8 +4984,8 @@ function Renderer(settings = {}) {
       this.skin = skin;
     }
 
-    update() {
-      this.skin.update();
+    update(frameTime, frameNumber) {
+      this.skin.update(frameTime, frameNumber);
     }
   
     render(camera, matrix, shadowPass = false, opaquePass = true, prevMatrix, settings = {}) {
@@ -4926,10 +5076,13 @@ function Renderer(settings = {}) {
       //   matrixLocations.push(gl.getAttribLocation(mat.program, 'modelMatrix'));
       // }
 
+      this._instancesToUpdate = [];
+
       // Transform data
       this._matrixNeedsUpdate = false;
       this.matrixBuffer = gl.createBuffer();
       this.matrices = [];
+      this.matrixData = null;
 
       // Dither data
       this.enableDither = true;
@@ -4994,39 +5147,55 @@ function Renderer(settings = {}) {
         this._updateColorBuffer();
         this._updateDitherBuffer();
       }
+
+      if (this.gameObject) {
+        this.gameObject._aabbNeedsUpdating = true;
+      }
   
       return instance;
     }
-  
-    updateInstance(instance, newMatrix, updateBuffer = true) {
-      if (this._matrixNeedsUpdate) {
-        this._updateMatrixData();
-        this._matrixNeedsUpdate = false;
-      }
 
-      Matrix.copy(newMatrix, instance);
-      this.matrixData.set(instance, this.matrices.indexOf(instance) * 16);
-  
-      if (updateBuffer) {
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.matrixBuffer);
-        gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.matrixData);
-      }
-
-      this._ditherNeedsUpdate = true;
-      this._colorNeedsUpdate = true;
+    updateInstance(instance, newMatrix) {
+      this._instancesToUpdate.push({
+        instance,
+        newMatrix,
+      });
     }
+  
+    // updateInstance(instance, newMatrix, updateBuffer = true) {
+    //   this._updateMatrixData();
+
+    //   Matrix.copy(newMatrix, instance);
+    //   this.matrixData.set(instance, this.matrices.indexOf(instance) * 16);
+  
+    //   if (updateBuffer) {
+    //     gl.bindBuffer(gl.ARRAY_BUFFER, this.matrixBuffer);
+    //     gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.matrixData);
+    //   }
+
+    //   // this._matrixNeedsUpdate = true;
+    //   this._ditherNeedsUpdate = true;
+    //   this._colorNeedsUpdate = true;
+
+    //   if (this.gameObject) {
+    //     this.gameObject._aabbNeedsUpdating = true;
+    //   }
+    // }
   
     removeInstance(instance) {
       const index = this.matrices.indexOf(instance);
       if (index === -1) {
         return;
       }
-
       this.matrices.splice(index, 1);
 
       this._matrixNeedsUpdate = true;
       this._ditherNeedsUpdate = true;
       this._colorNeedsUpdate = true;
+
+      if (this.gameObject) {
+        this.gameObject._aabbNeedsUpdating = true;
+      }
     }
 
     removeAllInstances() {
@@ -5035,6 +5204,10 @@ function Renderer(settings = {}) {
       this._matrixNeedsUpdate = true;
       this._ditherNeedsUpdate = true;
       this._colorNeedsUpdate = true;
+
+      if (this.gameObject) {
+        this.gameObject._aabbNeedsUpdating = true;
+      }
     }
 
     /**
@@ -5117,12 +5290,27 @@ function Renderer(settings = {}) {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.ditherBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, this.ditherData, gl.STREAM_DRAW);
     }
+
+    _updateInstances() {
+      if (this._instancesToUpdate.length > 0) {
+        this._matrixNeedsUpdate = true;
+        if (this.gameObject) this.gameObject._aabbNeedsUpdating = true;
+      }
+
+      for (const updateInfo of this._instancesToUpdate) {
+        Matrix.copy(updateInfo.newMatrix, updateInfo.instance);
+      }
+
+      this._instancesToUpdate.length = 0;
+    }
   
     render(camera, baseMatrix, shadowPass = false, opaquePass = true, prevMatrix, settings = {}) {
       let downscaledPass = settings.downscaledPass ?? false;
       if (downscaledPass != this.drawOnDownscaledFramebuffer) {
         return;
       }
+
+      this._updateInstances();
 
       this._updateMatrixData();
       this._updateDitherBuffer();
@@ -6609,9 +6797,9 @@ function Renderer(settings = {}) {
     }
 
     // Bruh
-    mainParent.traverse(o => {
-      o.transform.matrix = o.transform.matrix;
-    });
+    // mainParent.traverse(o => {
+    //   o.transform.matrix = o.transform.matrix;
+    // });
 
     console.timeEnd("Loading " + path);
 
@@ -6631,6 +6819,7 @@ function Renderer(settings = {}) {
       }
 
       var gameObject = new GameObject(node.name, {matrix: mat, ...loadSettings.gameObjectOptions});
+      // gameObject.transform.matrix = gameObject.transform.matrix;
       gameObject.nodeIndex = nodeIndex;
       currentNodes[nodeIndex] = gameObject;
 
@@ -6719,7 +6908,7 @@ function Renderer(settings = {}) {
               meshData.normal = { bufferData: normals.buffer, size: normals.size, stride: normals.stride };
             }
             else {
-              console.warn("Generating normals");
+              console.log("Generating normals");
               meshData.normal = { bufferData: calculateNormals(vertices.buffer, indices.buffer), size: 3 };
             }
           }
@@ -6730,8 +6919,11 @@ function Renderer(settings = {}) {
               meshData.tangent = { bufferData: tangents.buffer, size: tangents.size, stride: tangents.stride };
             }
             else if (uvs) {
-              console.warn("Generating tangents");
+              console.log("Generating tangents");
               meshData.tangent = { bufferData: calculateTangents(vertices.buffer, indices.buffer, uvs.buffer), size: 4 };
+            }
+            else {
+              console.warn("Could not generate tangents");
             }
           }
     
@@ -7665,6 +7857,10 @@ function Renderer(settings = {}) {
         batchedGameobject.addChild(lightGameobject);
       }
 
+      if (!o.visible) {
+        return;
+      }
+
       if (o.meshRenderer) {
         var noTranslateWorldMatrix = Matrix.copy(o.transform.worldMatrix);
         Matrix.removeTranslation(noTranslateWorldMatrix);
@@ -7749,7 +7945,7 @@ function Renderer(settings = {}) {
           md.cleanup();
         }
       }
-    });
+    }, (o) => o.visible);
 
     var materials = [];
     var meshData = [];
@@ -7849,6 +8045,9 @@ function Renderer(settings = {}) {
   
     this.renderer = renderer;
     const gl = this.renderer.gl;
+
+    const opaquePassSettings = { renderPass: ENUMS.RENDERPASS.OPAQUE };
+    const alphaPassSettings = { renderPass: ENUMS.RENDERPASS.ALPHA };
   
     /**
      * Render scene using this renderpipeline
@@ -7864,10 +8063,7 @@ function Renderer(settings = {}) {
 
       this.renderer.currentBoundMaterials = new WeakMap();
 
-      // Shadows
-      if (this.renderer.shadowCascades && _settings.enableShadows && (scene.sunIntensity.x != 0 || scene.sunIntensity.y != 0 || scene.sunIntensity.z != 0) && settings.shadows !== false) {
-        this.renderer.shadowCascades.renderShadowmaps(camera.transform.position);
-      }
+      shadowPass(camera, scene);
   
       scene.updateUniformBuffers(
         camera.projectionMatrix,
@@ -7876,7 +8072,7 @@ function Renderer(settings = {}) {
       );
   
       // Bind post processing framebuffer
-      const usePostProcessing = !!(this.renderer.postprocessing && _settings.enablePostProcessing);
+      const usePostProcessing = !!(this.renderer.postprocessing && this.renderer.postprocessing.enabled);
       if (usePostProcessing) {
         this.renderer.postprocessing.bindFramebuffer();
 
@@ -7927,17 +8123,11 @@ function Renderer(settings = {}) {
       // gl.activeTexture(gl.TEXTURE0 + splitsumUnit);
       // gl.bindTexture(gl.TEXTURE_2D, this.renderer.splitsumTexture);
 
-      // console.time("Cull");
-      scene.root.traverseCondition(obj => {
-        if (obj.meshRenderer && (!camera.frustum || !obj.getAABB() || obj.getAABB().isInsideFrustum(camera.frustum)) || obj.disableFrustumCulling) {
-          obj.isCulled = false;
-        }
-        else {
-          obj.isCulled = true;
-        }
-      }, child => child.active && child.visible);
-      // console.timeEnd("Cull");
+      cullGameObjects(camera, scene);
 
+      /*
+        Opaque pass
+      */
       // console.time("Opaque pass");
 
       // bruh, magic?
@@ -7946,14 +8136,17 @@ function Renderer(settings = {}) {
       }
 
       gl.disable(gl.BLEND);
-      scene.render(camera, { renderPass: ENUMS.RENDERPASS.OPAQUE });
+      scene.render(camera, opaquePassSettings);
       this.renderer.gizmos.gameObject.render(camera);
       // console.timeEnd("Opaque pass");
 
+      /*
+        Alpha pass
+      */
       // console.time("Alpha pass");
       gl.enable(gl.BLEND);
       gl.depthMask(false);
-      scene.render(camera, { renderPass: ENUMS.RENDERPASS.ALPHA });
+      scene.render(camera, alphaPassSettings);
       gl.depthMask(true);
       // console.timeEnd("Alpha pass");
 
@@ -7973,7 +8166,7 @@ function Renderer(settings = {}) {
       // gl.depthMask(true);
 
       if (usePostProcessing && renderer.version > 1) {
-        gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+        gl.drawBuffers([ gl.COLOR_ATTACHMENT0 ]);
       }
   
       if (secondaryCameras) {
@@ -8020,7 +8213,7 @@ function Renderer(settings = {}) {
       bindVertexArray(null);
   
       // Post processing
-      if (this.renderer.postprocessing && _settings.enablePostProcessing) this.renderer.postprocessing.render(camera);
+      if (usePostProcessing) this.renderer.postprocessing.render(camera);
     
       Matrix.copy(camera.viewMatrix, camera.prevViewMatrix);
 
@@ -8152,8 +8345,30 @@ function Renderer(settings = {}) {
       // camera.prevViewMatrix = Matrix.copy(camera.viewMatrix);
     };
 
-    // let _sunDirectionArray = [ 0, 0, 0 ];
-    // let _sunIntensityArray = [ 0, 0, 0 ];
+    const shadowPass = (camera, scene) => {
+      if (
+        this.renderer.shadowCascades &&
+        _settings.enableShadows &&
+        (scene.sunIntensity.x != 0 || scene.sunIntensity.y != 0 || scene.sunIntensity.z != 0) &&
+        scene.enableShadows &&
+        settings.shadows !== false
+      ) {
+        this.renderer.shadowCascades.renderShadowmaps(camera.transform.position);
+      }
+    };
+
+    const cullGameObjects = (camera, scene) => {
+      // console.time("Cull");
+      scene.root.traverseCondition(obj => {
+        if (obj.meshRenderer && (!camera.frustum || !obj.getAABB() || obj.getAABB().isInsideFrustum(camera.frustum)) || obj.disableFrustumCulling) {
+          obj.isCulled = false;
+        }
+        else {
+          obj.isCulled = true;
+        }
+      }, child => child.active && child.visible);
+      // console.timeEnd("Cull");
+    };
   }
 
   this.DeferredPBRRenderpipeline = DeferredPBRRenderpipeline;

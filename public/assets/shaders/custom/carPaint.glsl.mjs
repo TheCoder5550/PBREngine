@@ -13,8 +13,6 @@ layout (location = 1) out vec2 motionVector;
 
 // Attributes
 in vec3 vPosition;
-in vec3 vNormal;
-in vec4 vTangent; //in vec3 vTangent;
 in vec3 vColor;
 in vec2 vUV;
 in mat3 vTBN;
@@ -90,11 +88,13 @@ ${lit.litBase}
 
 vec3 getN(vec3 tangentNormal) {
   vec3 N;
-  if (vTangent.xyz != vec3(0)) {
+  vec3 tangent = vTBN[0];
+  if (length(tangent) > 0.01) {
     N = normalize(vTBN * tangentNormal);
   }
   else {
-    N = normalize(mat3(modelMatrix) * vNormal);
+    vec3 normal = vTBN[2];
+    N = normalize(mat3(modelMatrix) * normal);
   }
 
   if (!gl_FrontFacing) {

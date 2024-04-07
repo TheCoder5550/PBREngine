@@ -51,14 +51,30 @@
     <div class="menu">
       <h1>Paused</h1>
       <div class="Playground">
-        <button onclick="gotoGarage()" class="isSelectable">
+        <button onclick="openSettings()" class="MenuButton isSelectable">
+          <span class="material-symbols-outlined">settings</span>
+          <span>Settings</span>
+        </button>
+        <button onclick="resetCar()" class="MenuButton isSelectable">
+          <span class="material-symbols-outlined">restart_alt</span>
+          <span>Restart lap</span>
+        </button>
+        <!-- <button onclick="" class="MenuButton isSelectable">
+          <span class="material-symbols-outlined">photo</span>
+          <span>Photo mode</span>
+        </button> -->
+        <button onclick="resume()" class="MenuButton isSelectable">
+          Resume
+        </button>
+
+        <!-- <button onclick="gotoGarage()" class="isSelectable">
           <img src="garageIcon.png">
           <span>Garage</span>
         </button>
         <button onclick="openSettings()" class="isSelectable"><span class="material-symbols-outlined">settings</span>Settings</button>
         <button onclick="resetCar()" class="isSelectable"><span class="material-symbols-outlined">restart_alt</span>Reset car</button>
         <button onclick="resume()" class="isSelectable">Resume</button>
-        <button onclick="" class="isSelectable" disabled><span class="material-symbols-outlined">location_on</span>Teleport</button>
+        <button onclick="" class="isSelectable" disabled><span class="material-symbols-outlined">location_on</span>Teleport</button> -->
       </div>
 
       <div class="Garage hidden">
@@ -182,7 +198,14 @@
   <div class="overlay settings hidden">
     <div class="settingsContainer">
       <h1>Settings</h1>
-      <div class="items"></div>
+
+      <div class="settings_header">
+        <img src="../assets/textures/keyIcons/Xbox Series/XboxSeriesX_LB.png">
+        <div class="settings_categories"></div>
+        <img src="../assets/textures/keyIcons/Xbox Series/XboxSeriesX_RB.png">
+      </div>
+
+      <div class="settings_pages"></div>
       <div>
         <button class="isSelectable" onclick="goBack()">Back</button>
       </div>
@@ -204,8 +227,51 @@
     </div>
   </div>
 
-  <div class="overlay">
+  <div class="overlay hidden">
     <div class="messages"></div>
+  </div>
+
+  <div class="overlay race hidden">
+    <div class="lap_times">
+      <div class="best">
+        <div style="display: flex;align-items: end;">
+          <span>Best lap</span>
+        </div>
+        <span style="font-size: 1.75rem;" id="best_lap_time">--:--.---</span>
+      </div>
+      
+      <div class="prev">
+        <span>Prev laps</span>
+        <div class="prev_lap_times" id="prev_lap_times"></div>
+      </div>
+    </div>
+
+    <div class="current_times">
+      <span class="current_time hidden" id="current_time">00:00.000</span>
+      <span class="missed_checkpoint hidden" id="missed_checkpoint">Missed checkpoint</span>
+    </div>
+
+    <div class="track_map">
+      <img src="track_map.png">
+      <div class="tracker">
+        <img src="tracker.png">
+        <div class="color"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay start_menu hidden">
+    <h1>Car demo</h1>
+    <div class="start_menu_actions">
+      <button class="isSelectable MenuButton" onclick="window.startRace()">
+        <span class="material-symbols-outlined">sports_score</span>
+        Start race
+      </button>
+      <button class="isSelectable MenuButton">
+        <span class="material-symbols-outlined">stadia_controller</span>
+        Controls
+      </button>
+    </div>
   </div>
 
   <!-- <div class="overlay" style="z-index: 1000000000; display: flex; flex-direction: column; align-items: flex-end;">
@@ -216,6 +282,7 @@
   </div> -->
 
   <!-- <script src="../../dist/bundle.js"></script> -->
+  <script src="worley-noise.js"></script>
   <script type="module" src="main.js"></script>
 </body>
 </html>

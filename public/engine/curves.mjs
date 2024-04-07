@@ -1,5 +1,5 @@
 import Vector from "./vector.mjs";
-import { clamp, inverseLerp, lerp, mod, wrap } from "./helper.mjs";
+import { clamp, inverseLerp, lerp, mapValue, mod, wrap } from "./helper.mjs";
 import { ClosestPointOnLineSegment } from "./algebra.mjs";
 
 function LerpCurve() {
@@ -92,11 +92,12 @@ export function BezierCurve(points) {
 
 export function CatmullRomCurve(points, alpha = 0.5, loop = false) {
   this.alpha = alpha;
-  this.points = points;
   this.loop = loop;
-  var segments = [];
+  this.uniformSampling = true;
+  let _points = points;
 
-  for (var i = 0; i < points.length - (this.loop ? 0 : 3); i++) {
+  let segments = [];
+  for (let i = 0; i < points.length - (this.loop ? 0 : 3); i++) {
     segments.push(new CatmullRomSegment(
       points[(i + 0) % points.length],
       points[(i + 1) % points.length],
@@ -106,10 +107,36 @@ export function CatmullRomCurve(points, alpha = 0.5, loop = false) {
     ));
   }
 
+  const updateLength = () => {
+    this.length = 0;
+    for (const segment of segments) {
+      this.length += segment.length;
+    }
+  };
+
   this.length = 0;
-  for (const segment of segments) {
-    this.length += segment.length;
-  }
+  updateLength();
+
+  this.getPoints = function() {
+    return _points;
+  };
+
+  this.updatePoints = function(points) {
+    _points = points;
+    segments.length = 0;
+
+    for (let i = 0; i < points.length - (this.loop ? 0 : 3); i++) {
+      segments.push(new CatmullRomSegment(
+        points[(i + 0) % points.length],
+        points[(i + 1) % points.length],
+        points[(i + 2) % points.length],
+        points[(i + 3) % points.length],
+        this.alpha
+      ));
+    }
+
+    updateLength();
+  };
 
   this.getTangent = function(t) {
     const a = this.getPoint(t);
@@ -161,7 +188,29 @@ export function CatmullRomCurve(points, alpha = 0.5, loop = false) {
       }
     }
 
-    var segment = Math.floor(t * segments.length);
+    if (this.uniformSampling) {
+      let length = 0;
+      let segment = null;
+      let a = 0;
+      let b = 0;
+
+      for (let i = 0; i < segments.length; i++) {
+        const currentSegment = segments[i];
+
+        a = length / this.length;
+        length += currentSegment.length;
+        b = length / this.length;
+
+        if (t * this.length <= length) {
+          segment = currentSegment;
+          break;
+        }
+      }
+
+      return segment.getPoint(mapValue(t, a, b, 0, 1));
+    }
+
+    const segment = Math.floor(t * segments.length);
     return segments[segment].getPoint((t * segments.length) % 1);
   };
 

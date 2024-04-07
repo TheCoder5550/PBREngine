@@ -4,75 +4,120 @@ import Vector from "./vector.mjs";
 import Quaternion from "./quaternion.mjs";
 import { inverseLerp } from "./helper.mjs";
 
-function AnimationController(animations = []) {
+function DefaultWeightsHandler() {
+  this.weights = new WeakMap();
+
+  this.getWeight = function(animation) {
+    var w = this.weights.get(animation);
+    if (typeof w !== "undefined") {
+      return w;
+    }
+
+    return 0;
+  };
+
+  this.copy = function() {
+    // copying WeakMap is not possible
+    // so weights are not copied over
+    return new DefaultWeightsHandler();
+  };
+}
+
+export function AnimationController(animations = []) {
+  this.updateRate = 1;
+  this.updateOffset = 0;
+
   this.animations = animations;
   this.speed = 1;
   this.loop = false;
 
-  // this.perAnimationSettings = new WeakMap();
-
-  // this.loopAnimations = new WeakMap();
   this.animationTimes = new WeakMap();
-  // this.animationInfluences = new WeakMap();
+  this.weightsHandler = new DefaultWeightsHandler();
 
-  this.weightsHandler = new (function() {
-    this.weights = new WeakMap();
-
-    this.getWeight = function(animation) {
-      var w = this.weights.get(animation);
-      if (typeof w !== "undefined") {
-        return w;
+  const _getAnimations = (animationOrMatchName) => {
+    if (animationOrMatchName instanceof AnimationData) {
+      if (!this.animations.includes(animationOrMatchName)) {
+        throw new Error("Animation is not for this controller");
       }
 
-      return 0;
-    };
+      return [ animationOrMatchName ];
+    }
 
-    // this.index = 0;
+    if (animationOrMatchName instanceof RegExp) {
+      return this.animations.filter(animation => animation.name.match(animationOrMatchName));
+    }
 
-    // this.getWeight = function(animation) {
-    //   return _this.animations.indexOf(animation) === this.index ? 1 : 0;
-    // }
-  });
+    if (typeof animationOrMatchName === "string") {
+      const lowerName = animationOrMatchName?.toLowerCase();
+      return this.animations.filter(animation => animation.name.toLowerCase().indexOf(lowerName) !== -1);
+    }
 
-  // this.getAnimationInfluence = function(animation) {
-  //   var i = this.animationInfluences.get(animation);
-  //   if (typeof i == "undefined") {
-  //     return 1;
-  //   }
+    if (animationOrMatchName == undefined) {
+      return this.animations;
+    }
 
-  //   return i;
-  // }
+    return [];
+  };
 
   this.copy = function() {
-    var newAC = new AnimationController();
+    const newAC = new AnimationController();
     newAC.speed = this.speed;
     newAC.loop = this.loop;
+    newAC.weightsHandler = this.weightsHandler.copy();
 
-    if (this.weightsHandler instanceof AnimationBlend) {
-      newAC.weightsHandler = new AnimationBlend();
-    }
+    // if (this.weightsHandler instanceof AnimationBlend) {
+    //   newAC.weightsHandler = new AnimationBlend();
+    // }
+
+    const oldToNewAnimation = new WeakMap();
     
-    for (let animation of this.animations) {
-      let newAnimation = animation.copy();
+    for (const animation of this.animations) {
+      const newAnimation = animation.copy();
+      oldToNewAnimation.set(animation, newAnimation);
+
       newAC.animationTimes.set(newAnimation, this.animationTimes.get(animation));
       newAC.animations.push(newAnimation);
 
-      if (this.weightsHandler.weights) {
+      if (this.weightsHandler instanceof DefaultWeightsHandler) {
         newAC.weightsHandler.weights.set(newAnimation, this.weightsHandler.weights.get(animation) ?? 0);
       }
 
-      if (this.weightsHandler instanceof AnimationBlend) {
-        newAC.weightsHandler.blendCoords.push({
-          animation: newAnimation,
-          coords: this.weightsHandler.blendCoords.find(o => o.animation == animation).coords
-        });
-      }
+      // if (this.weightsHandler instanceof AnimationBlend) {
+      //   newAC.weightsHandler.blendCoords.push({
+      //     animation: newAnimation,
+      //     coords: this.weightsHandler.blendCoords.find(o => o.animation == animation).coords
+      //   });
+      // }
+    }
+
+    if (this.weightsHandler instanceof AnimationBlend) {
+      newAC.weightsHandler.blendCoords = this.weightsHandler.blendCoords
+        .map(b => {
+          const newAnimation = oldToNewAnimation.get(b.animation);
+
+          if (!newAnimation) {
+            return null;
+          }
+
+          return {
+            animation: newAnimation,
+            coords: Vector.copy(b.coords)
+          };
+        })
+        .filter(b => b !== null);
     }
 
     return newAC;
   };
 
-  this.update = function(dt) {
+  this.update = function(dt, frameNumber) {
+    // Only update every n frames
+    if (frameNumber % this.updateRate !== this.updateOffset) {
+      return;
+    }
+
+    dt *= this.updateRate;
+
     var lookup = new WeakMap();
     var keys = [];
 
@@ -169,21 +214,23 @@ function AnimationController(animations = []) {
     }
   };
 
-  this.play = function(matchName) {
-    if (matchName instanceof AnimationData) {
-      this.animationTimes.set(matchName, 0);
-      this.weightsHandler.weights.set(matchName, 1);
-      return;
+  this.setTime = function(animationOrMatchName, time) {
+    for (const animation of _getAnimations(animationOrMatchName)) {
+      this.animationTimes.set(animation, time);
     }
+  };
 
-    var lowerName = matchName?.toLowerCase();
-
-    for (var animation of this.animations) {
-      if (matchName != undefined && animation.name.toLowerCase().indexOf(lowerName) == -1) continue;
-
+  this.play = function(animationOrMatchName) {
+    for (const animation of _getAnimations(animationOrMatchName)) {
       this.animationTimes.set(animation, 0);
-      this.weightsHandler.weights.set(animation, 1);
+      if (this.weightsHandler instanceof DefaultWeightsHandler) {
+        this.weightsHandler.weights.set(animation, 1);
+      }
     }
+  };
+
+  this.getAnimations = function(animationOrMatchName) {
+    return _getAnimations(animationOrMatchName);
   };
 
   this.getCurrentMatrices = function(animation) {
@@ -241,78 +288,6 @@ function AnimationController(animations = []) {
     return output;
   };
 
-  function interpolateVector(channel, prevIndex, nextIndex, t, mode = "LINEAR") {
-    var prevPoint = channel.outputBuffer[prevIndex];
-    var nextPoint = channel.outputBuffer[nextIndex];
-
-    if (mode == "LINEAR") {
-      return Vector.lerp(prevPoint, nextPoint, t);
-    }
-    else if (mode == "STEP") {
-      return Vector.copy(nextPoint);
-    }
-    else if (mode == "CUBICSPLINE") {
-      if (channel.inputTangents && channel.outputTangents) {
-        var deltaTime = channel.inputBuffer[prevIndex] - channel.inputBuffer[nextIndex];
-        var prevTangent = Vector.multiply(channel.inputTangents[prevIndex], deltaTime);
-        var nextTangent = Vector.multiply(channel.outputTangents[prevIndex], deltaTime);
-
-        t = 1 - t;
-        return cubicSplineVector(nextPoint, prevTangent, prevPoint, nextTangent, t);
-      }
-    }
-
-    return Vector.zero();
-  }
-
-  function interpolateQuaternion(channel, prevIndex, nextIndex, t, mode = "LINEAR") {
-    var prevPoint = channel.outputBuffer[prevIndex];
-    var nextPoint = channel.outputBuffer[nextIndex];
-
-    if (mode == "LINEAR") {
-      return Quaternion.slerp(prevPoint, nextPoint, t);
-    }
-    else if (mode == "STEP") {
-      return Quaternion.copy(nextPoint);
-    }
-    else if (mode == "CUBICSPLINE") {
-      if (channel.inputTangents && channel.outputTangents) {
-        var deltaTime = channel.inputBuffer[prevIndex] - channel.inputBuffer[nextIndex];
-        var prevTangent = Quaternion.multiply(channel.inputTangents[prevIndex], deltaTime);
-        var nextTangent = Quaternion.multiply(channel.outputTangents[prevIndex], deltaTime);
-
-        t = 1 - t;
-        return cubicSplineQuaternion(nextPoint, prevTangent, prevPoint, nextTangent, t);
-      }
-    }
-
-    return Quaternion.identity();
-  }
-
-  function cubicSplineVector(prevPoint, prevTangent, nextPoint, nextTangent, t) {
-    var t2 = t * t;
-    var t3 = t2 * t;
-
-    var a = Vector.multiply(prevPoint, 2 * t3 - 3 * t2 + 1);
-    var b = Vector.multiply(prevTangent, t3 - 2 * t2 + t);
-    var c = Vector.multiply(nextPoint, -2 * t3 + 3 * t2);
-    var d = Vector.multiply(nextTangent, t3 - t2);
-    
-    return Vector.add(Vector.add(a, b), Vector.add(c, d));
-  }
-
-  function cubicSplineQuaternion(prevPoint, prevTangent, nextPoint, nextTangent, t) {
-    var t2 = t * t;
-    var t3 = t2 * t;
-
-    var a = Quaternion.multiply(prevPoint, 2 * t3 - 3 * t2 + 1);
-    var b = Quaternion.multiply(prevTangent, t3 - 2 * t2 + t);
-    var c = Quaternion.multiply(nextPoint, -2 * t3 + 3 * t2);
-    var d = Quaternion.multiply(nextTangent, t3 - t2);
-    
-    return Quaternion.add(Quaternion.add(a, b), Quaternion.add(c, d));
-  }
-
   this.getClosestIndex = function(arr, t) {
     // var i = arr.findIndex(a => t < a);
     // if (i !== -1) {
@@ -338,6 +313,74 @@ function AnimationController(animations = []) {
   };
 }
 
-export {
-  AnimationController
-};
+function interpolateVector(channel, prevIndex, nextIndex, t, mode = "LINEAR") {
+  var prevPoint = channel.outputBuffer[prevIndex];
+  var nextPoint = channel.outputBuffer[nextIndex];
+
+  if (mode == "LINEAR") {
+    return Vector.lerp(prevPoint, nextPoint, t);
+  }
+  else if (mode == "STEP") {
+    return Vector.copy(nextPoint);
+  }
+  else if (mode == "CUBICSPLINE") {
+    if (channel.inputTangents && channel.outputTangents) {
+      var deltaTime = channel.inputBuffer[prevIndex] - channel.inputBuffer[nextIndex];
+      var prevTangent = Vector.multiply(channel.inputTangents[prevIndex], deltaTime);
+      var nextTangent = Vector.multiply(channel.outputTangents[prevIndex], deltaTime);
+
+      t = 1 - t;
+      return cubicSplineVector(nextPoint, prevTangent, prevPoint, nextTangent, t);
+    }
+  }
+
+  return Vector.zero();
+}
+
+function interpolateQuaternion(channel, prevIndex, nextIndex, t, mode = "LINEAR") {
+  var prevPoint = channel.outputBuffer[prevIndex];
+  var nextPoint = channel.outputBuffer[nextIndex];
+
+  if (mode == "LINEAR") {
+    return Quaternion.slerp(prevPoint, nextPoint, t);
+  }
+  else if (mode == "STEP") {
+    return Quaternion.copy(nextPoint);
+  }
+  else if (mode == "CUBICSPLINE") {
+    if (channel.inputTangents && channel.outputTangents) {
+      var deltaTime = channel.inputBuffer[prevIndex] - channel.inputBuffer[nextIndex];
+      var prevTangent = Quaternion.multiply(channel.inputTangents[prevIndex], deltaTime);
+      var nextTangent = Quaternion.multiply(channel.outputTangents[prevIndex], deltaTime);
+
+      t = 1 - t;
+      return cubicSplineQuaternion(nextPoint, prevTangent, prevPoint, nextTangent, t);
+    }
+  }
+
+  return Quaternion.identity();
+}
+
+function cubicSplineVector(prevPoint, prevTangent, nextPoint, nextTangent, t) {
+  var t2 = t * t;
+  var t3 = t2 * t;
+
+  var a = Vector.multiply(prevPoint, 2 * t3 - 3 * t2 + 1);
+  var b = Vector.multiply(prevTangent, t3 - 2 * t2 + t);
+  var c = Vector.multiply(nextPoint, -2 * t3 + 3 * t2);
+  var d = Vector.multiply(nextTangent, t3 - t2);
+  
+  return Vector.add(Vector.add(a, b), Vector.add(c, d));
+}
+
+function cubicSplineQuaternion(prevPoint, prevTangent, nextPoint, nextTangent, t) {
+  var t2 = t * t;
+  var t3 = t2 * t;
+
+  var a = Quaternion.multiply(prevPoint, 2 * t3 - 3 * t2 + 1);
+  var b = Quaternion.multiply(prevTangent, t3 - 2 * t2 + t);
+  var c = Quaternion.multiply(nextPoint, -2 * t3 + 3 * t2);
+  var d = Quaternion.multiply(nextTangent, t3 - t2);
+  
+  return Quaternion.add(Quaternion.add(a, b), Quaternion.add(c, d));
+}

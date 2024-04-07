@@ -5,6 +5,30 @@ import Renderer from "../renderer.mjs";
 export default class PostProcessingEffect {
   name = "";
   doesEffectNeedSplit = false;
+  #_oldEnabled = true;
+  #_newEnabled = true;
+  #_needsUpdating = false;
+
+  set needsUpdating(val) {
+    this.#_needsUpdating = val;
+  }
+
+  get needsUpdating() {
+    if (this.#_newEnabled != this.#_oldEnabled) {
+      this.#_needsUpdating = true;
+      this.#_oldEnabled = this.#_newEnabled;
+    }
+
+    return this.#_needsUpdating;
+  }
+
+  set enabled(enabled) {
+    this.#_newEnabled = enabled;
+  }
+
+  get enabled() {
+    return this.#_newEnabled;
+  }
 
   /**
    * Gets called when added effect to postprocessing effect stack with `addEffect`

@@ -9,13 +9,13 @@ import Vector from "../engine/vector.mjs";
 import Matrix from "../engine/matrix.mjs";
 import Quaternion from "../engine/quaternion.mjs";
 import { LerpCurve } from "../engine/curves.mjs";
-import { lerp, mapValue, clamp, loadImage, hideElement, showElement, getAngleBetween, getDistanceBetween, sleep, smoothstep, clamp01 } from "../engine/helper.mjs";
+import { lerp, mapValue, clamp, loadImage, hideElement, showElement, getAngleBetween, getDistanceBetween, sleep, smoothstep, clamp01, roundNearest, roundToPlaces } from "../engine/helper.mjs";
 import Perlin from "../engine/perlin.mjs";
 import { GetMeshAABB, PhysicsEngine, MeshCollider } from "../engine/physics.mjs";
-import { Car, DefaultCarController } from "../car.js";
+import { CameraController, Car, DefaultCarController, HoodFollowCamera, InteriorFollowCamera, NoInputCarController, PhotoCamera } from "../car.js";
 import * as carSettings from "./carSettings.mjs";
 import Keybindings from "../keybindingsController.mjs";
-import GamepadManager, { quadraticCurve, deadZone } from "../gamepadManager.js";
+import GamepadManager from "../gamepadManager.js";
 import OrbitCamera from "../engine/orbitCamera.mjs";
 import { NewMaterial } from "../engine/material.mjs";
 import Terrain from "../engine/terrain.mjs";
@@ -24,21 +24,23 @@ import PRNG from "../PRNG.mjs";
 import { getTriangleNormal } from "../engine/algebra.mjs";
 import GLDebugger from "../engine/GLDebugger.mjs";
 
+import * as roadShaderSource from "../projects/asp-simulator/roadShader.glsl.mjs";
 // import * as roadSource from "../assets/shaders/custom/road.glsl.mjs";
 import * as carPaintShader from "../assets/shaders/custom/carPaint.glsl.mjs";
 import * as litTerrainSource from "../assets/shaders/custom/litTerrain.glsl.mjs";
 import * as terrainShader from "./terrain.glsl.mjs";
-import * as simpleFoliage from "../assets/shaders/custom/simpleFoliage.glsl.mjs";
-// import createInspector from "../engine/inspector/inspector.mjs";
+// import * as simpleFoliage from "../assets/shaders/custom/simpleFoliage.glsl.mjs";
+import createInspector from "../engine/inspector/inspector.mjs";
 import City from "./city.mjs";
 import TreeHandler from "../engine/treeHandler.mjs";
 import Motionblur from "../engine/postprocessing-effects/motionBlur.mjs";
 import Bloom from "../engine/postprocessing-effects/bloom.mjs";
-import AutoExposure from "../engine/postprocessing-effects/autoExposure.mjs";
 import Tonemapper from "../engine/postprocessing-effects/tonemapper.mjs";
 import FXAA from "../engine/postprocessing-effects/fxaa.mjs";
 import ColorGrading from "../engine/postprocessing-effects/colorGrading.mjs";
 import Vignette from "../engine/postprocessing-effects/vignette.mjs";
+
+class IntroCameraController extends CameraController {}
 
 class ControllerUIInteraction {
   #tickPath = "../assets/sound/menu tick.wav";
@@ -131,11 +133,21 @@ class ControllerUIInteraction {
     }
   }
 
+  updateSelection() {
+    let selectables = document.querySelectorAll(".isSelectable:not([disabled]):not(.hidden)");
+    selectables = [...selectables].filter(e => e.offsetParent !== null);
+    this.selectFirstElement(selectables);
+  }
+
   selectFirstElement(_selectables) {
     var selectables = _selectables;
     if (!_selectables) {
       selectables = document.querySelectorAll(".isSelectable:not([disabled]):not(.hidden):not(.selected)");
       selectables = [...selectables].filter(e => e.offsetParent !== null);
+    }
+
+    if (selectables.length === 0) {
+      return;
     }
 
     var topSelectable = selectables.reduce((prev, curr) => {
@@ -168,6 +180,8 @@ class ControllerUIInteraction {
       console.warn("Element is not selectable");
       console.log(element);
     }
+
+    document.activeElement.blur();
   }
 
   #playTickSound() {
@@ -236,6 +250,8 @@ class FlakesTexture {
 
 document.addEventListener("DOMContentLoaded", async function () {
   const pauseOverlay = document.querySelector(".pauseOverlay");
+  const raceOverlay = document.querySelector(".race.overlay");
+  const startMenuOverlay = document.querySelector(".start_menu.overlay");
   const garageOverlay = document.querySelector(".garage");
   const loadingOverlay = document.querySelector(".loading");
   const settingsOverlay = document.querySelector(".settings");
@@ -248,6 +264,9 @@ document.addEventListener("DOMContentLoaded", async function () {
   const seed = "apples";
   const prng = new PRNG(seed);
   const perlin = new Perlin();
+  // const worley = new WorleyNoise({
+  //   numPoints: 100,
+  // });
   let stats;
 
   const ui = new GameCanvas(undefined, { publicMethods: false });
@@ -261,7 +280,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   const spawnPosition = new Vector(0, 2, 0);
   const spawnRotation = Quaternion.identity();
-  const allowedCars = [ "tocus", "myLowpolySportsCar", "lowpolyJeep" ];
+  const allowedCars = [ "nissanFairlady" ];
   // const allowedCars = [
   //   "skyline",
   //   "drift",
@@ -274,6 +293,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   //   "crownVic",
   //   "aventador",
   //   "porscheCarreraGTConcept2000",
+  //   "nissanFairlady"
   // ];
   let selectedCar = 0;
   let loadedCar = 0;
@@ -282,7 +302,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   const gamepadManager = new GamepadManager();
   const bindsLookup = {
-    "brights": {
+    "highbeams": {
       keyboard: "KeyX",
       controller: "LB"
     },
@@ -357,6 +377,15 @@ document.addEventListener("DOMContentLoaded", async function () {
       controller: "DPRight"
     },
 
+    "settingsPrevCategory": {
+      // keyboard: "ArrowLeft",
+      controller: "LB",
+    },
+    "settingsNextCategory": {
+      // keyboard: "ArrowRight",
+      controller: "RB",
+    },
+
     "UIup": {
       keyboard: "ArrowUp",
       controller: "DPUp"
@@ -379,6 +408,8 @@ document.addEventListener("DOMContentLoaded", async function () {
     },
   };
 
+  const lapTimer = new LapTimer();
+
   // Multiplayer
   var ws;
 
@@ -395,26 +426,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     shadowResolution: 1024 * 2,
     shadowSizes: [32 * 2, 256],
-    shadowBiases: [1, 1],
+    shadowBiases: [2, 3],
 
-    logarithmicDepthBuffer: true,
+    // logarithmicDepthBuffer: true,
   });
   renderer.disableContextMenu();
   renderer.canvas.style.position = "fixed";
 
-  window.isDay = isDay;
-  const settingsManager = new SettingsManager();
   const keybindings = new Keybindings(renderer, gamepadManager, bindsLookup);
   const controllerUIInteraction = new ControllerUIInteraction(keybindings);
+  const settingsManager = new SettingsManager(keybindings);
 
   // Scene
   setProgress(currentTask++, totalTasks, "Loading scene");
   const scene = new Scene("Playground");
   renderer.add(scene);
-
-  scene.skyboxFogIntensity = 1;
-  scene.environmentMinLight = 0.5;
-  scene.skyboxAnimation.speed = 0.01;
 
   // Post processing
   const pp = renderer.postprocessing;
@@ -428,14 +454,14 @@ document.addEventListener("DOMContentLoaded", async function () {
   bloom.lensDirtTexture = lensDirtTexture;
   bloom.lensDirtTextureWidth = 1280;
   bloom.lensDirtTextureHeight = 720;
-  bloom.lensDirtIntensity = 5;
+  bloom.lensDirtIntensity = 2;
 
   // Tonemapping
   const tonemapper = pp.addEffect(new Tonemapper());
   tonemapper.exposure = -1;
 
   // FXAA
-  pp.addEffect(new FXAA());
+  const fxaa = pp.addEffect(new FXAA());
   
   // Color graading
   const colorGrading = pp.addEffect(new ColorGrading());
@@ -446,68 +472,66 @@ document.addEventListener("DOMContentLoaded", async function () {
   vignette.amount = 0.3;
   vignette.falloff = 0.3;
 
-  renderer.shadowCascades.refreshRate = 0;
-
-  isDay(true);
+  await scene.loadEnvironment({ hdrFolder: "cubemaps/raceTrack" });
 
   // lowpolyDesert has artifacts in diffuse.hdr
   // await scene.loadEnvironment({ hdrFolder: "cubemaps/lowpolyDesert" });
 
-  await scene.loadEnvironment({
-    // hdr: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr",
-    hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k_precomputed",
-    // hdrFolder: "../assets/hdri/snowy_field_1k",
-    // res: 1024
-  });
+  // await scene.loadEnvironment({
+  //   // hdr: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr",
+  //   hdrFolder: "../assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k_precomputed",
+  //   // hdrFolder: "../assets/hdri/snowy_field_1k",
+  //   // res: 1024
+  // });
 
-  // Garage scene
-  setProgress(currentTask++, totalTasks, "Generating garage");
-  console.time("Garage");
+  // // Garage scene
+  // setProgress(currentTask++, totalTasks, "Generating garage");
+  // console.time("Garage");
 
-  const garageScene = new Scene("Garage");
-  renderer.add(garageScene);
+  // const garageScene = new Scene("Garage");
+  // renderer.add(garageScene);
 
-  renderer.on("mousemove", () => {
-    if (renderer.getActiveScene() !== garageScene) {
-      return;
-    }
+  // renderer.on("mousemove", () => {
+  //   if (renderer.getActiveScene() !== garageScene) {
+  //     return;
+  //   }
 
-    if (!renderer.mouse.left) {
-      return;
-    }
+  //   if (!renderer.mouse.left) {
+  //     return;
+  //   }
 
-    carRotation += renderer.mouse.movement.x * 0.01;
-  });
+  //   carRotation += renderer.mouse.movement.x * 0.01;
+  // });
 
-  renderer.on("scroll", () => {
-    if (renderer.getActiveScene() !== garageScene) {
-      return;
-    }
+  // renderer.on("scroll", () => {
+  //   if (renderer.getActiveScene() !== garageScene) {
+  //     return;
+  //   }
 
-    garageFOV += renderer.mouse.scroll.y * 0.01;
-    garageFOV = clamp(garageFOV, 10, 40);
-    garageCamera.setFOV(garageFOV);
-  });
+  //   garageFOV += renderer.mouse.scroll.y * 0.01;
+  //   garageFOV = clamp(garageFOV, 10, 40);
+  //   garageCamera.setFOV(garageFOV);
+  // });
 
-  garageScene.sunIntensity = Vector.zero();
-  garageScene.environmentIntensity = 0.2;
-  await garageScene.loadEnvironment({
-    // hdr: "../assets/hdri/studio_small_09_1k.hdr",
-    hdrFolder: "../assets/hdri/studio_small_09_1k_precomputed",
-    // res: 512
-  });
+  // garageScene.sunIntensity = Vector.zero();
+  // garageScene.environmentIntensity = 0.2;
+  // await garageScene.loadEnvironment({
+  //   // hdr: "../assets/hdri/studio_small_09_1k.hdr",
+  //   hdrFolder: "../assets/hdri/studio_small_09_1k_precomputed",
+  //   // res: 512
+  // });
 
-  console.timeEnd("Garage");
+  // garageScene.add(await renderer.loadGLTF("./garage.glb"));
 
-  garageScene.add(await renderer.loadGLTF("./garage.glb"));
+  // console.timeEnd("Garage");
 
-  const garageCamera = new Camera({ fov: 30 });
-  garageCamera.transform.matrix = Matrix.lookAt(new Vector(1.5, 1.5, 6), new Vector(1.5, 0.5, 0), Vector.up());
-  var resizeEvent = () => {
-    garageCamera.setAspect(renderer.aspect);
-  };
-  renderer.on("resize", resizeEvent);
-  resizeEvent();
+  // const garageCamera = new Camera({ fov: 30 });
+  // garageCamera.transform.matrix = Matrix.lookAt(new Vector(1.5, 1.5, 6), new Vector(1.5, 0.5, 0), Vector.up());
+  // var resizeEvent = () => {
+  //   garageCamera.setAspect(renderer.aspect);
+  // };
+  // renderer.on("resize", resizeEvent);
+  // resizeEvent();
 
   // Debugger
   // setProgress(currentTask++, totalTasks, "Initializing debugger");
@@ -537,10 +561,13 @@ document.addEventListener("DOMContentLoaded", async function () {
   const paints = {
     purple: new CarPaintMaterial(renderer, carPaintProgram, { flakesNormalTexture: flakes }),
     simplyRed: new CarPaintMaterial(renderer, carPaintProgram, {
-      metallic: 0,
+      flakesNormalTexture: flakes,
+      flakeScale: 1000,
+      metallic: 1,
       clearcoatRoughness: 0,
-      twoTone: 0,
-      color1: [1, 0, 0],
+      twoTone: 1,
+      color1: [0.4, 0, 0],
+      color2: [0.4, 0.03, 0],
     }),
     darkgray: new CarPaintMaterial(renderer, carPaintProgram, {
       flakesNormalTexture: flakes,
@@ -561,6 +588,13 @@ document.addEventListener("DOMContentLoaded", async function () {
       clearcoatFactor: 0.5,
       twoTone: 0,
       color1: [0.1, 0.1, 0.9],
+    }),
+    white: new CarPaintMaterial(renderer, carPaintProgram, {
+      metallic: 1,
+      roughness: 0.5,
+      clearcoatRoughness: 0,
+      twoTone: 0,
+      color1: [1, 1, 1],
     }),
   };
 
@@ -586,7 +620,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         for (var mat of mats) {
           if (mat.name.toLowerCase() == "carpaint") {
             var i = mats.indexOf(mat);
-            mats[i] = paints.blue;
+            mats[i] = paints.simplyRed;
             mats[i].setUniform("flakeScale", 50);
           }
           // mat.uniforms["enableMotionBlur"] = 0;
@@ -598,29 +632,29 @@ document.addEventListener("DOMContentLoaded", async function () {
     modelOffset[key] = Vector.add(Vector.negate(aabb.getCenter()), new Vector(0, aabb.getSize().y / 2, 0));
     model.transform.position = Vector.add(new Vector(i * 5, 0.1, 0), modelOffset[key]);
 
-    garageScene.add(model);
+    // garageScene.add(model);
 
-    // Add garage listing
-    const item = garageCarList.appendChild(document.createElement("div"));
-    item.classList.add("item", "isSelectable");
+    // // Add garage listing
+    // const item = garageCarList.appendChild(document.createElement("div"));
+    // item.classList.add("item", "isSelectable");
 
-    const nameLabel = item.appendChild(document.createElement("span"));
-    nameLabel.classList.add("name");
-    nameLabel.textContent = settings.name;
+    // const nameLabel = item.appendChild(document.createElement("span"));
+    // nameLabel.classList.add("name");
+    // nameLabel.textContent = settings.name;
     
-    item.onSelect = () => {
-      selectedCar = clamp(i, 0, Object.keys(models).length - 1);
-      setCarName();
-    };
+    // item.onSelect = () => {
+    //   selectedCar = clamp(i, 0, Object.keys(models).length - 1);
+    //   setCarName();
+    // };
 
-    item.addEventListener("click", () => {
-      if (selectedCar == i) {
-        window.selectCar();
-        return;
-      }
+    // item.addEventListener("click", () => {
+    //   if (selectedCar == i) {
+    //     window.selectCar();
+    //     return;
+    //   }
 
-      controllerUIInteraction.selectElement(item);
-    });
+    //   controllerUIInteraction.selectElement(item);
+    // });
   }
 
   // Load car
@@ -629,7 +663,31 @@ document.addEventListener("DOMContentLoaded", async function () {
   var carModel = scene.add(models[carKey].copy());
   let trailer;
   let car;
+
+  const introCameraController = new IntroCameraController();
   car = await loadCar(carSettings[carKey].settings, carModel);
+
+  car.followCamera.resetForward();
+
+  const GAMEPLAY_STATES = {
+    START_MENU: "start menu",
+    INTRO_ANIMATION: "intro animation",
+    PLAYING: "playing",
+  };
+  let state = GAMEPLAY_STATES.START_MENU;
+
+  const introCameraCurvePoints = [
+    new Vector(-3, 1.5, 0),
+    new Vector(0, 1.5, -4),
+    new Vector(2.5, 1.5, -4),
+    new Vector(4.5, 1.5, 0),
+    new Vector(2.26, 1.14, 3.74),
+    new Vector(-5, 0.6, 6),
+  ];
+  const introCameraCurve = new CatmullRomCurve(introCameraCurvePoints);
+  let curveAnimation = 0;
+
+  // window.Debug.CreateCurve(introCameraCurve, 30);
 
   // Load map
   setProgress(currentTask++, totalTasks, "Loading map");
@@ -638,8 +696,16 @@ document.addEventListener("DOMContentLoaded", async function () {
   // const { terrain, checkChunks } = await generateLowpolyForest();
   // const { terrain, checkChunks } = await generateForest();
   // const { terrain } = await generateTerrain();
-  const { terrain } = await generatePlayground();
+  // const { terrain } = await generatePlayground();
   // const { terrain } = await generateTouge();
+  const { terrain, environments } = await generateRaceTrack();
+
+  setTimeOfDay(settingsManager.getSettingValue("day"));
+
+  const u = terrain.chunkUpdatesPerFrame;
+  terrain.chunkUpdatesPerFrame = Infinity;
+  terrain.update();
+  terrain.chunkUpdatesPerFrame = u;
 
   // Re-set spawnpoint since maps changes it
   // Spawn position
@@ -658,20 +724,19 @@ document.addEventListener("DOMContentLoaded", async function () {
   car.gameObject.transform.rotation = Quaternion.copy(car.rb.rotation);
 
   // // Reflection probe
-  // await sleep(6000);
+  // car.gameObject.visible = false;
   // setProgress(currentTask++, totalTasks, "Generating cubemap");
-  // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 1, 0));
+  // await sleep(6000);
+  // var cubemap = renderer.captureReflectionCubemap(new Vector(0, 1, -5));
   // var oldSkybox = scene.skyboxCubemap;
   // await scene.loadEnvironment({ cubemap });
   // scene.skyboxCubemap = oldSkybox;
   // scene.environmentIntensity = 1;
+  // car.gameObject.visible = true;
 
   setProgress(currentTask++, totalTasks, "Finalizing physics colliders");
   physicsEngine.setupMeshCollider();
-
-  // let m = scene.add(renderer.CreateShape("sphere")).meshRenderer.materials[0];
-  // m.setUniform("roughness", 0);
-  // m.setUniform("metallic", 1);
+  // window.Debug.CreateOctree(physicsEngine.octree);
 
   if (!car) {
     var fallbackCamera = new OrbitCamera(renderer, { far: 10_000 });
@@ -776,24 +841,26 @@ document.addEventListener("DOMContentLoaded", async function () {
   };
 
   document.addEventListener("visibilitychange", function() {
-    if (document.hidden) {
+    if (document.hidden && !paused && !settingsOpened) {
       paused = true;
+      handlePauseChange();
     }
-
-    handlePauseChange();
   }, false);
 
   settingsManager.loadSaveData();
 
-  if (settingsManager.getSettingValue("Show FPS")) {
+  if (settingsManager.getSettingValue("fps")) {
     stats = new Stats();
     document.body.appendChild(stats.dom);
   }
 
-  // createInspector(renderer);
+  window.createInspector = () => createInspector(renderer);
 
   setProgress(currentTask++, totalTasks, "Done!");
   hideElement(loadingOverlay);
+  showElement(startMenuOverlay);
+  controllerUIInteraction.selectFirstElement();
+  // hideCursor();
 
   renderer.on("renderloop", function(frameTime) {
     ui.clearScreen();
@@ -804,9 +871,9 @@ document.addEventListener("DOMContentLoaded", async function () {
     if (activeScene == scene) {
       handleMainScene(frameTime);
     }
-    else if (activeScene == garageScene) {
-      handleGarageScene(frameTime);
-    }
+    // else if (activeScene == garageScene) {
+    //   handleGarageScene(frameTime);
+    // }
 
     stats?.update();
   });
@@ -816,23 +883,75 @@ document.addEventListener("DOMContentLoaded", async function () {
   window.physicsEngine = physicsEngine;
   window.car = car;
 
+  const endCamera = new Camera();
+
   function handleMainScene(frameTime) {
     if (!paused) {
       let currentCamera = car ? car.mainCamera : fallbackCamera.camera;
 
+      if (
+        state === GAMEPLAY_STATES.START_MENU ||
+        state === GAMEPLAY_STATES.INTRO_ANIMATION
+      ) {
+        const currentCurveMatrix = Matrix.lookAt(
+          introCameraCurve.getPoint(clamp01(1 - curveAnimation)),
+          new Vector(0, 1, 0)
+        );
+        car.followCamera.update(endCamera, frameTime);
+
+        Matrix.getPosition(endCamera.transform.matrix, introCameraCurvePoints[1]);
+        introCameraCurve.updatePoints(introCameraCurvePoints);
+
+        const position = introCameraCurve.getPoint(clamp01(1 - curveAnimation));
+        const rotation = Matrix.lerp(
+          currentCurveMatrix,
+          endCamera.transform.matrix,
+          clamp01((curveAnimation - 0.8) * 4)
+        );
+        Matrix.getRotationMatrix(rotation, rotation);
+
+        currentCamera.transform.position = position;
+        currentCamera.transform.rotationMatrix = rotation;
+      }
+
+      if (state === GAMEPLAY_STATES.INTRO_ANIMATION) {
+        if (curveAnimation >= 1.5) {
+          car.removeCameraController(introCameraController);
+          car.previousCamera();
+          car.engine.startEngine();
+
+          lapTimer.resetLap(3000);
+          showElement(raceOverlay);
+          state = GAMEPLAY_STATES.PLAYING;
+        }
+
+        curveAnimation += frameTime * 0.4;
+      }
+
       // scene.updateLights();
 
-      // terrain.update();
-      terrain?.update(currentCamera.transform);
+      // terrain?.update();
+      // terrain?.update(currentCamera.transform);
 
       physicsEngine.update();
       if (car) {
+        // Set audio listener spatial position
+        car.audioListener3D.setPosition(car.mainCamera.transform.position);
+        car.audioListener3D.setDirection(car.mainCamera.transform.forward, car.mainCamera.transform.up);
+
         if (car.rb.position.y < -300) {
           car.resetGame();
         }
 
         // car.update(frameTime);
-        car.renderUI(ui);
+        if (state === GAMEPLAY_STATES.PLAYING) {
+          car.renderUI(ui);
+        }
+      }
+
+      lapTimer.update(frameTime);
+      if (state === GAMEPLAY_STATES.PLAYING) {
+        lapTimer.renderUI();
       }
 
       renderer.update(frameTime); // scene.update(frameTime);
@@ -840,41 +959,41 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
   }
 
-  function handleGarageScene(frameTime) {
-    const carRotQuat = Quaternion.euler(0, carRotation, 0);
+  // function handleGarageScene(frameTime) {
+  //   const carRotQuat = Quaternion.euler(0, carRotation, 0);
 
-    garageScene.root.getChild("spin", true).transform.rotation = carRotQuat;
+  //   garageScene.root.getChild("spin", true).transform.rotation = carRotQuat;
 
-    let i = 0;
-    for (const key in models) {
-      const model = models[key];
+  //   let i = 0;
+  //   for (const key in models) {
+  //     const model = models[key];
 
-      const target = Vector.add(new Vector((i - selectedCar) * 20, 0.1, 0), modelOffset[key]);
-      Vector.addTo(model.transform.position, Vector.multiply(Vector.subtract(target, model.transform.position), 0.3));
+  //     const target = Vector.add(new Vector((i - selectedCar) * 20, 0.1, 0), modelOffset[key]);
+  //     Vector.addTo(model.transform.position, Vector.multiply(Vector.subtract(target, model.transform.position), 0.3));
     
-      model.transform.rotation = carRotQuat;
+  //     model.transform.rotation = carRotQuat;
 
-      model.visible = selectedCar == i;
+  //     model.visible = selectedCar == i;
 
-      i++;
+  //     i++;
+  //   }
+
+  //   if (!renderer.mouse.left) {
+  //     carRotation += frameTime * 0.1;
+  //   }
+
+  //   renderer.update(frameTime);
+  //   if (!paused) renderer.render(garageCamera);
+  // }
+
+  window.startRace = () => {
+    if (state !== GAMEPLAY_STATES.START_MENU) {
+      return;
     }
 
-    if (!renderer.mouse.left) {
-      carRotation += frameTime * 0.1;
-    }
-
-    renderer.update(frameTime);
-    if (!paused) renderer.render(garageCamera);
-  }
-
-  function isDay(day) {
-    if (day) {
-      applyDaytimeEnvironment();
-    }
-    else {
-      applyNighttimeEnvironment();
-    }
-  }
+    hideElement(startMenuOverlay);
+    state = GAMEPLAY_STATES.INTRO_ANIMATION;
+  };
 
   window.selectCar = async function() {
     if (loadedCar !== selectedCar) {
@@ -908,10 +1027,10 @@ document.addEventListener("DOMContentLoaded", async function () {
     window.resume();
   };
 
-  window.gotoGarage = function() {
-    setActiveScene(garageScene);
-    window.resume();
-  };
+  // window.gotoGarage = function() {
+  //   setActiveScene(garageScene);
+  //   window.resume();
+  // };
 
   window.resetCar = function() {
     // car.reset();
@@ -923,10 +1042,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     // car.rb.position.y = terrain.getHeight(car.rb.position.x, car.rb.position.z) + 1;
 
-    car.resetGame();
+    if (state !== GAMEPLAY_STATES.PLAYING) {
+      return;
+    }
+
+    lapTimer.resetLap(3000);
+
     window.checkChunks?.();
 
     window.resume();
+
+    car.resetGame();
+    car.carController = new NoInputCarController(car, { brake: true, ebrake: false });
   };
 
   window.resume = function() {
@@ -975,13 +1102,27 @@ document.addEventListener("DOMContentLoaded", async function () {
   }
 
   function handleInput(frameTime) {
-    if (settingsOpened && keybindings.getInputDown("back")) {
-      hideElement(settingsOverlay);
-      showElement(pauseOverlay);
-      controllerUIInteraction.selectFirstElement();
+    if (settingsOpened) {
+      if (keybindings.getInputDown("back")) {
+        hideElement(settingsOverlay);
+        showElement(pauseOverlay);
+        controllerUIInteraction.selectFirstElement();
 
-      settingsOpened = false;
-      return;
+        settingsOpened = false;
+        return;
+      }
+
+      if (keybindings.getInputDown("settingsPrevCategory")) {
+        settingsManager.prevPage();
+        return;
+      }
+
+      if (keybindings.getInputDown("settingsNextCategory")) {
+        settingsManager.nextPage();
+        return;
+      }
+
+      settingsManager.update(frameTime);
     }
 
     if (paused && keybindings.getInputDown("back")) {
@@ -996,22 +1137,22 @@ document.addEventListener("DOMContentLoaded", async function () {
       return;
     }
 
-    if (!paused && renderer.getActiveScene() == garageScene) {
-      if (keybindings.getInputDown("back")) {
-        window.gotoPlayground();
-      }
-      // if (keybindings.getInputDown("garagePrev")) {
-      //   garageChangeCar(-1);
-      // }
-      // if (keybindings.getInputDown("garageNext")) {
-      //   garageChangeCar(1);
-      // }
-      // if (keybindings.getInputDown("menuSelect")) {
-      //   window.selectCar();
-      // }
+    // if (!paused && renderer.getActiveScene() == garageScene) {
+    //   if (keybindings.getInputDown("back")) {
+    //     window.gotoPlayground();
+    //   }
+    //   // if (keybindings.getInputDown("garagePrev")) {
+    //   //   garageChangeCar(-1);
+    //   // }
+    //   // if (keybindings.getInputDown("garageNext")) {
+    //   //   garageChangeCar(1);
+    //   // }
+    //   // if (keybindings.getInputDown("menuSelect")) {
+    //   //   window.selectCar();
+    //   // }
 
-      carRotation += -quadraticCurve(deadZone(gamepadManager.getAxis("RSHorizontal"), 0.08)) * frameTime * 5;
-    }
+    //   carRotation += -quadraticCurve(deadZone(gamepadManager.getAxis("RSHorizontal"), 0.08)) * frameTime * 5;
+    // }
 
     controllerUIInteraction.update(frameTime);
   }
@@ -1025,25 +1166,38 @@ document.addEventListener("DOMContentLoaded", async function () {
   }
 
   function handlePauseChange() {
-    if (paused) {
-      car.freeze();
+    if (paused && state === GAMEPLAY_STATES.START_MENU) {
+      paused = false;
+    }
 
+    if (paused) {
+      hideElement(raceOverlay);
       showElement(pauseOverlay);
       controllerUIInteraction.deselectElement();
       controllerUIInteraction.selectFirstElement();
+
+      car.audioContext.suspend();
+
+      // showCursor();
     }
     else {
-      car.unfreeze();
+      if (state === GAMEPLAY_STATES.PLAYING) {
+        showElement(raceOverlay);
+      }
       hideElement(pauseOverlay);
 
-      if (car.mainGainNode) {
-        if (renderer.getActiveScene() != scene) {
-          car.mainGainNode.gain.value = 0;
-        }
-        else {
-          car.mainGainNode.gain.value = settingsManager.getSettingValue("masterVolume");
-        }
-      }
+      // if (car.mainGainNode) {
+      //   if (renderer.getActiveScene() != scene) {
+      //     car.mainGainNode.gain.value = 0;
+      //   }
+      //   else {
+      //     car.mainGainNode.gain.value = settingsManager.getSettingValue("masterVolume");
+      //   }
+      // }
+
+      car.audioContext.resume();
+
+      // hideCursor();
     }
   }
 
@@ -1053,19 +1207,19 @@ document.addEventListener("DOMContentLoaded", async function () {
     document.querySelectorAll(".menu > div").forEach(e => hideElement(e));
     showElement(document.querySelector(".menu > ." + _scene.name));
     
-    if (_scene == garageScene) {
-      showElement(garageOverlay);
-      setCarName();
-      controllerUIInteraction.selectElement(garageCarList.children[loadedCar]);
+    // if (_scene == garageScene) {
+    //   showElement(garageOverlay);
+    //   setCarName();
+    //   controllerUIInteraction.selectElement(garageCarList.children[loadedCar]);
 
-      for (const child of garageCarList.children) {
-        child.style.background = "";
-      }
-      garageCarList.children[loadedCar].style.background = "red";
-    }
-    else {
-      hideElement(garageOverlay);
-    }
+    //   for (const child of garageCarList.children) {
+    //     child.style.background = "";
+    //   }
+    //   garageCarList.children[loadedCar].style.background = "red";
+    // }
+    // else {
+    //   hideElement(garageOverlay);
+    // }
   }
 
   function setCarName() {
@@ -1084,13 +1238,21 @@ document.addEventListener("DOMContentLoaded", async function () {
   async function loadCar(settings, model) {
     var car = new Car(scene, physicsEngine, {
       path: renderer.path,
-      ...settings
+      keybindings,
+      ...settings,
     });
     car.carController = new DefaultCarController(car, {
       controlScheme: DefaultCarController.ControlScheme.Controller,
       keybindings,
       // ...settings
     });
+
+    car.addCameraController(introCameraController);
+    car.nextCamera();
+
+    car.addCameraController(new HoodFollowCamera(car));
+    car.addCameraController(new InteriorFollowCamera(car));
+    car.addCameraController(new PhotoCamera(car));
 
     // model.castShadows = false;
     model.transform.matrix = Matrix.identity();
@@ -1104,7 +1266,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         for (var mat of mats) {
           if (mat.name.toLowerCase() == "carpaint") {
             var i = mats.indexOf(mat);
-            mats[i] = paints.blue;
+            mats[i] = paints.darkgray;
             mats[i].setUniform("flakeScale", 50);
 
             // mat.setUniform("albedo", [1, 0, 0, 1]);
@@ -1116,8 +1278,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 
           // mat.setUniform("roughness", 0);
 
-          mat.doubleSided = false;
-          mat.doubleSidedShadows = false;
+          // mat.doubleSided = false;
+          // mat.doubleSidedShadows = false;
         }
       }
     });
@@ -1167,11 +1329,25 @@ document.addEventListener("DOMContentLoaded", async function () {
     car.mainCamera = new Camera({near: 0.1, far: 15_000, fov: 35});
     car.mainCamera.setAspect(renderer.aspect);
 
-    car.ABS = settingsManager.getSettingValue("abs");
-    car.TCS = settingsManager.getSettingValue("tcs");
+    const oldCarController = car.carController;
+    lapTimer.onLapStart = () => {
+      car.carController = oldCarController;
+    };
+    car.carController = new NoInputCarController(car, { brake: true, ebrake: false });
+
+    // Apply settings
+    car.transmission = settingsManager.getSettingValue("transmission");
+
+    car.ABS.enabled = settingsManager.getSettingValue("abs");
+    car.TCS.enabled = settingsManager.getSettingValue("tcs");
+    car.TCS.allowedSlip = settingsManager.getSettingValue("tcsAllowedSlip");
+
     car.activateAutoCountersteer = settingsManager.getSettingValue("steeringAssist");
     car.autoCountersteer = settingsManager.getSettingValue("autoCountersteer");
     car.autoCountersteerVelocityMultiplier = settingsManager.getSettingValue("autoCountersteerVelocityMultiplier");
+    car.BSA.enabled = true;
+    car.BSA.factor = settingsManager.getSettingValue("bsaFactor");
+    
     car.followCamera.followMode = settingsManager.getSettingValue("cameraFollowMode");
     car.mainGainNode.gain.value = settingsManager.getSettingValue("masterVolume");
     car.haptics = settingsManager.getSettingValue("haptics");
@@ -1235,22 +1411,36 @@ document.addEventListener("DOMContentLoaded", async function () {
     return car;
   }
 
-  function applyDaytimeEnvironment() {
-    scene.fogColor = [0.4, 0.4, 0.6, 1];
-    scene.fogDensity = 0.0001;
-    scene.environmentIntensity = 1.25;
-    scene.sunIntensity = {x: 30, y: 24, z: 18};
+  // function applyDaytimeEnvironment() {
+  //   scene.fogColor = [0.23, 0.24, 0.26, 1];
+  //   scene.fogDensity = 0.0001;
+  //   scene.environmentIntensity = 1;
+  //   scene.sunIntensity = Vector.fill(10);
 
-    // grass.children[0].meshRenderer.materials[0].setUniform("albedo", [2, 2, 2, 1]);
-  }
+  //   // scene.fogColor = [0.4, 0.4, 0.6, 1];
+  //   // scene.fogDensity = 0.0001;
+  //   // scene.environmentIntensity = 1.25;
+  //   // scene.sunIntensity = {x: 30, y: 24, z: 18};
 
-  function applyNighttimeEnvironment() {
-    scene.fogColor = [0.05, 0.05, 0.05, 1];
-    scene.fogDensity = 0.005;
-    scene.environmentIntensity = 0.01;
-    scene.sunIntensity = Vector.fill(0.25);
+  //   // grass.children[0].meshRenderer.materials[0].setUniform("albedo", [2, 2, 2, 1]);
+  // }
 
-    // grass.children[0].meshRenderer.materials[0].setUniform("albedo", [0.1, 0.1, 0.1, 1]);
+  // function applyNighttimeEnvironment() {
+  //   scene.fogColor = [0.05, 0.05, 0.05, 1];
+  //   scene.fogDensity = 0.005;
+  //   scene.environmentIntensity = 0.01;
+  //   scene.sunIntensity = Vector.fill(0.25);
+
+  //   // grass.children[0].meshRenderer.materials[0].setUniform("albedo", [0.1, 0.1, 0.1, 1]);
+  // }
+
+  function setTimeOfDay(isDay) {
+    if (isDay) {
+      environments.day?.();
+    }
+    else {
+      environments.night?.();
+    }
   }
 
   // Maps
@@ -1298,7 +1488,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     // initSnow();
     // await initTrees();
 
-    var spawnPoints = map.getChildren("SpawnPoint", true, false);
+    var spawnPoints = map.getChildren(/spawnpoint/i, true);
     var spawnPoint = spawnPoints[0];//randomFromArray(spawnPoints);
     Vector.add(spawnPoint.transform.worldPosition, new Vector(0, 2, 0), spawnPosition);
 
@@ -1376,6 +1566,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       terrain.chunkRes = 11;
       // terrain.chunkUpdatesPerFrame = 10;
       terrain.minimumChunkSize = 200;
+      terrain.useWorker = false;
       
       terrain.makeDataAccessible({
         lerp,
@@ -1384,6 +1575,12 @@ document.addEventListener("DOMContentLoaded", async function () {
       });
     
       terrain.getHeight = function(i, j) {
+        // if (isNaN(i) || isNaN(j)) {
+        //   return 0;
+        // }
+
+        // return (worley.getEuclidean({ x: (i * 0.0001) % 1, y: (j * 0.0001) % 1 }, 1) ** 2) * 3000;
+
         var power = 1.5;
         var noiseLayers = 5;
         var noiseScale = 0.0003;
@@ -1451,6 +1648,183 @@ document.addEventListener("DOMContentLoaded", async function () {
     // initSnow();
 
     return { terrain }; 
+  }
+
+  async function generateRaceTrack() {
+    const environments = {
+      day: () => {
+        scene.fogColor = [0.23, 0.24, 0.26, 1];
+        scene.fogDensity = 0.0001;
+        scene.environmentIntensity = 1;
+        scene.sunIntensity = Vector.fill(10);
+      },
+      night: () => {
+        scene.fogColor = [0, 0, 0, 1];
+        scene.fogDensity = 0.003;
+        scene.environmentIntensity = 0.01;
+        scene.sunIntensity = Vector.fill(0.25);
+      }
+    };
+
+    tonemapper.exposure = -0.75;
+    scene.environmentMinLight = 0.2;
+    scene.skyboxFogIntensity = 1;
+    scene.skyboxAnimation.speed = 0.01;
+
+    const raceTrack = await renderer.loadGLTF("./raceTrack.glb");
+    scene.add(raceTrack);
+
+    const trees = raceTrack.getChild(/tree/i, true);
+    trees.meshRenderer.materials.forEach(m => m.programContainer = renderer.programContainers.unlit);
+
+    // Collider for barriers
+    const collider = await renderer.loadGLTF("./raceTrackCollider.glb", { loadMaterials: false, loadNormals: false, loadTangents: false });
+    collider.visible = false;
+    collider.transform.set(raceTrack.transform);
+    scene.add(collider);
+    physicsEngine.addMeshCollider(collider);
+
+    raceTrack.getChild(/^road$/gmi, true).addComponent(new MeshCollider());
+    raceTrack.getChild(/^kerb$/gmi, true).addComponent(new MeshCollider());
+    raceTrack.getChild(/^bump$/gmi, true).addComponent(new MeshCollider());
+    raceTrack.getChild(/^plastic$/gmi, true).addComponent(new MeshCollider());
+
+    const checkpoints = raceTrack.getChildren(/checkpoint/i, true);
+    lapTimer.addCheckpoints(checkpoints);
+
+    async function createTerrain() {
+      const terrain = new Terrain(scene, {
+        terrainSize: 5_000,
+      });
+      terrain.castShadows = false;
+      terrain.enableCollision = true;
+      terrain.chunkRes = 51;
+      terrain.minimumChunkSize = 300;
+      terrain.useWorker = false;
+      
+      terrain.makeDataAccessible({
+        lerp,
+        clamp01,
+        clamp,
+      });
+    
+      terrain.getHeight = function(i, j) {
+        // if (isNaN(i) || isNaN(j)) {
+        //   return 0;
+        // }
+
+        // return (worley.getEuclidean({ x: (i * 0.0001) % 1, y: (j * 0.0001) % 1 }, 1) ** 2) * 3000;
+
+        var power = 1.5;
+        var noiseLayers = 5;
+        var noiseScale = 0.0003;
+        var height = 700;
+    
+        var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * height;
+
+        return lerp(0, elevation, clamp01((Math.sqrt(i * i + j * j) - 300) / 400));
+      };
+
+      const tree = await renderer.loadGLTF(renderer.path + "assets/models/trees/wideTreeBillboard.glb");
+      tree.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.5);
+
+      const treeScatter = terrain.addScatter(tree, 4, 500, 200);
+      tree.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
+      treeScatter.minScale = 1 * 4;
+      treeScatter.maxScale = 1.8 * 4;
+      treeScatter.cross = true;
+      treeScatter.spawnProbability = (origin) => {
+        if (Vector.length(origin) < 300) {
+          return 0;
+        }
+
+        let p = 1 - clamp(mapValue(origin.y, 10, 50, 1, 0), 0, 0.95);
+        p *= 1 - smoothstep(origin.y, 60, 100);
+        return p;
+      };
+    
+      await terrain.loadMaterials();
+    
+      return terrain;
+    }
+    const terrain = await createTerrain();
+
+    new Vector(0, 0, 0, spawnPosition);
+
+    const mapTracker = document.querySelector(".track_map .tracker");
+
+    const model = raceTrack.getChild(/^road$/gmi, true);
+    const aabb = GetMeshAABB(model);
+    const scale = 90 / aabb.getSize().z;
+    const center = aabb.getCenter();
+
+    const updateMapTracker = () => {
+      const p = Vector.subtract(car.rb.position, center);
+      Vector.multiplyTo(p, scale);
+
+      const x = 0.5 + p.z / 100;
+      const y = 0.5 - p.x / 100;
+
+      const forward = car.gameObject.transform.forward;
+      const angle = Math.atan2(forward.z, forward.x) + Math.PI;
+
+      mapTracker.style.top = `${y * 256}px`;
+      mapTracker.style.left = `${x * 256}px`;
+      mapTracker.style.transform = `rotate(${angle}rad)`;
+    };
+
+    const updateMapTrackerGameObject = scene.add(new GameObject("Update map tracker"));
+    updateMapTrackerGameObject.addComponent(new (function() {
+      this.update = updateMapTracker;
+    }));
+
+    // window.renderTrackMap = async () => {
+    //   const whiteMat = new NewMaterial(renderer.programContainers.unlit);
+    //   whiteMat.setUniform("albedo", [1, 1, 1, 1]);
+    
+    //   scene.skyboxVisible = false;
+    //   renderer.setClearColor(1, 1, 1, 0);
+    //   renderer.setCanvasSize(256, 256);
+    //   bloom.enabled = false;
+    //   tonemapper.enabled = false;
+    //   motionBlur.enabled = false;
+    //   vignette.enabled = false;
+    
+    //   const camera = new Camera({near: 1, far: 200, size: 50, type: "Orthographic"});
+    //   camera.transform.matrix = Matrix.lookAt(new Vector(0, 10, 0), Vector.zero(), new Vector(1, 0, 0));
+    //   camera.setAspect(renderer.aspect);
+  
+    //   const model = raceTrack.getChild(/^road$/gmi, true);
+
+    //   const aabb = GetMeshAABB(model);
+    //   const s = 90 / aabb.getSize().z;
+    //   model.transform.scale = Vector.multiply(model.transform.scale, s);
+    //   model.transform.position = Vector.negate(Vector.multiply(aabb.getCenter(), s));
+    //   aabb.translate(model.transform.position);
+  
+    //   model.traverse(o => {
+    //     if (o.meshRenderer) {
+    //       for (var ind in o.meshRenderer.materials) {
+    //         o.meshRenderer.materials[ind] = whiteMat;
+    //       }
+    //     }
+    //   });
+
+    //   scene.root.traverse(o => {
+    //     if (!o.contains(model)) {
+    //       o.visible = false;
+    //     }
+    //   });
+    //   scene.root.visible = true;
+  
+    //   renderer.render(camera);
+    //   renderer.saveCanvasAsImage("track_map");
+    // };
+
+    return {
+      terrain,
+      environments,
+    }; 
   }
 
   // Large savanna-like landscape without roads
@@ -1557,7 +1931,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   // Infinite small winding road in autumn forest
   async function generateForest() {
-    const { checkChunks } = await createChunks();
+    const { checkChunks, terrain } = await createChunks();
 
     const tutorialSign = scene.add(await renderer.loadGLTF("tutorialSign.glb"));
     tutorialSign.transform.position = new Vector(-2.7, 0, 3);
@@ -1565,7 +1939,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     new Vector(0, 0, 0, spawnPosition);
 
-    return { checkChunks, terrain: null };
+    return { checkChunks, terrain };
   }
 
   async function generateLowpolyForest() {
@@ -2700,13 +3074,46 @@ document.addEventListener("DOMContentLoaded", async function () {
     // dirtRoadMaterial.setUniform("normalStrength", 3);
     const dirtRoadMaterial = null;
 
-    const asphaltRoadMaterial = renderer.CreateLitMaterial({
+    // const asphaltRoadMaterial = renderer.CreateLitMaterial({
+    //   albedo: [0.3, 0.3, 0.3, 1],
+    //   albedoTexture: renderer.loadTexture(asphaltAlbedo, { ...renderer.getSRGBFormats(), anisotropicFiltering: true }),
+    //   normalTexture: renderer.loadTexture(asphaltNormal, { anisotropicFiltering: true }),
+    //   metallicRoughnessTexture: renderer.loadTexture(asphaltMetallicRoughness, { anisotropicFiltering: true }),
+    //   metallic: 0.5,
+    // });
+
+    const [
+      albedoImage,
+      normalImage,
+      metallicRoughnessImage
+    ] = await Promise.all([
+      loadImage(renderer.path + "assets/textures/roadNoLines/albedo.png"),
+      loadImage(renderer.path + "assets/textures/roadNoLines/normal.png"),
+      loadImage(renderer.path + "assets/textures/roadNoLines/metallicRoughness.png")
+    ]);
+
+    const roadProgram = new renderer.CustomProgram(roadShaderSource);
+    const asphaltRoadMaterial = new renderer.LitMaterial({
       albedo: [0.3, 0.3, 0.3, 1],
-      albedoTexture: renderer.loadTexture(asphaltAlbedo, { ...renderer.getSRGBFormats(), anisotropicFiltering: true }),
-      normalTexture: renderer.loadTexture(asphaltNormal, { anisotropicFiltering: true }),
-      metallicRoughnessTexture: renderer.loadTexture(asphaltMetallicRoughness, { anisotropicFiltering: true }),
+      albedoTexture: await renderer.loadTexture(albedoImage, { ...renderer.getSRGBFormats(), anisotropicFiltering: true }),
+      normalTexture: await renderer.loadTexture(normalImage, { anisotropicFiltering: true }),
+      metallicRoughnessTexture: await renderer.loadTexture(metallicRoughnessImage, { anisotropicFiltering: true }),
       metallic: 0.5,
-    });
+    }, roadProgram);
+    asphaltRoadMaterial.setUniform("lanes", 2);
+    asphaltRoadMaterial.setUniform("dashScale", 0);
+    asphaltRoadMaterial.setUniform("dashPercentage", 0.3);
+    asphaltRoadMaterial.setUniform("laneLineThickness", 0.014);
+    asphaltRoadMaterial.setUniform("laneColor", [1, 0.2, 0]);
+    asphaltRoadMaterial.setUniform("rumbleStripScale", 50);
+    asphaltRoadMaterial.setUniform("rumbleStripWidth", 0.025);
+    asphaltRoadMaterial.setUniform("innerShoulderWidth", 0.1);
+    asphaltRoadMaterial.setUniform("innerShoulderLineThickness", 0.014);
+    asphaltRoadMaterial.setUniform("innerShoulderColor", [1, 1, 1]);
+    asphaltRoadMaterial.setUniform("outerShoulderWidth", 0.1);
+    asphaltRoadMaterial.setUniform("outerShoulderLineThickness", 0.014);
+    asphaltRoadMaterial.setUniform("outerShoulderColor", [1, 1, 1]);
+    asphaltRoadMaterial.setUniform("wornRoughness", 0.6);
 
     // const grassMaterial = renderer.CreateLitMaterial({
     //   albedo: [0.8, 0.8, 1, 1],
@@ -2733,6 +3140,77 @@ document.addEventListener("DOMContentLoaded", async function () {
     grassBase.castShadows = false;
     grassBase.children[0].meshRenderer.materials[0].setUniform("albedo", [6 * 0.5, 8 * 0.4, 6 * 0.5, 1]);
 
+    async function createTerrain() {
+      const terrain = new Terrain(scene, {
+        terrainSize: 50_000,
+      });
+      terrain.castShadows = false;
+      terrain.enableCollision = true;
+      terrain.chunkRes = 15;
+      // terrain.chunkUpdatesPerFrame = 10;
+      // terrain.minimumChunkSize = 200;
+      terrain.useWorker = false;
+      
+      terrain.makeDataAccessible({
+        lerp,
+        clamp01,
+        clamp,
+      });
+    
+      terrain.getHeight = function(i, j) {
+        var power = 1.5;
+        var noiseLayers = 5;
+        var noiseScale = 0.0003;
+        var height = 700;
+    
+        var elevation = Math.pow(Math.abs(LayeredNoise(i * noiseScale, j * noiseScale, noiseLayers)), power) * height;
+        
+        let roadHeight = 0;
+        // const chunk = chunks[Math.floor(j / chunkSize + 0.5)];
+        // if (chunk && Math.abs(i) < 70) {
+        //   const point = new Vector(i, 0, j);
+        //   Vector.subtract(point, chunk.transform.position, point);
+        //   const closeData = chunk.curve.distanceToPoint(point);
+        //   point.y = closeData.point.y;
+        //   const distance = Vector.distance(point, closeData.point);
+        //   roadHeight = closeData.point.y - 0.1;// + clamp((distance - 15) * 0.2, 0, 2);
+        
+        //   return roadHeight;
+        // }
+        // else {
+        const index = (j + chunkSize / 2) / chunkSize * 3 + 1;
+        const pointA = points[Math.floor(index)];
+        const pointB = points[Math.floor(index) + 1];
+        roadHeight = pointA && pointB ? 
+          lerp(pointA.y, pointB.y, index % 1) - 2 :
+          0;
+
+        return roadHeight + lerp(0, elevation, clamp01((Math.abs(i) - 150) / 600));
+        // }
+
+        // return lerp(roadHeight, elevation, clamp01((Math.abs(i) - 150) / 600));
+      };
+
+      const tree = await renderer.loadGLTF(renderer.path + "assets/models/trees/wideTreeBillboard.glb");
+      tree.children[0].meshRenderer.materials[0].setUniform("alphaCutoff", 0.5);
+
+      const treeScatter = terrain.addScatter(tree, 6, 500 * 4, 200 * 4);
+      tree.children[0].meshRenderer.materials[0].programContainer = renderer.programContainers.unlitInstanced;
+      treeScatter.minScale = 1 * 4;
+      treeScatter.maxScale = 1.8 * 4;
+      treeScatter.cross = true;
+      treeScatter.spawnProbability = (origin) => {
+        let p = 1 - clamp(mapValue(origin.y, 10, 50, 1, 0), 0, 0.95);
+        p *= 1 - smoothstep(origin.y, 60, 100);
+        return p;
+      };
+    
+      await terrain.loadMaterials();
+    
+      return terrain;
+    }
+    const terrain = await createTerrain();
+
     var roadSettings = {
       rally: { width: 10 / 2.5, material: dirtRoadMaterial, flipUV: true, uvScale: 0.75 },
       asphalt: { width: 10, material: asphaltRoadMaterial, flipUV: false, uvScale: 1 }
@@ -2746,7 +3224,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     var treeDensity = 5;
     // var treeDensity = 0.1;
     const curveXMax = 0.3;
-    const hillyness = 7;
+    const hillyness = 7 * 3;
 
     var points = [];
     var startY = 0;
@@ -2773,8 +3251,8 @@ document.addEventListener("DOMContentLoaded", async function () {
         chunk.active = (Math.abs(i * chunkSize - car.rb.position.z) < chunkSize * 2);
       }
 
-      if (car.rb.position.z > (chunks.length - 2) * chunkSize) {
-        for (let i = 0; i < 3; i++) {
+      if (car.rb.position.z > (chunks.length - 2 * 8) * chunkSize) {
+        for (let i = 0; i < 3 * 7; i++) {
           yVel += (Math.random() - (0.5 + yVel * 0.02)) * hillyness;
           // yVel = clamp(yVel, -8, 8);
           // if (Math.abs(yVel) >= 8) {
@@ -2792,7 +3270,8 @@ document.addEventListener("DOMContentLoaded", async function () {
     setInterval(checkChunks, 400);
 
     return {
-      checkChunks
+      checkChunks,
+      terrain
     };
 
     async function createChunk(points, center = Vector.zero()) {
@@ -2802,6 +3281,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     async function generateRoad(chunkCenter, crCurve, width = 12, segments = 100) {
       var container = new GameObject("Chunk");
+      container.curve = crCurve;
       container.transform.position = chunkCenter;
 
       var isForest = true;//Math.random() > 0.25;
@@ -2965,15 +3445,29 @@ document.addEventListener("DOMContentLoaded", async function () {
       // mr.materials[0].programContainer = simpleFoliageProgram;
       // mr.materials[0].doubleSided = false;
 
-      function addLeaves(origin) {
-        mrLeaves.addInstance(Matrix.transform([
-          ["translate", Vector.add(chunkCenter, origin)],
+      function addLeaves(origin, normal, tangent) {
+        const m = Matrix.lookInDirection(
+          Vector.add(chunkCenter, origin),
+          normal,
+          tangent,
+        );
+
+        Matrix.transform([
           ["scale", Vector.fill(0.25 + Math.random() * 0.5)],
-          ["ry", Math.random() * 2 * Math.PI],
-          ["rx", -Math.PI / 2],
-          // ["rx", (Math.random() - 0.5) * 0.07],
-          // ["rz", (Math.random() - 0.5) * 0.07],
-        ]));
+          // ["ry", Math.random() * 2 * Math.PI],
+          ["ry", -Math.PI / 2],
+        ], m);
+
+        mrLeaves.addInstance(m);
+
+        // mrLeaves.addInstance(Matrix.transform([
+        //   ["translate", Vector.add(chunkCenter, origin)],
+        //   ["scale", Vector.fill(0.25 + Math.random() * 0.5)],
+        //   ["ry", Math.random() * 2 * Math.PI],
+        //   ["rx", -Math.PI / 2],
+        //   // ["rx", (Math.random() - 0.5) * 0.07],
+        //   // ["rz", (Math.random() - 0.5) * 0.07],
+        // ]));
       }
 
       // Road
@@ -3046,14 +3540,19 @@ document.addEventListener("DOMContentLoaded", async function () {
           uvs.push(1.4 * uvScale, v * uvScale);
         }
         
-        var mountainHeight = (perlin.noise(0, 0, (chunkCenter.z + center.z) * 0.01) + 1) / 2;
+        var mountainHeight = -2;//(perlin.noise(0, 0, (chunkCenter.z + center.z) * 0.01) + 1) / 2;
 
         // var farEdge = Vector.multiply(normal, width * 2);
         var steepness = 1.6;//0.2 + (perlin.noise(0, 0, center.z * 0.07) + 1) / 2 * 4;
-        var l1 = Vector.add(e1, new Vector(-width * steepness, width * 0.4 * mountainHeight, 0));
-        var ll1 = Vector.add(e1, new Vector(-width * 8, width * 0.55 * mountainHeight, 0));
-        var l2 = Vector.add(e2, new Vector(width * steepness, width * 0.4 * mountainHeight, 0));
-        var ll2 = Vector.add(e2, new Vector(width * 8, width * 0.55 * 5 * mountainHeight, 0));
+        // var l1 = Vector.add(e1, new Vector(-width * steepness, width * 0.4 * mountainHeight, 0));
+        // var ll1 = Vector.add(e1, new Vector(-width * 8, width * 0.55 * mountainHeight, 0));
+        // var l2 = Vector.add(e2, new Vector(width * steepness, width * 0.4 * mountainHeight, 0));
+        // var ll2 = Vector.add(e2, new Vector(width * 8, width * 0.55 * 5 * mountainHeight, 0));
+
+        var l1 = Vector.add(e1, new Vector(-width * steepness, 0, 0));
+        var ll1 = Vector.add(e1, new Vector(-width * 10, width * 0.55 * mountainHeight, 0));
+        var l2 = Vector.add(e2, new Vector(width * steepness, 0, 0));
+        var ll2 = Vector.add(e2, new Vector(width * 10, width * 0.55 * mountainHeight, 0));
 
         if (groundCounter % 3 == 0) {
           groundVertices.push(ll1.x, ll1.y, ll1.z);
@@ -3148,8 +3647,16 @@ document.addEventListener("DOMContentLoaded", async function () {
         // addLeaves(Vector.add(Vector.subtract(center, Vector.multiply(normal, width / 2 - Math.random() * 2)), new Vector(0, 0.05 + Math.random() * 0.02, 0)));
       
         for (let i = 0; i < 10; i++) {
-          addLeaves(Vector.add(Vector.add(center, Vector.multiply(normal, width / 2 - Math.random() * 2)), new Vector(0, 0.05 + Math.random() * 0.02, (Math.random() - 0.5) * 3)));
-          addLeaves(Vector.add(Vector.subtract(center, Vector.multiply(normal, width / 2 - Math.random() * 2)), new Vector(0, 0.05 + Math.random() * 0.02, (Math.random() - 0.5) * 3)));
+          addLeaves(
+            Vector.add(Vector.add(center, Vector.multiply(normal, width / 2 - Math.random() * 2)), new Vector(0, 0.05 + Math.random() * 0.02, (Math.random() - 0.5) * 3)),
+            normal,
+            tangent,
+          );
+          addLeaves(
+            Vector.add(Vector.subtract(center, Vector.multiply(normal, width / 2 - Math.random() * 2)), new Vector(0, 0.05 + Math.random() * 0.02, (Math.random() - 0.5) * 3)),
+            normal,
+            tangent,
+          );
         }
       }
 
@@ -3240,16 +3747,16 @@ document.addEventListener("DOMContentLoaded", async function () {
       terrainMeshData.recalculateNormals();
       terrainMeshData.recalculateTangents();
 
-      var terrain = new GameObject("Terrain");
-      terrain.meshRenderer = new renderer.MeshRenderer(grassMaterial, terrainMeshData);
-      terrain.addComponent(new MeshCollider());
-      terrain.transform.position.y = 0;//-0.04;
+      const terrainAroundRoad = new GameObject("Terrain");
+      terrainAroundRoad.meshRenderer = new renderer.MeshRenderer(terrain.terrainMat/*grassMaterial*/, terrainMeshData);
+      terrainAroundRoad.addComponent(new MeshCollider());
+      terrainAroundRoad.transform.position.y = 0;//-0.04;
 
-      terrain.customData.bumpiness = 0.08;
-      terrain.customData.friction = 0.9;
-      terrain.customData.offroad = 1;
+      terrainAroundRoad.customData.bumpiness = 0.08;
+      terrainAroundRoad.customData.friction = 0.9;
+      terrainAroundRoad.customData.offroad = 1;
 
-      container.addChild(terrain);
+      container.addChild(terrainAroundRoad);
 
       scene.add(container);
 
@@ -3505,14 +4012,8 @@ document.addEventListener("DOMContentLoaded", async function () {
     return noise;
   }
 
-  function SettingsManager() {
+  function SettingsManager(keybindings) {
     const LS_LOCATIon = "com.tc5550.cardemo.settings";
-
-    class SettingGroup {
-      constructor(name) {
-        this.name = name;
-      }
-    }
 
     class SliderSetting {
       constructor(name = "Setting", value = 0, onValueChange = () => {}, min = 0, max = 1, step = 0.1, displayAsPercent = false) {
@@ -3565,11 +4066,15 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
 
       setValue(value) {
-        this.value = value;
+        this.value = parseFloat(value);
         this.onValueChange(this.value);
 
         this.slider.value = this.value;
         this.valueSpan.textContent = this.formatValue(this.value);
+      }
+
+      onClick() {
+        this.slider.focus();
       }
     }
 
@@ -3602,10 +4107,13 @@ document.addEventListener("DOMContentLoaded", async function () {
           option.textContent = label;
         }
 
+        this.select.selectedIndex = [...this.select.options].findIndex(o => o.value == this.value);
+
         this.select.addEventListener("input", () => {
           this.value = this.select.value;
           this.onValueChange(this.value);
         });
+
 
         return parent;
       }
@@ -3618,8 +4126,8 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
 
       onClick() {
-        let len = this.select.options.length;
-        this.select.setAttribute("size", len);
+        // let len = this.select.options.length;
+        // this.select.setAttribute("size", len);
 
         let currentIndex = this.select.selectedIndex;
         currentIndex++;
@@ -3664,136 +4172,225 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
     }
 
-    var settings = {
-      _soundGroup: new SettingGroup("Sound"),
-
-      masterVolume: new SliderSetting("Master volume", 1, value => {
-        if (car && car.mainGainNode) {
-          car.mainGainNode.gain.value = value;
+    const settings = [
+      {
+        name: "Gameplay",
+        settings: {
+          day: new CheckboxSetting("Daytime", true, value => {
+            setTimeOfDay(value);
+            renderer.render(car ? car.mainCamera : fallbackCamera.camera);
+            saveSettings();
+          }),
+    
+          cameraFollowMode: new DropdownSetting("Camera follow mode", 2, value => {
+            if (car) {
+              car.followCamera.followMode = value;
+            }
+            saveSettings();
+          }, [
+            "Follow velocity",
+            "Follow direction",
+            "Follow inverse direction"
+          ], [
+            1,
+            2,
+            3
+          ]),
         }
-        saveSettings();
-      }, 0, 2, 0.01, true),
+      },
+      {
+        name: "Assists",
+        settings: {
+          transmission: new DropdownSetting("Transmission", "AUTOMATIC", value => {
+            if (car) {
+              car.transmission = value;
+            }
+            saveSettings();
+          }, [
+            "Manual",
+            "Automatic",
+          ], [
+            "MANUAL",
+            "AUTOMATIC",
+          ]),
 
-      haptics: new CheckboxSetting("Haptics", true, value => {
-        if (car) {
-          car.haptics = value;
+          abs: new CheckboxSetting("ABS", true, value => {
+            if (car) {
+              car.ABS.enabled = value;
+            }
+            saveSettings();
+          }),
+    
+          tcs: new CheckboxSetting("TCS", true, value => {
+            if (car) {
+              car.TCS.enabled = value;
+            }
+            saveSettings();
+          }),
+    
+          tcsAllowedSlip: new SliderSetting("TCS - Allowed slip", 2.2, value => {
+            if (car) {
+              car.TCS.allowedSlip = value;
+            }
+            saveSettings();
+          }, 0, 10, 0.1),
+    
+          steeringAssist: new CheckboxSetting("Steering assist", true, value => {
+            if (car) {
+              car.activateAutoCountersteer = value;
+            }
+            saveSettings();
+          }),
+    
+          autoCountersteer: new SliderSetting("Auto countersteer", 0.1, value => {
+            if (car) {
+              car.autoCountersteer = value;
+            }
+            saveSettings();
+          }, 0, 1, 0.05),
+    
+          autoCountersteerVelocityMultiplier: new SliderSetting("Auto countersteer velocity", 0.15, value => {
+            if (car) {
+              car.autoCountersteerVelocityMultiplier = value;
+            }
+            saveSettings();
+          }, 0, 1, 0.05),
+    
+          bsaFactor: new SliderSetting("Best steer angle assist", 0.85, value => {
+            if (car) {
+              car.BSA.factor = value;
+            }
+            saveSettings();
+          }, 0, 1, 0.05),
         }
-        saveSettings();
-      }),
+      },
+      {
+        name: "Graphics",
+        settings: {
+          fps: new CheckboxSetting("Show FPS", false, value => {
+            if (!stats && value) {
+              stats = new Stats();
+            }
+    
+            if (value) {
+              document.body.appendChild(stats.dom);
+            }
+            else {
+              stats?.dom.remove();
+            }
+    
+            saveSettings();
+          }),
+    
+          renderScale: new SliderSetting("Render scale", 1, value => {
+            renderer.setRenderScale(value);
+            saveSettings();
+          }, 0.2, 2, 0.05),
 
-      _displayGroup: new SettingGroup("Graphics"),
+          motionBlur: new CheckboxSetting("Motion blur", true, value => {
+            motionBlur.enabled = value;
+            saveSettings();
+          }),
+    
+          motionBlurStrength: new SliderSetting("Motion blur strength", 0.15, value => {
+            motionBlur.strength = value;
+            saveSettings();
+          }, 0, 0.5, 0.01),
+    
+          fxaa: new CheckboxSetting("FXAA", true, value => {
+            fxaa.enabled = value;
+            saveSettings();
+          }),
 
-      fps: new CheckboxSetting("Show FPS", false, value => {
-        if (!stats && value) {
-          stats = new Stats();
+          bloom: new CheckboxSetting("Bloom", true, value => {
+            bloom.enabled = value;
+            saveSettings();
+          }),
+
+          lensDirt: new CheckboxSetting("Bloom - lens dirt", true, value => {
+            bloom.lensDirtIntensity = value ? 2 : 0;
+            saveSettings();
+          }),
+
+          vignette: new CheckboxSetting("Vignette", true, value => {
+            vignette.enabled = value;
+            saveSettings();
+          }),
+
+          colorGrading: new CheckboxSetting("Color grading", true, value => {
+            colorGrading.enabled = value;
+            saveSettings();
+          }),
         }
-
-        if (value) {
-          document.body.appendChild(stats.dom);
+      },
+      {
+        name: "Sound",
+        settings: {
+          masterVolume: new SliderSetting("Master volume", 1, value => {
+            if (car && car.mainGainNode) {
+              car.mainGainNode.gain.value = value;
+            }
+            saveSettings();
+          }, 0, 2, 0.01, true),
+    
+          haptics: new CheckboxSetting("Haptics", true, value => {
+            if (car) {
+              car.haptics = value;
+            }
+            saveSettings();
+          }),
         }
-        else {
-          stats?.dom.remove();
+      },
+    ];
+
+    const usedKeys = new Set();
+    for (const category of settings) {
+      for (const settingKey in category.settings) {
+        if (usedKeys.has(settingKey)) {
+          throw new Error("Key used twice: " + settingKey);
         }
+        usedKeys.add(settingKey);
+      }
+    }
 
-        saveSettings();
-      }),
+    const settingsCategoriesElement = document.querySelector(".settings_categories");
+    const settingsPagesElement = document.querySelector(".settings_pages");
 
-      renderScale: new SliderSetting("Render scale", 1, value => {
-        renderer.setRenderScale(value);
-        saveSettings();
-      }, 0.2, 2, 0.05),
+    let _currentPage = 0;
 
-      motionBlur: new SliderSetting("Motion blur", 0.15, value => {
-        motionBlur.strength = value;
-        saveSettings();
-      }, 0, 0.5, 0.01),
+    const _showPage = (index) => {
+      if (index < 0 || index >= settingsCategoriesElement.childElementCount) {
+        return;
+      }
 
-      bloom: new CheckboxSetting("Bloom", true, value => {
-        scene.bloom.enabled = value;
-        saveSettings();
-      }),
+      [...settingsCategoriesElement.children].forEach(c => c.classList.remove("selected"));
+      [...settingsPagesElement.children].forEach(c => c.classList.remove("selected"));
 
-      _gameplayGroup: new SettingGroup("Gameplay"),
+      settingsCategoriesElement.children[index].classList.add("selected");
+      settingsPagesElement.children[index].classList.add("selected");
 
-      day: new CheckboxSetting("Daytime", true, value => {
-        // window.isDay(value);
-        saveSettings();
-      }),
+      controllerUIInteraction.updateSelection();
 
-      cameraFollowMode: new DropdownSetting("Camera follow mode", 1, value => {
-        if (car) {
-          car.followCamera.followMode = value;
-        }
-        saveSettings();
-      }, [
-        "Follow velocity",
-        "Follow direction",
-        "Follow inverse direction"
-      ], [
-        1,
-        2,
-        3
-      ]),
-
-      _assistGroup: new SettingGroup("Assists"),
-
-      abs: new CheckboxSetting("ABS", true, value => {
-        if (car) {
-          car.ABS = value;
-        }
-        saveSettings();
-      }),
-
-      tcs: new CheckboxSetting("TCS", true, value => {
-        if (car) {
-          car.TCS = value;
-        }
-        saveSettings();
-      }),
-
-      steeringAssist: new CheckboxSetting("Steering assist", true, value => {
-        if (car) {
-          car.activateAutoCountersteer = value;
-        }
-        saveSettings();
-      }),
-
-      autoCountersteer: new SliderSetting("Auto countersteer", 0.4, value => {
-        if (car) {
-          car.autoCountersteer = value;
-        }
-        saveSettings();
-      }, 0, 1, 0.05),
-
-      autoCountersteerVelocityMultiplier: new SliderSetting("Auto countersteer velocity", 0.25, value => {
-        if (car) {
-          car.autoCountersteerVelocityMultiplier = value;
-        }
-        saveSettings();
-      }, 0, 1, 0.05),
+      _currentPage = index;
     };
 
-    var settingsItems = document.querySelector(".settings > .settingsContainer > .items");
-    var defaultGroup = document.createElement("div");
-    defaultGroup.classList.add("group");
+    let i = 0;
+    for (const category of settings) {
+      const categoryElement = settingsCategoriesElement.appendChild(document.createElement("div"));
+      categoryElement.textContent = category.name;
+      categoryElement.addEventListener("click", ((i) => {
+        return () => {
+          _showPage(i);
+        };
+      })(i));
 
-    var currentGroup = defaultGroup;
+      const pageElement = settingsPagesElement.appendChild(document.createElement("div"));
+      pageElement.classList.add("settings_page");
 
-    for (let settingKey in settings) {
-      let setting = settings[settingKey];
+      for (const settingKey in category.settings) {
+        const setting = category.settings[settingKey];
 
-      if (setting instanceof SettingGroup) {
-        var group = settingsItems.appendChild(document.createElement("div"));
-        group.classList.add("group");
-
-        var groupTitle = group.appendChild(document.createElement("span"));
-        groupTitle.classList.add("title");
-        groupTitle.textContent = setting.name;
-
-        currentGroup = group;
-      }
-      else {
-        let item = currentGroup.appendChild(document.createElement("div"));
+        const item = pageElement.appendChild(document.createElement("div"));
         item.classList.add("item");
         item.classList.add("isSelectable");
 
@@ -3801,39 +4398,80 @@ document.addEventListener("DOMContentLoaded", async function () {
           setting.onClick?.();
         });
 
-        var name = item.appendChild(document.createElement("span"));
+        const name = item.appendChild(document.createElement("span"));
         name.textContent = setting.name;
 
         item.appendChild(setting.createDOM());
-
-        if (currentGroup == defaultGroup && !settingsItems.contains(defaultGroup)) {
-          settingsItems.appendChild(defaultGroup);
-        }
       }
+
+      i++;
     }
 
-    this.getSettingValue = function(setting) {
-      if (!(setting in settings)) {
-        console.warn("Setting not defined: " + setting);
-        return;
-      }
+    _showPage(0);
 
-      return settings[setting].value;
+    const _getAllSettings = () => {
+      const settingsList = settings.map(c => c.settings);
+      const allSettings = Object.assign({}, ...settingsList);
+      return allSettings;
+    };
+
+    const _settingExists = (setting) => {
+      return settings.some(c => setting in c.settings);
+    };
+
+    const _assertSetting = (setting) => {
+      if (!_settingExists(setting)) {
+        console.error(setting);
+        throw new Error("Setting not defined: " + setting);
+      }
+    };
+
+    this.getSettingValue = function(setting) {
+      _assertSetting(setting);
+
+      const allSettings = _getAllSettings();
+      return allSettings[setting].value;
     };
 
     this.setSettingValue = function(setting, value) {
-      if (!(setting in settings)) {
-        console.warn("Setting not defined: " + setting);
-        return;
-      }
+      _assertSetting(setting);
 
-      settings[setting].setValue(value);
+      const allSettings = _getAllSettings();
+      allSettings[setting].setValue(value);
+
+      return true;
     };
 
     this.loadSaveData = function() {
-      var saveData = getSaveData();
-      for (let key in saveData) {
-        settings[key].setValue(saveData[key]);
+      const saveData = getSaveData();
+      const allSettings = _getAllSettings();
+
+      for (const key in saveData) {
+        allSettings[key].setValue(saveData[key]);
+      }
+    };
+
+    this.prevPage = function() {
+      _showPage(_currentPage - 1);
+    };
+
+    this.nextPage = function() {
+      _showPage(_currentPage + 1);
+    };
+
+    this.update = function() {
+      const allSettings = _getAllSettings();
+
+      for (const settingKey in allSettings) {
+        const setting = allSettings[settingKey];
+        if (setting instanceof SliderSetting && document.activeElement === setting.slider) {
+          if (keybindings.getInputDown("UIleft")) {
+            setting.setValue(roundToPlaces(roundNearest(clamp(setting.value - setting.step, setting.min, setting.max), setting.step), 4));
+          }
+          if (keybindings.getInputDown("UIright")) {
+            setting.setValue(roundToPlaces(roundNearest(clamp(setting.value + setting.step, setting.min, setting.max), setting.step), 4));
+          }
+        }
       }
     };
 
@@ -3843,10 +4481,12 @@ document.addEventListener("DOMContentLoaded", async function () {
         return {};
       }
 
+      const allSettings = _getAllSettings();
+
       try {
         var parsed = JSON.parse(d);
         for (let key in parsed) {
-          if (!Object.prototype.hasOwnProperty.call(settings, key)) {
+          if (!Object.prototype.hasOwnProperty.call(allSettings, key)) {
             delete parsed[key];
           }
         }
@@ -3861,9 +4501,10 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
 
     function saveSettings() {
-      var data = {};
-      for (let key in settings) {
-        data[key] = settings[key].value;
+      const allSettings = _getAllSettings();
+      const data = {};
+      for (const key in allSettings) {
+        data[key] = allSettings[key].value;
       }
 
       localStorage.setItem(LS_LOCATIon, JSON.stringify(data));
@@ -3889,5 +4530,171 @@ document.addEventListener("DOMContentLoaded", async function () {
     div.classList.add("message");
     div.textContent = message;
     messagesContainer.prepend(div);
+  }
+
+  function LapTimer() {
+    const prevLapTimesElement = document.querySelector("#prev_lap_times");
+    const bestLapTimeElement = document.querySelector("#best_lap_time");
+    const currentLapTimeElement = document.querySelector("#current_time");
+    const missedCheckpointElement = document.querySelector("#missed_checkpoint");
+
+    let stopped = true;
+    let bestLapTime = Infinity;
+    let lapTime = 0;
+    // let lapStartTime = performance.now();
+
+    let missedCheckpoint = false;
+    let hitCheckpoints = null;
+
+    this.onLapStart = () => {};
+
+    this.getLapTime = function() {
+      return lapTime;
+      // const now = performance.now();
+      // return now - lapStartTime;
+    };
+
+    this.formatLapTime = function(lapTime) {
+      const minutes = Math.floor(lapTime / 1000 / 60);
+      const seconds = Math.floor(lapTime / 1000 - minutes * 60);
+      const millis = Math.floor(lapTime - seconds * 1000 - minutes * 1000 * 60);
+
+      const minutesString = minutes.toString().padStart(2, "0");
+      const secondsString = seconds.toString().padStart(2, "0");
+      const millisString = millis.toString().padStart(3, "0");
+
+      return `${minutesString}:${secondsString}.${millisString}`;
+    };
+
+    this.resumeLap = function() {
+      stopped = false;
+    };
+
+    this.pauseLap = function() {
+      stopped = true;
+    };
+
+    this.resetLap = function(prepTime = 0) {
+      stopped = false;
+      lapTime = -prepTime;
+      // lapStartTime = performance.now() + prepTime;
+
+      if (hitCheckpoints !== null) {
+        for (let i = 0; i < hitCheckpoints.length; i++) {
+          hitCheckpoints[i] = false;
+        }
+      }
+
+      missedCheckpoint = false;
+    };
+
+    this.endLap = function(valid = true) {
+      if (valid) {
+        const lapTime = this.getLapTime();
+
+        const delta = lapTime - bestLapTime;
+
+        const prevLapTime = document.createElement("span");
+        prevLapTime.textContent = this.formatLapTime(lapTime);
+
+        const prevLapDelta = document.createElement("span");
+        prevLapDelta.classList.add("delta");
+        
+        if (bestLapTime === Infinity) {
+          prevLapDelta.textContent = this.formatLapTime(0);
+        }
+        else {
+          if (delta > 0) prevLapDelta.classList.add("slower");
+          else if (delta < 0) prevLapDelta.classList.add("faster");
+          prevLapDelta.textContent = `${delta < 0 ? "-" : "+"}${this.formatLapTime(Math.abs(delta))}`;
+        }
+
+        prevLapTimesElement.prepend(prevLapDelta);
+        prevLapTimesElement.prepend(prevLapTime);
+
+        if (prevLapTimesElement.childElementCount >= 12) {
+          prevLapTimesElement.removeChild(prevLapTimesElement.lastChild);
+          prevLapTimesElement.removeChild(prevLapTimesElement.lastChild);
+        }
+
+        if (lapTime < bestLapTime) {
+          bestLapTime = lapTime;
+          bestLapTimeElement.textContent = this.formatLapTime(bestLapTime);
+        }
+      }
+
+      this.resetLap();
+    };
+
+    this.addCheckpoints = (checkpoints) => {
+      let _hitCheckpoints = new Array(checkpoints.length).fill(false);
+
+      for (let i = 0; i < checkpoints.length; i++) {
+        const checkpoint = checkpoints[i];
+
+        const meshCollider = checkpoint.findComponents("MeshCollider")[0] || checkpoint.addComponent(new MeshCollider());
+        meshCollider.on("trigger", () => {
+          if (i === checkpoints.length - 1 && _hitCheckpoints[i - 1]) {
+            this.endLap(!missedCheckpoint);
+            return;
+          }
+
+          if (i === 0 || _hitCheckpoints[i - 1]) {
+            _hitCheckpoints[i] = true;
+
+            missedCheckpoint = false;
+            hideElement(missedCheckpointElement);
+            return;
+          }
+
+          if (i !== checkpoints.length - 1) {
+            missedCheckpoint = true;
+            showElement(missedCheckpointElement);
+          }
+        });
+
+        meshCollider.isTrigger = true;
+        meshCollider.octree; // Force build octree before removing mesh
+        checkpoint.meshRenderer = null; // Remove mesh since not drawing mesh disables collisions
+      }
+
+      hitCheckpoints = _hitCheckpoints;
+    };
+
+    this.update = function(frameTime) {
+      if (stopped) {
+        return;
+      }
+
+      if (lapTime < 0 && lapTime + frameTime * 1000 >= 0) {
+        this.onLapStart();
+      }
+
+      lapTime += frameTime * 1000;
+    };
+
+    this.renderUI = function() {
+      const lapTime = this.getLapTime();
+      const formattedLapTime = this.formatLapTime(lapTime < 0 ?
+        Math.ceil(Math.abs(lapTime) / 1000) * 1000 :
+        lapTime
+      );
+
+      ui.setTextAlignX("center");
+      for (let i = 0; i < formattedLapTime.length; i++) {
+        ui.text(
+          formattedLapTime.charAt(i),
+          ui.width / 2 + (i - formattedLapTime.length / 2 + 0.5) * 20,
+          130,
+          40,
+          missedCheckpoint ? "red" : "white"
+        );
+      }
+
+      // ui.setTextAlignX("center");
+      // ui.setTextAlignY("middle");
+      // ui.setFont("monospace");
+      // ui.text(formattedLapTime, ui.width / 2, 130, 40, "white");
+    };
   }
 });

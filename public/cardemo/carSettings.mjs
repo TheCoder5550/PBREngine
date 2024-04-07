@@ -386,13 +386,48 @@ export const porscheCarreraGTConcept2000 = {
   },
 };
 
+export const nissanFairlady = {
+  name: "Nissan Fairlady Z S30(240Z) 1978",
+  model: "../assets/models/cars/Nissan Fairlady Z S30(240Z) 1978.glb",
+  settings: {
+    mass: 1100,
+    gearRatios: [3, 2, 1.3, 1, 0.74, 0.6],
+    drivetrain: "RWD",
+    friction: 0.95,
+    forwardFriction: 1,
+    sidewaysFriction: 1,
+    maxSteerAngle: 55,
+    torque: 250,
+    brakeTorque: 500,
+
+    suspensionForce: 100_000,
+    suspensionDamping: 5000,
+    suspensionTravel: 0.15,
+    rideHeightOffset: 0.12,
+    antiRoll: 14_000,
+    COMOffset: new Vector(0, -0.3, 0),
+
+    ABS: false,
+    TCS: false,
+    differential: Car.ENUMS.DIFFERENTIAL.LSD,
+
+    camera: {
+      followDistance: 3.65,
+      followHeight: 0.22,
+      pitch: 0.1,
+      accelerationEffect: 0.15,
+      accelerationSpeed: 0.04,
+    },
+  },
+};
+
 export const tocus = {
   name: "Tocus",
   model: "../assets/models/cars/tocus.glb",
   settings: {
     mass: 1200,
     differentialRatio: 4.5,
-    gearRatios: [2.66, 1.78, 1.3, 1, 0.74, 0.6],
+    gearRatios: [3.1, 2, 1.3, 1, 0.74, 0.6],
     limitReverseSpeed: false,
     drivetrain: "FWD",
     friction: 1,

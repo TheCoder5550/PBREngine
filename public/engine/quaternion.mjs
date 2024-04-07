@@ -2,6 +2,9 @@ import { lerp } from "./helper.mjs";
 import Matrix from "./matrix.mjs";
 import Vector from "./vector.mjs";
 
+// Cannot use new Matrix here
+const _tempMatrix = new Float32Array(16);
+
 export default class Quaternion {
   constructor(x = 0, y = 0, z = 0, w = 0, dst) {
     dst = dst || {x: 0, y: 0, z: 0, w: 0};
@@ -38,13 +41,15 @@ export default class Quaternion {
     return dst;
   }
 
-  static copy(q) {
-    return {
-      x: q.x,
-      y: q.y,
-      z: q.z,
-      w: q.w
-    };
+  static copy(q, dst) {
+    dst = dst || new Quaternion();
+
+    dst.x = q.x;
+    dst.y = q.y;
+    dst.z = q.z;
+    dst.w = q.w;
+
+    return dst;
   }
 
   static set(to, from) {
@@ -255,6 +260,8 @@ export default class Quaternion {
   static fromMatrix(m, dst) {
     dst = dst || new Quaternion();
 
+    m = Matrix.getRotationMatrix(m, _tempMatrix);
+
     var trace = Matrix.get(m, 0, 0) + Matrix.get(m, 1, 1) + Matrix.get(m, 2, 2);
     if (trace > 0) {
       let s = 0.5 / Math.sqrt(trace + 1);
@@ -279,7 +286,7 @@ export default class Quaternion {
         dst.x = (Matrix.get(m, 0, 1) + Matrix.get(m, 1, 0)) / s;
         dst.y = 0.25 * s;
         dst.z = (Matrix.get(m, 1, 2) + Matrix.get(m, 2, 1)) / s;
-        dst.w = (Matrix.get(m, 0, 2) + Matrix.get(m, 2, 0)) / s;
+        dst.w = (Matrix.get(m, 0, 2) - Matrix.get(m, 2, 0)) / s;
       }
       else {
         let s = 2 * Math.sqrt(1 + Matrix.get(m, 2, 2) - Matrix.get(m, 0, 0) - Matrix.get(m, 1, 1));
@@ -287,7 +294,7 @@ export default class Quaternion {
         dst.x = (Matrix.get(m, 0, 2) + Matrix.get(m, 2, 0)) / s;
         dst.y = (Matrix.get(m, 1, 2) + Matrix.get(m, 2, 1)) / s;
         dst.z = 0.25 * s;
-        dst.w = (Matrix.get(m, 1, 0) + Matrix.get(m, 0, 1)) / s;
+        dst.w = (Matrix.get(m, 1, 0) - Matrix.get(m, 0, 1)) / s;
       }
     }
 

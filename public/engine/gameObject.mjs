@@ -26,13 +26,20 @@ function GameObject(name = "Unnamed", options = {}) {
   this.transform = new Transform(options.matrix, options.position, options.rotation, options.scale);
   this.transform.gameObject = this;
   this.prevModelMatrix = Matrix.copy(this.transform.worldMatrix);
+  this.traverse = function(func) {
+    func(this);
+    for (var child of this.children) {
+      child.traverse(func);
+    }
+  };
+  this.transform.matrix = this.transform.matrix;
 
   this.isCulled = false;
   var _aabb = null;//new AABB(Vector.fill(-1), Vector.fill(1));
-  var _aabbNeedsUpdating = true;
+  this._aabbNeedsUpdating = true;
 
   let onUpdateAABB = () => {
-    _aabbNeedsUpdating = true;
+    this._aabbNeedsUpdating = true;
   };
 
   /**
@@ -53,7 +60,7 @@ function GameObject(name = "Unnamed", options = {}) {
         _aabb.approxTransform(this.transform.worldMatrix);
       }
 
-      _aabbNeedsUpdating = false;
+      this._aabbNeedsUpdating = false;
     }
   };
 
@@ -74,27 +81,35 @@ function GameObject(name = "Unnamed", options = {}) {
   var oldMats;
   var _meshRenderer;
   Object.defineProperty(this, "meshRenderer", {
-    get: function() {
+    get: () => {
       return _meshRenderer;
     },
-    set: function(val) {
-      if (_meshRenderer) {
+    set: (val) => {
+      if (_meshRenderer && typeof _meshRenderer.off === "function") {
         _meshRenderer.off("updateAABB", onUpdateAABB);
       }
 
       _meshRenderer = val;
 
+      if (_meshRenderer) {
+        _meshRenderer.gameObject = this;
+      }
+
       if (_meshRenderer && _meshRenderer.materials) {
         oldMats = new Array(_meshRenderer.materials.length);
       }
 
-      if (_meshRenderer) {
+      if (_meshRenderer && typeof _meshRenderer.on === "function") {
         _meshRenderer.on("updateAABB", onUpdateAABB);
       }
     }
   });
   this.meshRenderer = def(options.meshRenderer, null);
 
+  /**
+   * Recursively apply `func` on this gameObject and its children 
+   * @param {(obj: GameObject) => void} func 
+   */
   this.traverse = function(func) {
     func(this);
     for (var child of this.children) {
@@ -138,10 +153,6 @@ function GameObject(name = "Unnamed", options = {}) {
     }
   };
 
-  this.getComponents = function() {
-    return _components;
-  };
-
   /**
    * @description Add component to gameobject. Returns the added component
    * @template T
@@ -160,30 +171,61 @@ function GameObject(name = "Unnamed", options = {}) {
    * @description Remove component from gameobject. Returns the removed component
    * @template T
    * @param {T} comp 
-   * @returns {T}
+   * @returns {T | null}
    */
   this.removeComponent = function(comp) {
-    _components.splice(_components.indexOf(comp), 1);
+    const index = _components.indexOf(comp);
+    if (index === -1) {
+      return null;
+    }
+
+    _components.splice(index, 1);
     delete comp.gameObject;
 
     return comp;
   };
 
+  /**
+   * Find all components matching `type`
+   * @param {string} type Type of component
+   * @returns {any[]}
+   */
   this.findComponents = function(type) {
     return _components.filter((c) => c.componentType === type);
   };
+  this.getComponents = this.findComponents.bind(this);
 
-  this.getComponent = function(type) {
+  /**
+   * Find first component matching `type`
+   * @param {string} type Type of component
+   * @returns {any}
+   */
+  this.findComponent = function(type) {
     return _components.find((c) => c.componentType === type);
+  };
+  this.getComponent = this.findComponent.bind(this);
+
+  /**
+   * Get all components on this gameobject
+   * @returns {any[]}
+   */
+  this.getAllComponents = function() {
+    return _components;
   };
 
   // Bruh
+  /**
+   * Returns a copy of this gameobject
+   * @param {boolean} __parent Internal variable
+   * @returns {GameObject}
+   */
   this.copy = function(__parent = true) {
     var newThis = new GameObject(this.name + (__parent ? " (Copy)" : ""));
     newThis.layer = this.layer;
     newThis.visible = this.visible;
     newThis.castShadows = this.castShadows;
     newThis.transform.matrix = _this.transform.matrix;
+    newThis.customData = { ...this.customData };
  
     if (this.meshRenderer) {
       newThis.meshRenderer = this.meshRenderer.copy();
@@ -246,6 +288,27 @@ function GameObject(name = "Unnamed", options = {}) {
     return newThis;
   };
 
+  /**
+   * Checks if `child` is descendent of parent\nthis.contains(this) will return true
+   * @param {GameObject} child The object to test for containment
+   */
+  this.contains = function(child) {
+    do {
+      if (child == this) {
+        return true;
+      }
+      child = child.parent;
+    }
+    while (child.parent);
+
+    return false;
+  };
+
+  /**
+   * Find all children with custom data property matching `key`
+   * @param {string} key Match properties with this key
+   * @returns {GameObject[]}
+   */
   this.getChildrenWithCustomData = function(key) {
     var output = [];
 
@@ -258,6 +321,12 @@ function GameObject(name = "Unnamed", options = {}) {
     return output;
   };
 
+  /**
+   * Finds the first child matching the given regex
+   * @param {RegExp} name Finds the first child matching this regex
+   * @param {boolean} recursive Search in grandchildren too?
+   * @returns {GameObject}
+   */
   this.getChild = function(name, recursive = false) {
     if (recursive) {
       var found;
@@ -275,12 +344,18 @@ function GameObject(name = "Unnamed", options = {}) {
     }
   };
 
-  this.getChildren = function(name, recursive = false, exactMatch = true) {
+  /**
+   * Finds all children matching the given regex
+   * @param {RegExp} name 
+   * @param {boolean} recursive 
+   * @returns {GameObject[]}
+   */
+  this.getChildren = function(name, recursive = false) {
     if (recursive) {
       var found = [];
       
       this.traverse(o => {
-        if ((exactMatch && o.name === name) || (!exactMatch && o.name.indexOf(name) !== -1)) {
+        if (o.name.match(name)) {
           found.push(o);
         }
       });
@@ -288,7 +363,7 @@ function GameObject(name = "Unnamed", options = {}) {
       return found;
     }
     else {
-      return this.children.every(e => (exactMatch && e.name === name) || (!exactMatch && e.name.indexOf(name) !== -1));
+      return this.children.every(e => e.name.match(name));
     }
   };
 
@@ -306,6 +381,9 @@ function GameObject(name = "Unnamed", options = {}) {
     if (child.parent == null) {
       child.parent = this;
       this.children.push(child);
+
+      child.transform.onChangeParent();
+
       return child;
     }
 
@@ -331,6 +409,8 @@ function GameObject(name = "Unnamed", options = {}) {
     if (index !== -1) {
       child.parent = null;
       this.children.splice(index, 1);
+
+      child.transform.onChangeParent();
     }
   };
 
@@ -339,17 +419,30 @@ function GameObject(name = "Unnamed", options = {}) {
       this.parent.removeChild(this);
     }
 
+    if (parent == null) {
+      this.parent = null;
+      this.transform.onChangeParent();
+      return;
+    }
+
     if (parent instanceof Scene) {
       const scene = parent;
       scene.add(this);
+      this.transform.onChangeParent();
       return;
     }
 
     this.parent = parent;
     parent.children.push(this);
+
+    this.transform.onChangeParent();
   };
 
-  this.delete = function() {
+  this.delete = this.destroy = this.remove = function() {
+    if (!this.parent) {
+      return;
+    }
+    
     this.parent.removeChild(this);
   };
 
@@ -374,10 +467,10 @@ function GameObject(name = "Unnamed", options = {}) {
     }
   }
 
-  this.update = function(dt) {
+  this.update = function(dt, frameNumber) {
     if (!this.runUpdate || !this.active) return;
 
-    if (_aabbNeedsUpdating && this.meshRenderer && this.meshRenderer.getAABB) {
+    if (this._aabbNeedsUpdating && this.meshRenderer && this.meshRenderer.getAABB) {
       if (!_aabb) {
         _aabb = new AABB();
       }
@@ -387,112 +480,114 @@ function GameObject(name = "Unnamed", options = {}) {
         _aabb.approxTransform(this.transform.worldMatrix);
       }
 
-      _aabbNeedsUpdating = false;
+      this._aabbNeedsUpdating = false;
     }
 
     if (this.animationController) {
-      this.animationController.update(dt);
+      this.animationController.update(dt, frameNumber);
     }
 
-    this.meshRenderer?.update?.(dt);
+    this.meshRenderer?.update?.(dt, frameNumber);
 
     for (var component of _components) {
-      component.update?.(dt);
+      component.update?.(dt, frameNumber);
     }
 
     for (var i = 0; i < this.children.length; i++) {
-      this.children[i].update(dt);
+      this.children[i].update(dt, frameNumber);
     }
   };
 
   this.render = function(camera, settings = {}) {
   // this.render = function(camera, materialOverride, shadowPass = false, opaquePass = true) {
-    if (this.visible && this.active) {
-      var shadowPass = settings.renderPass ? ENUMS.RENDERPASS.SHADOWS & settings.renderPass ? true : false : false;
-      var opaquePass = settings.renderPass ? ENUMS.RENDERPASS.ALPHA & settings.renderPass ? false : true : true;
-      var downscaledPass = settings.renderPass ? ENUMS.RENDERPASS.DOWNSCALED & settings.renderPass ? true : false : false;
+    if (!this.visible || !this.active) {
+      return;
+    }
 
-      if (shadowPass && !this.castShadows) {
-        return;
-      }
+    const shadowPass = settings.renderPass ? ENUMS.RENDERPASS.SHADOWS & settings.renderPass ? true : false : false;
+    const opaquePass = settings.renderPass ? ENUMS.RENDERPASS.ALPHA & settings.renderPass ? false : true : true;
+    const downscaledPass = settings.renderPass ? ENUMS.RENDERPASS.DOWNSCALED & settings.renderPass ? true : false : false;
 
-      var cameraLayer = camera.layer ?? 0b1111111111111111;
-      if (cameraLayer & this.layer) {
-        // var currentMatrix = this.transform.worldMatrix;
+    if (shadowPass && !this.castShadows) {
+      return;
+    }
 
-        // if (this.meshRenderer) {
-        //   if (!(shadowPass && !this.castShadows)) {
-        //     var oldMats = [];
-        //     if (settings.materialOverride) {
-        //       for (var i = 0; i < this.meshRenderer.materials.length; i++) {
-        //         oldMats[i] = this.meshRenderer.materials[i];
-        //         this.meshRenderer.materials[i] = settings.materialOverride;
-        //       }
-        //     }
+    const cameraLayer = camera.layer ?? 0b1111111111111111;
+    if (cameraLayer & this.layer) {
+      // var currentMatrix = this.transform.worldMatrix;
 
-        //     this.meshRenderer.render(camera, currentMatrix, shadowPass, opaquePass);
+      // if (this.meshRenderer) {
+      //   if (!(shadowPass && !this.castShadows)) {
+      //     var oldMats = [];
+      //     if (settings.materialOverride) {
+      //       for (var i = 0; i < this.meshRenderer.materials.length; i++) {
+      //         oldMats[i] = this.meshRenderer.materials[i];
+      //         this.meshRenderer.materials[i] = settings.materialOverride;
+      //       }
+      //     }
 
-        //     if (oldMats.length > 0) {
-        //       for (var i = 0; i < this.meshRenderer.materials.length; i++) {
-        //         this.meshRenderer.materials[i] = oldMats[i];
-        //       }
-        //     }
-        //   }
-        // }
+      //     this.meshRenderer.render(camera, currentMatrix, shadowPass, opaquePass);
 
-        if (this.meshRenderer && !(shadowPass && !this.castShadows)) {
-          // Frustum culling
-          // if (this.meshRenderer.isFullyOpaque() == opaquePass && (!camera.frustum || !_aabb || _aabb.isInsideFrustum(camera.frustum))) {
-          if (!this.isCulled) {
-            if (settings.materialOverride && true) {
-              // Get type of override material (basic, instanced or skinned)
-              var selectedOverrideMaterial = settings.materialOverride;
-              if (this.meshRenderer instanceof Renderer.MeshInstanceRenderer) {
-                selectedOverrideMaterial = settings.materialOverrideInstanced;
-              }
-              else if (this.meshRenderer instanceof Renderer.SkinnedMeshRenderer) {
-                selectedOverrideMaterial = settings.materialOverrideSkinned;
-              }
+      //     if (oldMats.length > 0) {
+      //       for (var i = 0; i < this.meshRenderer.materials.length; i++) {
+      //         this.meshRenderer.materials[i] = oldMats[i];
+      //       }
+      //     }
+      //   }
+      // }
 
-              // Keep track of old materials and override with new
-              for (let i = 0; i < this.meshRenderer.materials.length; i++) {
-                oldMats[i] = this.meshRenderer.materials[i].programContainer;
-                this.meshRenderer.materials[i].programContainer = selectedOverrideMaterial.programContainer;
-              }
-
-              // Render
-              this.meshRenderer.render(camera, this.transform.worldMatrix, shadowPass, opaquePass, this.prevModelMatrix);
-
-              // Revert to old materials
-              for (let i = 0; i < this.meshRenderer.materials.length; i++) {
-                this.meshRenderer.materials[i].programContainer = oldMats[i];
-              }
+      if (this.meshRenderer && !(shadowPass && !this.castShadows)) {
+        // Frustum culling
+        // if (this.meshRenderer.isFullyOpaque() == opaquePass && (!camera.frustum || !_aabb || _aabb.isInsideFrustum(camera.frustum))) {
+        if (!this.isCulled) {
+          if (settings.materialOverride && true) {
+            // Get type of override material (basic, instanced or skinned)
+            var selectedOverrideMaterial = settings.materialOverride;
+            if (this.meshRenderer instanceof Renderer.MeshInstanceRenderer) {
+              selectedOverrideMaterial = settings.materialOverrideInstanced;
             }
-            else {
-              // console.time("MeshRenderer.render() - " + this.name);
-              // this.meshRenderer.setShadowQuality?.(this.receiveShadows ? 2 : 0, opaquePass);
-              this.meshRenderer.render(camera, this.transform.worldMatrix, shadowPass, opaquePass, this.prevModelMatrix, { downscaledPass, shadowQuality: this.receiveShadows ? 2 : 0 });
-              // console.timeEnd("MeshRenderer.render() - " + this.name);
+            else if (this.meshRenderer instanceof Renderer.SkinnedMeshRenderer) {
+              selectedOverrideMaterial = settings.materialOverrideSkinned;
+            }
+
+            // Keep track of old materials and override with new
+            for (let i = 0; i < this.meshRenderer.materials.length; i++) {
+              oldMats[i] = this.meshRenderer.materials[i].programContainer;
+              this.meshRenderer.materials[i].programContainer = selectedOverrideMaterial.programContainer;
+            }
+
+            // Render
+            this.meshRenderer.render(camera, this.transform.worldMatrix, shadowPass, opaquePass, this.prevModelMatrix);
+
+            // Revert to old materials
+            for (let i = 0; i < this.meshRenderer.materials.length; i++) {
+              this.meshRenderer.materials[i].programContainer = oldMats[i];
             }
           }
+          else {
+            // console.time("MeshRenderer.render() - " + this.name);
+            // this.meshRenderer.setShadowQuality?.(this.receiveShadows ? 2 : 0, opaquePass);
+            this.meshRenderer.render(camera, this.transform.worldMatrix, shadowPass, opaquePass, this.prevModelMatrix, { downscaledPass, shadowQuality: this.receiveShadows ? 2 : 0 });
+            // console.timeEnd("MeshRenderer.render() - " + this.name);
+          }
         }
-
-        // if (!shadowPass) {
-        // if (this.meshRenderer) this.meshRenderer.render(camera, currentMatrix, shadowPass, opaquePass);
-
-        for (var component of _components) {
-          component.render?.(camera, this.transform.worldMatrix, shadowPass, opaquePass, this.prevModelMatrix, { downscaledPass });
-        }
-        // }
       }
 
-      for (var i = 0; i < this.children.length; i++) {
-        this.children[i].render(camera, settings);
-      }
+      // if (!shadowPass) {
+      // if (this.meshRenderer) this.meshRenderer.render(camera, currentMatrix, shadowPass, opaquePass);
 
-      if (!shadowPass && !this.isCulled) {
-        this.updatePrevModelMatrix();
+      for (var component of _components) {
+        component.render?.(camera, this.transform.worldMatrix, shadowPass, opaquePass, this.prevModelMatrix, { downscaledPass });
       }
+      // }
+    }
+
+    for (var i = 0; i < this.children.length; i++) {
+      this.children[i].render(camera, settings);
+    }
+
+    if (!shadowPass && !this.isCulled) {
+      this.updatePrevModelMatrix();
     }
   };
 
@@ -519,9 +614,9 @@ function GameObject(name = "Unnamed", options = {}) {
     }
 
     var list = [];
-    for (let i = 0; i < this.getComponents().length; i++) {
-      var component = this.getComponents()[i];
-      var isLast = i == this.getComponents().length - 1 && this.children.length == 0;
+    for (let i = 0; i < this.getAllComponents().length; i++) {
+      var component = this.getAllComponents()[i];
+      var isLast = i == this.getAllComponents().length - 1 && this.children.length == 0;
 
       let spacing = "";
       for (let j = 0; j < lastChild.length; j++) {

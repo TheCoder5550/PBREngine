@@ -7,26 +7,33 @@ function AnimationBlend(blendCoords = []) {
   this.z = 0;
   this.blendCoords = blendCoords;
 
-  this.getWeight = function(animation) {
-    var coords = this.blendCoords.find(o => {
+  const _getUnnormalizedWeight = (animation) => {
+    const coords = this.blendCoords.filter(o => {
       return o.animation == animation;
     });
 
-    if (coords) {
-      var d = Vector.distance(new Vector(this.x, this.y, this.z), coords.coords);
-      return clamp(1 - d, 0, 1) / this.getWeightSum();
+    let max = 0;
+    for (const coord of coords) {
+      const d = Vector.distance(new Vector(this.x, this.y, this.z), coord.coords);
+      const weight =  clamp(1 - d, 0, 1);
+      max = Math.max(max, weight);
     }
 
-    return 0;
+    return max;
   };
-  
-  this.getWeightSum = function() {
-    var sum = 0;
-    for (var coords of this.blendCoords) {
-      var d = Vector.distance(new Vector(this.x, this.y, this.z), coords.coords);
-      sum += clamp(1 - d, 0, 1);
-    }
-    return sum;
+
+  const _getTotalWeight = () => {
+    const uniqueAnimations = Array.from(new Set(this.blendCoords.map(b => b.animation)));
+    const totalWeight = uniqueAnimations.reduce((total, anim) => total + _getUnnormalizedWeight(anim), 0);
+    return totalWeight;
+  };
+
+  this.getWeight = function(animation) {
+    return _getUnnormalizedWeight(animation) / _getTotalWeight();
+  };
+
+  this.copy = function() {
+    return new AnimationBlend();
   };
 }
 

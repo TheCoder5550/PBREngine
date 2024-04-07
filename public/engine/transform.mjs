@@ -4,6 +4,7 @@ import Matrix from "./matrix.mjs";
 import { EventHandler } from "./eventHandler.mjs";
 
 const _m = Matrix.identity();
+const _tempVector = new Vector();
 const _tempMatrix = new Matrix();
 const _tempQuaternion = new Quaternion();
 
@@ -29,27 +30,35 @@ function Transform(matrix, position, rotation, scale) {
   var _rotation = rotation ?? Quaternion.identity();
   var _scale = scale ?? Vector.one();
 
-  var _positionProxy = createProxy(_position, everythingHasChanged);
-  var _rotationProxy = createProxy(_rotation, () => {
-    // bruh this breakes cardemo
-    // Matrix.fromQuaternion(_rotation, _rotationMatrix); // bruh, unnecesairy calculations
+  var _positionProxy = createProxy(_position, () => {
+    Vector.set(_lastPosition, _position);
     everythingHasChanged();
   });
-  var _scaleProxy = createProxy(_scale, everythingHasChanged);
+  var _rotationProxy = createProxy(_rotation, () => {
+    Matrix.fromQuaternion(_rotationProxy, _rotationMatrix); // bruh, unnecesairy calculations
+    Quaternion.set(_lastRotation, _rotation);
+    everythingHasChanged();
+  });
+  var _scaleProxy = createProxy(_scale, () => {
+    Vector.set(_lastScale, _scale);
+    everythingHasChanged();
+  });
 
   var _lastPosition = Vector.copy(_position);
   var _lastRotation = Quaternion.copy(_rotation);
   var _lastScale = Vector.copy(_scale);
 
-  if (matrix != null) {
-    setMatrix(matrix);
-  }
-  else {
-    setMatrixFromTRS();
-  }
-
   this.set = function(target) {
     this.matrix = target.matrix;
+  };
+
+  const _init = () => {
+    if (matrix != null) {
+      this.matrix = matrix;
+      return;
+    }
+
+    setMatrixFromTRS();
   };
 
   Object.defineProperty(this, "position", {
@@ -67,11 +76,12 @@ function Transform(matrix, position, rotation, scale) {
           return;
         }
 
-        _positionProxy.x = val.x;
-        _positionProxy.y = val.y;
-        _positionProxy.z = val.z;
+        _position.x = val.x;
+        _position.y = val.y;
+        _position.z = val.z;
 
         Vector.set(_lastPosition, val);
+        everythingHasChanged();
       }
       else {
         console.warn("Position is not vector", val);
@@ -119,13 +129,14 @@ function Transform(matrix, position, rotation, scale) {
           return;
         }
 
-        _rotationProxy.x = val.x;
-        _rotationProxy.y = val.y;
-        _rotationProxy.z = val.z;
-        _rotationProxy.w = val.w;
-        Matrix.fromQuaternion(_rotation, _rotationMatrix);
+        _rotation.x = val.x;
+        _rotation.y = val.y;
+        _rotation.z = val.z;
+        _rotation.w = val.w;
 
+        Matrix.fromQuaternion(_rotation, _rotationMatrix);
         Quaternion.set(_lastRotation, val);
+        everythingHasChanged();
       }
       else {
         console.warn("Rotation is not quaternion", val);
@@ -152,7 +163,7 @@ function Transform(matrix, position, rotation, scale) {
         this.rotation = val;
         return;
       }
-
+      
       Quaternion.fromMatrix(this.gameObject.parent.transform.worldMatrix, _tempQuaternion);
       Quaternion.inverse(_tempQuaternion, _tempQuaternion);
       Quaternion.QxQ(_tempQuaternion, val, _tempQuaternion);
@@ -175,15 +186,41 @@ function Transform(matrix, position, rotation, scale) {
           return;
         }
 
-        _scaleProxy.x = val.x;
-        _scaleProxy.y = val.y;
-        _scaleProxy.z = val.z;
+        _scale.x = val.x;
+        _scale.y = val.y;
+        _scale.z = val.z;
 
         Vector.set(_lastScale, val);
+        everythingHasChanged();
       }
       else {
         console.warn("Scale is not vector", val);
       }
+    }
+  });
+
+  Object.defineProperty(this, "worldScale", {
+    get: function() {
+      return Matrix.getScale(_this.worldMatrix); // bruh gc
+    },
+    set: (val) => {
+      if (!Vector.isVectorIsh(val)) {
+        console.warn("World scale is not vector", val);
+        return;
+      }
+
+      if (Vector.isNaN(val)) {
+        console.error("World scale is NaN: ", val);
+        return;
+      }
+
+      if (!this.gameObject || !this.gameObject.parent) {
+        this.scale = val;
+        return;
+      }
+
+      Matrix.getScale(this.gameObject.parent.transform.worldMatrix, _tempVector);
+      this.scale = Vector.compDivide(val, _tempVector, _tempVector);
     }
   });
 
@@ -198,7 +235,13 @@ function Transform(matrix, position, rotation, scale) {
       return _matrix;
     },
     set: function(val) {
+      if (Matrix.isNaN(val)) {
+        console.error("Matrix is NaN: ", val);
+        return;
+      }
+
       everythingHasChanged();
+      _this._hasChanged.matrix = false;
       setMatrix(val);
     }
   });
@@ -222,7 +265,10 @@ function Transform(matrix, position, rotation, scale) {
       }
 
       Matrix.inverse(_this.gameObject.parent.transform.worldMatrix, _tempMatrix);
-      Matrix.multiply(_tempMatrix, val, _this.matrix);
+      Matrix.multiply(_tempMatrix, val, _matrix);
+
+      everythingHasChanged();
+      setMatrix(_matrix);
 
       // var m = Matrix.multiply(Matrix.inverse(_this.gameObject.parent.transform.worldMatrix), val);
       // _this.matrix = m;
@@ -272,10 +318,11 @@ function Transform(matrix, position, rotation, scale) {
 
   function everythingHasChanged() {
     if (_this.gameObject) {
+      _this._hasChanged.matrix = true;
       _this.gameObject.traverse(o => {
-        o.transform._hasChanged.matrix = true;
         o.transform._hasChanged.worldMatrix = true;
       });
+
       _this.gameObject.traverse(o => { // why does this not fix it :(
         // o.transform.onTransformChange?.();
         o.transform.eventHandler.fireEvent("transformChange");
@@ -321,9 +368,12 @@ function Transform(matrix, position, rotation, scale) {
     Matrix.getScaleMatrix(_matrix, _scaleMatrix);
 
     if (setTRS) {
-      Matrix.getPosition(_matrix, _positionProxy);
-      Quaternion.fromMatrix(_matrix, _rotationProxy);
-      Matrix.getScale(_matrix, _scaleProxy);
+      Matrix.getPosition(_matrix, _position);
+      Quaternion.fromMatrix(_matrix, _rotation);
+      Matrix.getScale(_matrix, _scale);
+      // Matrix.getPosition(_matrix, _positionProxy);
+      // Quaternion.fromMatrix(_matrix, _rotationProxy);
+      // Matrix.getScale(_matrix, _scaleProxy);
 
       Vector.set(_lastPosition, _positionProxy);
       Quaternion.set(_lastRotation, _rotationProxy);
@@ -357,6 +407,14 @@ function Transform(matrix, position, rotation, scale) {
     }
 
     return this.matrix;
+  };
+
+  this.onChangeParent = function() {
+    if (_this.gameObject) {
+      _this.gameObject.traverse(o => {
+        o.transform._hasChanged.worldMatrix = true;
+      });
+    }
   };
 
   // function setProxyVector(p, v) {
@@ -395,6 +453,8 @@ function Transform(matrix, position, rotation, scale) {
       }
     });
   }
+
+  _init();
 }
 
 export {

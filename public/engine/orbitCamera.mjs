@@ -10,6 +10,7 @@ import Quaternion from "./quaternion.mjs";
  * @param {{
 *  position?: Vector,
 *  rotation?: Quaternion,
+*  distance?: number,
 *  layer?: number,
 *  renderTexture?: unknown,
 *  fov?: number,
@@ -55,7 +56,7 @@ export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
   var allowScale = settings.scale ?? true;
   var stylePointer = settings.stylePointer ?? true;
 
-  var _distance = 5;
+  var _distance = settings.distance ?? 5;
   Object.defineProperty(this, "distance", {
     get: function() {
       return _distance;
@@ -66,7 +67,7 @@ export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
     }
   });
 
-  var center = Vector.zero();
+  var center = settings.center ?? Vector.zero();
   Object.defineProperty(this, "center", {
     get: function() {
       return center;
@@ -77,7 +78,7 @@ export default function OrbitCamera(renderer, cameraSettings, settings = {}) {
     }
   });
 
-  var rotation = Vector.zero();
+  var rotation = settings.rotation ?? Vector.zero();
   Object.defineProperty(this, "rotation", {
     get: function() {
       return rotation;

@@ -7,6 +7,7 @@ export class NewMaterial {
     }
     
     if (programContainer !== null && !(programContainer instanceof Renderer.ProgramContainer)) {
+      console.error(programContainer);
       throw new Error("Could not create material. Not a program container: " + programContainer);
     }
     this.programContainer = programContainer;
@@ -111,17 +112,24 @@ export class NewLitMaterial extends NewMaterial {
   }
 }
 
-export function FindMaterials(name, obj, exactMatch = false, output = []) {
+/**
+ * 
+ * @param {RegExp} name 
+ * @param {GameObject} obj 
+ * @param {NewMaterial[]} output 
+ * @returns 
+ */
+export function FindMaterials(name, obj, output = []) {
   if (obj.meshRenderer) {
-    for (var mat of obj.meshRenderer.materials) {
-      if ((!exactMatch && mat.name.indexOf(name) !== -1) || (exactMatch && mat.name == name)) {
+    for (const mat of obj.meshRenderer.materials) {
+      if (mat.name.match(name)) {
         output.push(mat);
       }
     }
   }
 
-  for (var child of obj.children) {
-    FindMaterials(name, child, exactMatch, output);
+  for (const child of obj.children) {
+    FindMaterials(name, child, output);
   }
 
   return output;

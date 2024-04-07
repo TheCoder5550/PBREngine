@@ -1,0 +1,5 @@
+#?RADIANCE
+FORMAT=32-bit_rle_rgbe
+
+-Y 16 +X 32
+w“v}’w~’x“x€“y€”z‚–‡š„Œž‰‘£‹’¥‹’¥‰‘¤‡¢…¡Š’¦Ž–ª‘™­™­‘™­“›®—Ÿ±™¢³‘™«‰¤€‡„‹Ÿ†Ž¡…ŒŸ€‡›y€•y€”ryˆÉÕù€ÉÕø€ÇÔ÷€ÐÝÿ€jqszŠt{Œ}„”ƒŠš†˜…ŒŸ‡Ž¢•©‘š¯Ÿ¨»š£·˜¡·¥®Á¦®Á£«¾Ÿ¨¼—Ÿ´‘™­—«–¨–§†ž|ƒ•{‚“sz‹u|«¶Ó€£®Î€¡«È€‘›¼€š¤Ã€¤¯Î€¨²Ð€¾Êê€¾Êì€nt†x~w~‹“¥™¢³˜¬§¯Â¢«Àª´È¤­Â¯¸É¥®Ã¬µÈ¥­À¥·“š­Œ”¦…–}„•ÐÛþ€ÀÊì€¯ºÛ€¯¹Ù€rz—€mv’€emŠ€hq€mv’€pz—€€Š¦€‘›¸€¯ºÕ€´Àà€ÆÒñ€x‚‰šŽ–§œ¥·™¡³¡©¼¬µÈ«´Ç­µÉ¨°Âª²Ä¤¬¾š¡³Œ“¤ƒ‰™w}ÒÝü€´½Ý€¢«É€š¸€ƒŒª€ƒ’Év„ºs‚·sƒ·u„¹}Âœ­á¸Êþw€›€šµ€¦±Í€ÏÜù€w~‡Ž‰¢˜ ±¡ª»£«½¨°Â¥­Á°¹Ê«´Åœ£´‘—¨Š‘ |‚‘ÒÝú€¿Éå€™µ€ƒ‹¨€ck‡€ ¯ègt¢eqždpœdp›erhu ky¥o­–§×fo‡€‹¥€«·Ñ€ÀÌç€tzŠ‡Ž†œ¥µ¤­½¤µ¢ª»¡©¹ §¶‘—§”›©tyˆÑÛ÷€¯¸Ô€‰ª€nv€ ®áq~²kw¨Yc‰Wa…W`„Wa„Yc…[e‡^iŒam’dršxˆ³cl€yƒ›€¢­Å€Ë×î€nu‚ˆ•Ž–¤—¥¢©µ˜Ÿ®—¦ˆŽ„Š˜qv„ÏÙó€©±Ê€‚‰¢€ekƒ€‹»epž_j”[e—¦ã~–¥ß~—¥Ý~˜§Ý~›«ß~ °ä~¥¶ê~©¼ó~®Ãÿ~Zf‡cr˜¢²Ûu~“€Ž—®€¼ÇÞ€pvw}Š{Ž€†“†Œ˜~„‘{ŽÕÞö€¼ÅÜ€§®Å€‡œ€¶Ãíp{¦]gV_„¢³÷~›ªë~Œ¼~€‹·~Œ¶~ƒŽ¶~†‘¸~Š•»~Žš¿~’ŸÅ~•¤Î~™«Ú~Ÿ´ì~Vb„ŸÂiq…€…¡€®¸Ë€¯¸Î€ÅÐè€Ùã÷€ÎØð€Î×ì€¿ÇÞ€³¼Ï€”›®€rx‹€°»ßen”W_¡®í~•¡Û~Œ—Í~…‘Ã~ov™~nu•~nu“~px”~sz”~v}–~y€™~|„~~ˆ¢~«~…“¸~‹œÊ~’§à~uŸ³Àßlt„€ˆŸ€—ž¯€˜ ³€£ªº€“™¬€ˆŽ¡€|‚’€ÇÑð™¸Za ¬ä~”žÐ~Š’À~ˆ³~y€¨~szŸ~¿Çõ}¼Ãí}¼Äé}¿Æè}ÂÊè}ÆÍé}ÊÒì}Î×ñ}ÒÜù}kq‚~mu‹~q{—~v„§~~Ž»~¡´ç~~‰¤§³ÌÀËæÊÕî×ãþÅÏë¦®É•°_f˜¤Õ~Ž—Â~„‹±~|£~tx˜~nqŽ~hk†~ÆÍÿ}£¥¿} ¡¹}Ÿ ´} ¡²}¡£°}£¥¯}¥§°}§©±}©¬¶}¬°½}¯µÉ}´½Ú}¼Éð}dl†~ku•~r¤~}‹µ~˜¦Ò~±¿ê~¹Æò~¥²Ý~‹–Á~„´~†¨~y~›~ru~ln…~ÍÎø}ÂÃé}¹¹Ü}±°Ñ}©ªÇ}‡„}…‚Š}ƒ€†}ƒ€ƒ}ƒ€}„€}…‚}…‚~}…‚}…„ƒ}‡†Š}ŠŒ”}“¢}—³} ¨Æ}ªµÙ}´Àê}½Êø}bh~djƒ~ej‚~ËÒþ}ÇÌô}ÂÄæ}»ºØ}³±Ë}¬¨¿}¤Ÿ´}˜ª}–‘¢}‘Œ›}‹‡”}×ÉË|ÔÇÅ|ÒÄ¿|ÐÃº|ÐÃ¶|ÏÂ³|ÐÂ°|ÏÂ®|ÍÀ­|Ë¿¯|ËÁµ|ÎÅ¿|ÒËÌ|ÙÕÞ|ãáò|xwƒ}~~Œ}ƒ„”}ˆˆš}‹‹}Œ}ŽŒ›}‰—}‹†‘}ˆ‹}…}„}€x~}øçò|ïßè|è×ß|áÑ×|ÜÍÑ|¤’Š|¢‘ˆ|¡‘†| ƒ| |Ÿ|Ÿ}|žŽ||{|›‹z|š‹||š‹~|›‚|ˆ| “Ž|¥—•|©œœ|®¡£|´¦©|¸ª¬|»¬®|¾®®|¾­¬|½«©|»¨¥|¸¥¡|¶¢ž|²žš|¯œ—|¬™”|©—|¦”|‚pg|pg|pf|€pf|€oe|þÝÊ{üÜÈ{üÜÈ{ûÛÈ{ùÚÆ{úÚÇ{ûÚÈ{ûÚÈ{ûÙÈ{úÙÈ{üÛÊ{ýÛÌ{þÛÌ{€og|ph|pi|pi|ph|‚qi|‚qi|ph|‚qi|ƒqi|ƒqi|‚qh|‚ph|‚ph|

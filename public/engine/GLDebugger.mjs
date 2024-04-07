@@ -15,9 +15,16 @@ function GLDebugger(scene, maxShapes = 50) {
   const renderer = scene.renderer;
 
   let aabbVis;
+  let persistentAABBVis;
   renderer.createProgramFromFile(renderer.path + "assets/shaders/custom/webgl2/solidColor").then(r => {
     const solidColorInstanceProgram = new renderer.ProgramContainer(r);
+
     aabbVis = scene.add(new GameObject("AABB", {
+      meshRenderer: new renderer.MeshInstanceRenderer([new NewMaterial(solidColorInstanceProgram)], [new renderer.MeshData(renderer.getLineCubeData())], {drawMode: renderer.gl.LINES}),
+      castShadows: false
+    }));
+
+    persistentAABBVis = scene.add(new GameObject("Persistent AABB", {
       meshRenderer: new renderer.MeshInstanceRenderer([new NewMaterial(solidColorInstanceProgram)], [new renderer.MeshData(renderer.getLineCubeData())], {drawMode: renderer.gl.LINES}),
       castShadows: false
     }));
@@ -68,6 +75,27 @@ function GLDebugger(scene, maxShapes = 50) {
     if (aabbVis) {
       aabbVis.meshRenderer.removeAllInstances();
     }
+  };
+
+  const setColor = (matrix, color) => {
+    if (!color) {
+      return;
+    }
+
+    if (!Array.isArray(color)) {
+      return;
+    }
+
+    if (color.length !== 4) {
+      color = [
+        color[0] ?? 0,
+        color[1] ?? 0,
+        color[2] ?? 0,
+        color[3] ?? 1
+      ];
+    }
+
+    cube.meshRenderer.setColor(matrix, color);
   };
   
   this.getCube = function() {
@@ -122,7 +150,12 @@ function GLDebugger(scene, maxShapes = 50) {
     }
   };
 
-  this.Vector = function(p, normal, size = 1/*, color*/) {
+  this.Line = function(a, b, color) {
+    const normal = Vector.subtract(b, a);
+    this.Vector(a, normal, 1, color);
+  };
+
+  this.Vector = function(p, normal, size = 1, color) {
     const len = Vector.length(normal);
     if (len * size <= 1e-6) {
       return;
@@ -133,25 +166,17 @@ function GLDebugger(scene, maxShapes = 50) {
     tempTransform.scale = new Vector(0.01, 0.01, 0.5 * size * len);
     Matrix.copy(tempTransform.matrix, c);
 
-    // if (color) {
-    //   const mat = FindMaterials("", c)[0];
-    //   mat.setUniform("emissiveFactor", color);
-    //   mat.setUniform("albedo", [...color, 1]);
-    // }
+    setColor(c, color);
   };
 
-  this.Point = function(p, size = 0.2/*, color*/) {
+  this.Point = function(p, size = 0.2, color) {
     const c = this.getCube();
     tempTransform.rotation = Quaternion.identity();
     tempTransform.position = p;
     tempTransform.scale = Vector.fill(size);
     Matrix.copy(tempTransform.matrix, c);
 
-    // if (color) {
-    //   const mat = FindMaterials("", c)[0];
-    //   mat.setUniform("emissiveFactor", color);
-    //   mat.setUniform("albedo", [...color, 1]);
-    // }
+    setColor(c, color);
   };
 
   // this.Vector = function(p, normal, size = 1, color) {
@@ -185,6 +210,12 @@ function GLDebugger(scene, maxShapes = 50) {
   //     mat.setUniform("albedo", [...color, 1]);
   //   }
   // };
+
+  this.CreateLine = function(a, b, thickness = 0.01, color) {
+    const origin = a;
+    const direction = Vector.subtract(b, a);
+    this.CreateVector(origin, direction, 2, thickness, color);
+  };
 
   this.CreateVector = function(origin, direction, scale = 1, thickness = 0.01, color) {
     const target = Vector.add(origin, Vector.multiply(direction, 0.5 * scale));
@@ -222,6 +253,64 @@ function GLDebugger(scene, maxShapes = 50) {
     this.CreateVector(position, new Vector(1, 0, 0), size, thickness, [1, 0, 0]);
     this.CreateVector(position, new Vector(0, 1, 0), size, thickness, [0, 1, 0]);
     this.CreateVector(position, new Vector(0, 0, 1), size, thickness, [0, 0, 1]);
+  };
+
+  this.CreateOctree = function(octree) {
+    if (octree.items.length > 0) {
+      // Octree uses SimpleAABB which does not have any methods
+      const aabb = new AABB(
+        octree.aabb.bl,
+        octree.aabb.tr
+      );
+      this.CreateBounds(aabb);
+    }
+
+    for (let i = 0; i < octree.children.length; i++) {
+      this.CreateOctree(octree.children[i]);
+    }
+  };
+
+  this.CreateBounds = function(aabb, matrix) {
+    if (persistentAABBVis) {
+      const position = aabb.getCenter();
+      const size = aabb.getSize();
+
+      if (Vector.isNaN(position) || Vector.isNaN(size)) {
+        console.warn("AABB is NaN");
+        return;
+      }
+
+      const instance = Matrix.transform([
+        ["translate", position],
+        ["sx", size.x / 2],
+        ["sy", size.y / 2],
+        ["sz", size.z / 2]
+      ]);
+
+      if (Matrix.isMatrix(matrix)) {
+        Matrix.multiply(matrix, instance, instance);
+      }
+      
+      persistentAABBVis.meshRenderer.addInstance(instance);
+    }
+  };
+
+  this.CreateCurve = function(curve, res = 10, thickness = 0.01, color) {
+    for (let i = 0; i < res - 1; i++) {
+      this.CreateLine(
+        curve.getPoint(i / (res - 1)),
+        curve.getPoint((i + 1) / (res - 1)),
+        thickness,
+        color
+      );
+    }
+
+    for (const point of curve.getPoints()) {
+      this.CreatePoint(point, 0.1);
+    }
+
+    this.CreatePoint(curve.getPoint(0), 0.1);
+    this.CreatePoint(curve.getPoint(1), 0.1);
   };
 }
 

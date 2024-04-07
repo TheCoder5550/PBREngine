@@ -5,8 +5,8 @@ import { FindMaterials } from "./engine/material.mjs";
 import { GameObject } from "./engine/gameObject.mjs";
 import { flyCamera } from "./engine/flyCamera.mjs";
 import { Scene } from "./engine/scene.mjs";
-import { Rigidbody, BoxCollider, AABB, GetMeshAABB, PhysicsEngine } from "./engine/physics.mjs";
-import { clamp, smoothstep } from "./engine/helper.mjs";
+import { Rigidbody, BoxCollider, AABB, GetMeshAABB, PhysicsEngine, MeshCollider } from "./engine/physics.mjs";
+import { clamp, clamp01, lerp, smoothstep } from "./engine/helper.mjs";
 import Keybindings from "./keybindingsController.mjs";
 import { Camera } from "./engine/camera.mjs";
 import GamepadManager, { deadZone, quadraticCurve } from "./gamepadManager.js";
@@ -87,8 +87,7 @@ function Car(scene, physicsEngine, settings = {}) {
   });
   this.haptics = settings.haptics ?? true;
 
-  this.canMove = true;
-  this.frozen = false;
+  let frozen = false;
   this.simulateFriction = true;
   this.resetPosition = Vector.zero();
   this.resetRotation = Quaternion.identity();
@@ -115,13 +114,14 @@ function Car(scene, physicsEngine, settings = {}) {
   this.followCamera.pitch = cameraSettings.pitch ?? 0.15;
   this.followCamera.accelerationSpeed = cameraSettings.accelerationSpeed ?? 0.07;
   this.followCamera.accelerationEffect = cameraSettings.accelerationEffect ?? 0.45;
+  this.followCamera.fov = cameraSettings.fov ?? 35;
 
   var cameraControllers = [
     this.followCamera,
-    new SpectatorCamera(this),
-    new HoodFollowCamera(this),
+    // new HoodFollowCamera(this),
     // new InteriorFollowCamera(this),
-    new PhotoCamera(this),
+    // new SpectatorCamera(this),
+    // new PhotoCamera(this),
   ];
   var currentCameraControllerIndex = 0;
 
@@ -138,6 +138,10 @@ function Car(scene, physicsEngine, settings = {}) {
   this.transmission = settings.transmission ?? "MANUAL";
 
   let isChangingGear = false;
+  this.revmatch = {
+    enabled: true,
+    ...settings.revmatch
+  };
   this.limitReverseSpeed = settings.limitReverseSpeed ?? true;
   this.canDriveWhenChangingGear = settings.canDriveWhenChangingGear ?? false;
   this.gearChangeTime = settings.gearChangeTime ?? 0.35;
@@ -150,10 +154,31 @@ function Car(scene, physicsEngine, settings = {}) {
   this.differentialType = settings.differential ?? Car.ENUMS.DIFFERENTIAL.OPEN;
   this.LSDFactor = settings.LSDFactor ?? 0.05;
 
+  // BSA - Best steer angle assist
+  this.BSA = {
+    enabled: false,
+    factor: 0.9,
+    minVel: 0.3,
+    extra: 0.1,
+    counterSteerHelpFactor: 0.6,
+    ...settings.BSA,
+  };
+
+  // ACS - Auto counter steer assist
+  this.autoCounterSteer = {
+    enabled: true,
+    minVel: 2,
+    P: 0.6,
+    D: 0.2,
+    steerSpeed: 0.1,
+    ...settings.autoCounterSteer,
+  };
+
   this.activateAutoCountersteer = settings.activateAutoCountersteer ?? true;
   this.autoCountersteerMinVel = 2;
   this.autoCountersteer = settings.autoCountersteer ?? 0.6;
   this.autoCountersteerVelocityMultiplier = settings.autoCountersteerVelocityMultiplier ?? 0.2;
+  this.acsSteerSpeed = settings.acsSteerSpeed ?? 0.1;
 
   this.steerSpeed = settings.steerSpeed ?? 0.05;
   this.steerVelocity = settings.steerVelocity ?? 50;//150;
@@ -167,8 +192,24 @@ function Car(scene, physicsEngine, settings = {}) {
 
   var ebrakeTorque = settings.ebrakeTorque ?? 4000;
   this.brakeTorque = settings.brakeTorque ?? 1500;//2000;
-  this.ABS = settings.ABS ?? true;
-  this.TCS = settings.TCS ?? false;
+
+  // ABS
+  const absSettings = typeof settings.ABS === "boolean" ? 
+    { enabled: settings.ABS } :
+    (settings.ABS ?? {});
+  this.ABS = {
+    enabled: absSettings.enabled ?? false,
+  };
+
+  // TCS
+  const tcsSettings = typeof settings.TCS === "boolean" ? 
+    { enabled: settings.TCS } :
+    (settings.TCS ?? {});
+  this.TCS = {
+    enabled: tcsSettings.enabled ?? false,
+    allowedSlip: tcsSettings.allowedSlip ?? 0,
+  };
+
   this.antiRoll = settings.antiRoll ?? 7000;
   var rideHeightOffset = settings.rideHeightOffset ?? 0;
 
@@ -181,6 +222,7 @@ function Car(scene, physicsEngine, settings = {}) {
   let clutchInput = 1;
 
   let steerInput = 0;
+  let smoothACSInput = 0;
   let targetClutchInput = 1;
 
   let highestSkidFreq = 1;
@@ -203,13 +245,11 @@ function Car(scene, physicsEngine, settings = {}) {
 
   // Paths
   this.ebrakeIconPath = this.path + "assets/textures/parkingBrakeIcon.png";
+  this.highbeamsIconPath = this.path + "assets/textures/highbeams.png";
   this.smokeTexture = this.path + "assets/textures/smoke.png";
   this.skidAudioSource = this.path + "cargame/skid.wav";
   this.offroadAudioSource = this.path + "assets/sound/gravelRoad.wav";
   this.bottomOutAudioSource = this.path + "assets/sound/bottomOut.wav";
-
-  // Images
-  this.ebrakeImage = new Image(this.ebrakeIconPath);
 
   // Audio
   var hasPlayedBottomOutSound = false;
@@ -297,9 +337,43 @@ function Car(scene, physicsEngine, settings = {}) {
 
   // Lights
   var lightMaterials = {};
-  var brightsAreOn = false;
 
-  this.brakeLightTurnonTime = 0.1;
+  this.turnSignal = {
+    leftEnabled: false,
+    rightEnabled: false,
+    hazardEnabled: false,
+    blinkSpeed: 400,
+    materialColor: [50, 5, 0],
+  };
+
+  this.brakeLight = {
+    enabled: true,
+    turnOnTime: 0.1,
+    materialColor: [20, 3, 0],
+  };
+
+  this.reverseLight = {
+    enabled: true,
+    materialColor: [20, 20, 20],
+  };
+
+  this.tailLight = {
+    enabled: true,
+    materialColor: [5, 5, 5],
+  };
+
+  this.headLight = {
+    enabled: true,
+    lampColor: [800, 760, 700],
+    materialColor: [4, 3.2, 2],
+  };
+
+  this.highbeam = {
+    enabled: false,
+    lampColor: [8000, 7600, 7000],
+    materialColor: [30, 24, 15],
+  };
+
   var brakeLightAmount = 0;
 
   this.fixedUpdateFunction = (dt) => {
@@ -308,14 +382,14 @@ function Car(scene, physicsEngine, settings = {}) {
   physicsEngine.on("fixedUpdate", this.fixedUpdateFunction);
 
   this.freeze = function() {
-    this.frozen = true;
+    frozen = true;
     this.rb.frozen = true;
 
     suspendAudio();
   };
 
   this.unfreeze = function() {
-    this.frozen = false;
+    frozen = false;
     this.rb.frozen = false;
     
     resumeAudio();
@@ -344,6 +418,19 @@ function Car(scene, physicsEngine, settings = {}) {
       parent.getChild(/(wheel_*fl)|(fl_*wheel)|(^fl$)/gmi, true) || parent.getChild("FrontLeftWheel", true)
     ];
   }
+
+  this.addCameraController = function(cameraController) {
+    cameraControllers.push(cameraController);
+  };
+
+  this.removeCameraController = function(cameraController) {
+    const index = cameraControllers.indexOf(cameraController);
+    if (index === -1) {
+      return;
+    }
+
+    cameraControllers.splice(index, 1);
+  };
 
   this.getCurrentCameraController = function() {
     return cameraControllers[currentCameraControllerIndex];
@@ -403,24 +490,27 @@ function Car(scene, physicsEngine, settings = {}) {
     );
     // this.rb.inertia = Vector.fill(this.rb.mass);
 
+    this.gameObject.addComponent(this.rb);
+
     const colliderSize = Vector.compMultiply(boxSize, new Vector(0.8, 0.8, 0.8));
 
-    // var colliderVis = renderer.CreateShape("cube");
-    // var md = colliderVis.meshRenderer.meshData[0];
-    // md.applyTransform(Matrix.scale(Vector.compMultiply(boxSize, new Vector(0.4, 0.4, 0.4))));
-    // // md.applyTransform(Matrix.scale(Vector.compMultiply(boxSize, new Vector(0.4, 0.5, 0.5))));
-    // // colliderVis.meshRenderer.materials[0].setUniform("albedo", [0, 0, 0, 0]);
+    const colliderVis = renderer.CreateShape("cube");
+    const mat = colliderVis.meshRenderer.materials[0];
+    mat.setUniform("albedo", [0, 0, 0, 0]);
+    mat.opaque = false;
 
-    // // colliderVis.transform.scale = Vector.divide(boxSize, 2);
-    // // this.gameObject.addChild(colliderVis);
-    // this.gameObject.meshRenderer = colliderVis.meshRenderer;
-    // this.gameObject.addComponent(new MeshCollider());
+    const md = colliderVis.meshRenderer.meshData[0];
+    md.applyTransform(Matrix.scale(Vector.multiply(colliderSize, 0.7)));
+
+    this.gameObject.meshRenderer = colliderVis.meshRenderer;
+    const mc = this.gameObject.addComponent(new MeshCollider());
+    mc.layer = 0b10;
+    mc.friction = 0.1;
 
     // var centerVis = renderer.CreateShape("sphere");
     // centerVis.transform.scale = Vector.fill(0.2);
     // this.gameObject.addChild(centerVis);
 
-    this.gameObject.addComponent(this.rb);
     this.gameObject.addComponent(new BoxCollider(new AABB(
       Vector.divide(colliderSize, -2),
       Vector.divide(colliderSize, 2)
@@ -533,35 +623,18 @@ function Car(scene, physicsEngine, settings = {}) {
     ];
 
     // Lights
-    // lightMaterials.mainFront = FindMaterials("Front DRL", this.gameObject)[0];
-    // lightMaterials.brightsFront = FindMaterials("Bright_front_headlight", this.gameObject)[0];
-    // lightMaterials.mainRear = FindMaterials("Rear_main_emission", this.gameObject)[0];
-    // lightMaterials.reverseRear = FindMaterials("Rear_secondary_emission", this.gameObject)[0];
-    // lightMaterials.brake = FindMaterials("tex_shiny", this.gameObject)[0];
-    // lightMaterials.turnSignal = FindMaterials("Mirror Lamp", this.gameObject)[0];
-
-    lightMaterials.mainFront = FindMaterials("LampWhite", this.gameObject, true);
-    lightMaterials.mainRear = FindMaterials("LampRedLight", this.gameObject, true);
-    lightMaterials.brake = FindMaterials("LampRed", this.gameObject, true);
-    lightMaterials.turnSignal = FindMaterials("LampOrange", this.gameObject, true);
-    lightMaterials.reverseRear = FindMaterials("Reverse", this.gameObject, true);
-
-    this.setLightEmission("mainRear", [1, 0, 0]);
-
-    var on = false;
-    setInterval(() => {
-      on = !on;
-      this.setLightEmission("turnSignal", on ? [50, 5, 0] : [0, 0, 0]);
-    }, 400);
+    lightMaterials.headLight = FindMaterials(/headlights*/i, this.gameObject);
+    lightMaterials.brakeLight = FindMaterials(/brakelights*/i, this.gameObject);
+    lightMaterials.tailLight = FindMaterials(/taillights*/i, this.gameObject);
+    lightMaterials.leftTurnSignalLight = FindMaterials(/leftturnsignallights*/i, this.gameObject);
+    lightMaterials.rightTurnSignalLight = FindMaterials(/rightturnsignallights*/i, this.gameObject);
+    lightMaterials.reverseLight = FindMaterials(/reverselights*/i, this.gameObject);
 
     // Lamps
     this.lamps = {
-      brightsLeft: this.gameObject.getChild("BrightsLeft", true)?.children[0]?.getComponent("Light"),
-      brightsRight: this.gameObject.getChild("BrightsRight", true)?.children[0]?.getComponent("Light"),
+      leftHeadLight: this.gameObject.getChild(/(leftheadlights*)|(headlights*left)/i, true)?.children[0]?.getComponent("Light"),
+      rightHeadLight: this.gameObject.getChild(/(rightheadlights*)|(headlights*right)/i, true)?.children[0]?.getComponent("Light"),
     };
-
-    if (this.lamps.brightsLeft) this.lamps.brightsLeft.color = [0, 0, 0];
-    if (this.lamps.brightsRight) this.lamps.brightsRight.color = [0, 0, 0];
 
     // Smoke
     var smokeObject = new GameObject("Smoke");
@@ -614,25 +687,88 @@ function Car(scene, physicsEngine, settings = {}) {
     this.grassParticles = grassParticles;
 
     // Steering wheel
-    this.steeringWheelModel = this.gameObject.getChild("SteeringWheel", true);
+    this.steeringWheelModel = this.gameObject.getChild(/steeringwheel/i, true);
     if (this.steeringWheelModel) {
       steeringWheelModelInitialTransform = Matrix.copy(this.steeringWheelModel.transform.matrix);
     }
 
     // Interior camera
-    var interiorCamera = new GameObject("InteriorCamera");
-    interiorCamera.transform.position = new Vector(-0.3, 0.35, -0.5);
-    interiorCamera.transform.rotation = Quaternion.euler(0, Math.PI, 0);
-    this.gameObject.addChild(interiorCamera);
+    if (!this.gameObject.getChild("InteriorCamera", true)) {
+      var interiorCamera = new GameObject("InteriorCamera");
+      interiorCamera.transform.position = new Vector(-0.3, 0.35, -0.5);
+      interiorCamera.transform.rotation = Quaternion.euler(0, Math.PI, 0);
+      this.gameObject.addChild(interiorCamera);
+    }
 
     // Hood camera
-    var hoodCamera = new GameObject("HoodCamera");
-    hoodCamera.transform.position = new Vector(0, 0.5, 0.8);
-    hoodCamera.transform.rotation = Quaternion.euler(0, Math.PI, 0);
-    this.gameObject.addChild(hoodCamera);
+    if (!this.gameObject.getChild("HoodCamera", true)) {
+      var hoodCamera = new GameObject("HoodCamera");
+      hoodCamera.transform.position = new Vector(0, 0.5, 0.8);
+      hoodCamera.transform.rotation = Quaternion.euler(0, Math.PI, 0);
+      this.gameObject.addChild(hoodCamera);
+    }
 
     // Set camera position
     cameraControllers[currentCameraControllerIndex].onReset();
+  };
+
+  const updateLights = (dt) => {
+    // Reverse light
+    if (this.reverseLight.enabled) {
+      const isReversing = this.currentGear === 0;
+      this.setLightEmission("reverseLight", isReversing ? this.reverseLight.materialColor : [0, 0, 0]);
+    }
+    else {
+      this.setLightEmission("reverseLight", [0, 0, 0]);
+    }
+
+    // Brake light
+    if (this.brakeLight.enabled) {
+      brakeLightAmount += Math.sign((brakeInput > 1e-6 ? 1 : 0) - brakeLightAmount) / this.brakeLight.turnOnTime * dt;
+      brakeLightAmount = clamp(brakeLightAmount, 0, 1);
+
+      const f = Math.pow(brakeLightAmount, 5);
+      this.setLightEmission("brakeLight", [
+        f * this.brakeLight.materialColor[0],
+        f * this.brakeLight.materialColor[1],
+        f * this.brakeLight.materialColor[2],
+      ]);
+    }
+    else {
+      this.setLightEmission("brakeLight", [0, 0, 0]);
+    }
+
+    // Tail light
+    if (this.tailLight.enabled) {
+      this.setLightEmission("tailLight", this.tailLight.materialColor);
+    }
+    else {
+      this.setLightEmission("tailLight", [0, 0, 0]);
+    }
+
+    // Turn signal
+    const blink = Math.floor(performance.now() / this.turnSignal.blinkSpeed) % 2 === 0;
+
+    // Left
+    if (this.turnSignal.leftEnabled || this.turnSignal.hazardEnabled) {
+      this.setLightEmission("leftTurnSignalLight", blink ? this.turnSignal.materialColor : [0, 0, 0]);
+    }
+    else {
+      this.setLightEmission("leftTurnSignalLight", [0, 0, 0]);
+    }
+
+    // Right
+    if (this.turnSignal.rightEnabled || this.turnSignal.hazardEnabled) {
+      this.setLightEmission("rightTurnSignalLight", blink ? this.turnSignal.materialColor : [0, 0, 0]);
+    }
+    else {
+      this.setLightEmission("rightTurnSignalLight", [0, 0, 0]);
+    }
+
+    // Highbeams
+    if (this.lamps.leftHeadLight) this.lamps.leftHeadLight.color = this.highbeam.enabled ? this.highbeam.lampColor : this.headLight.lampColor;
+    if (this.lamps.rightHeadLight) this.lamps.rightHeadLight.color = this.highbeam.enabled ? this.highbeam.lampColor : this.headLight.lampColor;
+    this.setLightEmission("headLight", this.highbeam.enabled ? this.highbeam.materialColor : this.headLight.materialColor);
   };
 
   this.destroy = function() {
@@ -730,8 +866,9 @@ function Car(scene, physicsEngine, settings = {}) {
     // ABS + TCS
     ui.fontWeight = "bold";
 
-    const blink = Math.floor(performance.now() / 100) % 2 === 0 ? 1 : 0;
-    if (this.ABS) {
+    // const blink = Math.floor(performance.now() / 100) % 2 === 0 ? 1 : 0;
+    const blink = Math.cos(performance.now() / 100) ** 6;
+    if (this.ABS.enabled) {
       const active = `rgba(255, 0, 0, ${blink})`;
       const color = brakeInput > Math.min(...this.wheels.map(w => w.brakeLimit)) ? active : inactiveColor;
       ui.text("ABS", center.x - 50, center.y - 12 - 10, 15, color);
@@ -745,8 +882,8 @@ function Car(scene, physicsEngine, settings = {}) {
         }
       }
     }
-    if (this.TCS) {
-      const active = `rgba(40, 40, 255, ${blink})`;
+    if (this.TCS.enabled) {
+      const active = `rgba(255, 200, 0, ${blink})`;
       const color = driveInput > throttleLimit ? active : inactiveColor;
       ui.text("TCS", center.x - 50, center.y - 12 + 14, 15, color);
     }
@@ -758,6 +895,11 @@ function Car(scene, physicsEngine, settings = {}) {
     // E brake
     if (ebrakeInput > 0.05) {
       ui.picture(this.ebrakeIconPath, center.x + 50 - 14, center.y - 12.5 - 14, 28, 28);
+    }
+
+    // Highbeams
+    if (this.highbeam.enabled) {
+      ui.picture(this.highbeamsIconPath, center.x + 50 - 14, center.y - 12.5 - 14 + 30, 28, 28);
     }
 
     // // Inputs
@@ -789,7 +931,7 @@ function Car(scene, physicsEngine, settings = {}) {
   };
 
   this.update = function(dt) {
-    if (this.frozen) {
+    if (frozen) {
       return;
     }
 
@@ -828,22 +970,14 @@ function Car(scene, physicsEngine, settings = {}) {
       driveInput = 0;
     }
     
-    // Update lights
-    brakeLightAmount += Math.sign((brakeInput > 1e-6 ? 1 : 0) - brakeLightAmount) / this.brakeLightTurnonTime * dt;
-    brakeLightAmount = clamp(brakeLightAmount, 0, 1);
-
-    const isReversing = this.currentGear == 0;
-
-    this.setLightEmission("reverseRear", isReversing ? [50, 50, 50] : [0, 0, 0]);
-    this.setLightEmission("brake", [Math.pow(brakeLightAmount, 5) * 50, 0, 0]);
-    // this.setLightEmission("mainRear", brakeInput > 0 ? [50, 0, 0] : [0, 0, 0]);
+    updateLights(dt);
   
     // Update engine
     this.engine.update();
   };
 
   this.fixedUpdate = function(fixedDeltaTime) {
-    if (this.frozen) {
+    if (frozen) {
       return;
     }
 
@@ -867,7 +1001,7 @@ function Car(scene, physicsEngine, settings = {}) {
     this.forwardVelocity = forwardVelocity;
     var sidewaysVelocity = Vector.dot(this.rb.velocity, sideways);
 
-    var carSlipAngle = -Math.atan2(sidewaysVelocity, Math.abs(forwardVelocity));
+    let carSlipAngle = -Math.atan2(sidewaysVelocity, Math.abs(forwardVelocity));
     if (isNaN(carSlipAngle) || !isFinite(carSlipAngle)) carSlipAngle = 0;
 
     // Controller steer input
@@ -878,23 +1012,38 @@ function Car(scene, physicsEngine, settings = {}) {
     // Steer limiting
     userInput *= Math.exp(-Math.abs(forwardVelocity) / this.steerVelocity);
 
-    // //
-    // if (forwardVelocity * forwardVelocity > 0.1) {
-    //   var mu = this.wheels.reduce((acc, w) => acc + w.sidewaysFriction * w.friction, 0) / this.wheels.length;
-    //   var maxTheta = Math.atan(this.wheelBase * mu * Math.abs(physicsEngine.gravity.y) / (forwardVelocity * forwardVelocity));
-    //   var maxSteerInput = Math.abs(maxTheta / (this.maxSteerAngle / 180 * Math.PI)) + 0.1;
-    //   userInput = clamp(userInput, -maxSteerInput, maxSteerInput);
-    // }
-    
-    // Smooth steering
-    steerInput += (userInput - steerInput) * this.steerSpeed;
-    // steerInput += -Math.sign(steerInput - userInput) * Math.min(Math.abs(steerInput - userInput), 0.05);
+    // BSA
+    if (this.BSA.enabled && Math.abs(forwardVelocity) > this.BSA.minVel) {
+      const mu = this.wheels.reduce((acc, w) => acc + w.sidewaysFriction * w.friction, 0) / this.wheels.length;
+      const maxTheta = Math.atan(this.wheelBase * mu * Math.abs(physicsEngine.gravity.y) / (forwardVelocity * forwardVelocity));
+      const maxSteerInput = Math.abs(maxTheta / (this.maxSteerAngle / 180 * Math.PI)) + this.BSA.extra;
+      const clampedUserInput = clamp(
+        userInput,
+        -(maxSteerInput + Math.max(0, carSlipAngle) * this.BSA.counterSteerHelpFactor),
+        maxSteerInput + Math.max(0, -carSlipAngle) * this.BSA.counterSteerHelpFactor
+      );
+      userInput = lerp(userInput, clampedUserInput, this.BSA.factor);
+    }
 
-    var acs = this.activateAutoCountersteer && (Math.abs(sidewaysVelocity) > 0.5 || forwardVelocity > this.autoCountersteerMinVel) ?
+    // Smooth steering
+    const acs = this.activateAutoCountersteer && (Math.abs(sidewaysVelocity) > 0.5 || forwardVelocity > this.autoCountersteerMinVel) ?
       -carSlipAngle / (this.maxSteerAngle / 180 * Math.PI) * this.autoCountersteer
       - localAngularVelocity.y * this.autoCountersteerVelocityMultiplier * Math.sign(forwardVelocity)
       : 0;
-    var currentSteerInput = clamp(steerInput + acs, -1, 1);
+
+    smoothACSInput += (acs - smoothACSInput) * this.acsSteerSpeed;
+    steerInput += (userInput - steerInput) * this.steerSpeed;
+    const currentSteerInput = clamp(steerInput + smoothACSInput, -1, 1);
+    
+    // // Smooth steering
+    // steerInput += (userInput - steerInput) * this.steerSpeed;
+    // // steerInput += -Math.sign(steerInput - userInput) * Math.min(Math.abs(steerInput - userInput), 0.05);
+
+    // var acs = this.activateAutoCountersteer && (Math.abs(sidewaysVelocity) > 0.5 || forwardVelocity > this.autoCountersteerMinVel) ?
+    //   -carSlipAngle / (this.maxSteerAngle / 180 * Math.PI) * this.autoCountersteer
+    //   - localAngularVelocity.y * this.autoCountersteerVelocityMultiplier * Math.sign(forwardVelocity)
+    //   : 0;
+    // var currentSteerInput = clamp(steerInput + acs, -1, 1);
 
     // Set steering wheel model rotation
     if (this.steeringWheelModel) {
@@ -937,7 +1086,7 @@ function Car(scene, physicsEngine, settings = {}) {
       Vector.multiplyTo(wheelVelocity, fixedDeltaTime);
 
       let ray = { origin: worldPos, direction: down }; // this is an object !
-      let hit = physicsEngine.Raycast(ray.origin, ray.direction);
+      let hit = physicsEngine.Raycast(ray.origin, ray.direction, null, 0b1);
 
       // Simulate bumpy road
       if (hit && hit.gameObject?.customData.bumpiness) {
@@ -1021,7 +1170,7 @@ function Car(scene, physicsEngine, settings = {}) {
       targetClutchInput = Math.max(
         autoClutchOnEbrake,
         getClutchInput,
-        clutchInput - (this.engine.getRPM() - (this.engine.minRPM + 800)) * 0.002 - rpmChange * 20 // P(I = 0)D controller for smooth clutch input
+        clutchInput - (this.engine.getRPM() - (this.engine.minRPM + 800 * 0)) * 0.002 - rpmChange * 20 // P(I = 0)D controller for smooth clutch input
       );
       targetClutchInput = clamp(targetClutchInput, 0, 1);
       // clutchInput = targetClutchInput;
@@ -1256,15 +1405,6 @@ function Car(scene, physicsEngine, settings = {}) {
 
   // External access
 
-  this.toggleBrights = function() {
-    brightsAreOn = !brightsAreOn;
-
-    if (this.lamps.brightsLeft) this.lamps.brightsLeft.color = brightsAreOn ? [3000, 3000, 3000] : [200, 200, 200];
-    if (this.lamps.brightsRight) this.lamps.brightsRight.color = brightsAreOn ? [3000, 3000, 3000] : [200, 200, 200];
-
-    this.setLightEmission("mainFront", brightsAreOn ? [200, 200, 200] : [1, 1, 1]);
-  };
-
   this.previousCamera = function() {
     cameraControllers[currentCameraControllerIndex].onDeactivate(this.mainCamera);
 
@@ -1285,10 +1425,12 @@ function Car(scene, physicsEngine, settings = {}) {
     cameraControllers[currentCameraControllerIndex].onActivate(this.mainCamera);
   };
 
+  let _gearChangingTimeout = null;
+
   this.setGear = function(gear) {
-    if (isChangingGear) {
-      return;
-    }
+    // if (isChangingGear) {
+    //   return;
+    // }
 
     if (gear === this.currentGear) {
       return;
@@ -1303,10 +1445,17 @@ function Car(scene, physicsEngine, settings = {}) {
     }
 
     isChangingGear = true;
-    setTimeout(() => {
-      this.currentGear = gear;
+    this.currentGear = gear;
 
+    clearTimeout(_gearChangingTimeout);
+    _gearChangingTimeout = setTimeout(() => {
       isChangingGear = false;
+
+      if (this.revmatch) {
+        let targetEngineVelocity = this.getMPS() / this.wheels[0].radius * this.allGearRatios[this.currentGear] * this.differentialRatio;
+        targetEngineVelocity = clamp(targetEngineVelocity, this.engine.minRPM / radPerSecToRPM, this.engine.maxRPM / radPerSecToRPM);
+        this.engine.angularVelocity = targetEngineVelocity;
+      }
     }, this.gearChangeTime * 1000);
   };
 
@@ -1404,6 +1553,8 @@ function Car(scene, physicsEngine, settings = {}) {
   }
 
   function Engine(settings = {}) {
+    let isRunning = false;
+
     this.torque = settings.torque ?? 300;
     this.minRPM = 800;
     this.maxRPM = 8000;
@@ -1418,6 +1569,7 @@ function Car(scene, physicsEngine, settings = {}) {
 
     // var hasLoadedSound = false;
     var rpmChange = 1;
+    let rpm_i = 0;
     // var audioFolder = _this.path + "cargame/engineSound/x8";
     // var audioFolder = _this.path + "cargame/engineSound/i6";
     // var samples = [
@@ -1426,8 +1578,8 @@ function Car(scene, physicsEngine, settings = {}) {
     //   { rpm: 3100 * 2, on: audioFolder + "/high_on.wav" }
     // ];
     
-    var folder = _this.path + "cargame/engineSound/i6/";
-    // var folder = _this.path + "cargame/engineSound/x8/";
+    const folder = _this.path + "cargame/engineSound/i6/";
+    // const folder = _this.path + "cargame/engineSound/x8/";
     var baseMult = 1.4;
     var samples = [
       { baseRPM: 750, from: -5000, to: 1000, on: folder + "idle.wav", off: folder + "idle.wav", interior_on: folder + "int_idle.wav", interior_off: folder + "int_idle.wav" },
@@ -1441,7 +1593,39 @@ function Car(scene, physicsEngine, settings = {}) {
     //   { baseRPM: 7000, on: folder + "high_on.wav" }
     // ];
 
+    const startUpAudio = {
+      path: folder + "startUp.wav",
+      source: null,
+      gain: null,
+    };
+
+    this.startEngine = function() {
+      isRunning = true;
+      this.angularVelocity = this.minRPM / radPerSecToRPM;
+
+      // Play sound
+      if (startUpAudio.source) {
+        startUpAudio.source.start(0);
+      }
+    };
+
     this.setupAudio = async function(context, mainGainNode) {
+      // Start up audio
+      if (startUpAudio.path) {
+        loadSample(context, startUpAudio.path).then(sample => {
+          const gainNode = context.createGain();
+          gainNode.connect(mainGainNode);
+
+          const source = context.createBufferSource();
+          source.buffer = sample;
+          source.connect(gainNode);
+
+          startUpAudio.source = source;
+          startUpAudio.gain = gainNode;
+        });
+      }
+
+      // Engine audio
       for (let i of samples) {
         if (i.on) {
           loadSample(context, i.on).then(sample => {
@@ -1490,6 +1674,10 @@ function Car(scene, physicsEngine, settings = {}) {
     };
 
     this.update = function() {
+      if (!isRunning) {
+        return;
+      }
+
       // RPM limiter
       if (this.getRPM() >= this.maxRPM) {
         this.canThrottle = false;
@@ -1504,14 +1692,24 @@ function Car(scene, physicsEngine, settings = {}) {
     };
 
     this.fixedUpdate = function(dt) {
+      // Friction
+      this.angularVelocity += Math.min(Math.abs(this.angularVelocity), this.friction / this.inertia * dt) * -Math.sign(this.angularVelocity);
+
+      if (!isRunning) {
+        return;
+      }
+
       let currentTorque = this.torqueLookup(this.getRPM()) * this.torque;
 
       if (this.canThrottle) {
         var virtualDriveInput = driveInput;
         virtualDriveInput = clamp(virtualDriveInput, 0, throttleLimit);
 
-        if (this.getRPM() < this.minRPM) {
-          virtualDriveInput = clamp(clamp((this.minRPM - this.getRPM()) / 100, 0, 0.4) + virtualDriveInput, 0, 1);
+        if (this.getRPM() <= this.minRPM) {
+          // virtualDriveInput += clamp((this.minRPM - this.getRPM()) / 100, 0, 0.4);
+          virtualDriveInput += Math.max(0, (this.minRPM - this.getRPM()) / 100);
+          virtualDriveInput += Math.max(0, rpm_i * 0.01);
+          virtualDriveInput = clamp01(virtualDriveInput);
         }
 
         if (_this.limitReverseSpeed && _this.currentGear === 0 && this.getRPM() >= 1600) {
@@ -1535,8 +1733,7 @@ function Car(scene, physicsEngine, settings = {}) {
         rpmChange -= (rpmChange - 0) * 0.11;
       }
 
-      // Friction
-      this.angularVelocity += Math.min(Math.abs(this.angularVelocity), this.friction / this.inertia * dt) * -Math.sign(this.angularVelocity);
+      rpm_i += this.minRPM - this.getRPM();
     };
 
     this.handleAudio = function() {
@@ -2125,7 +2322,7 @@ function Car(scene, physicsEngine, settings = {}) {
           if (!isFinite(slipRatio)) slipRatio = Math.sign(slipRatio);
           var s = slipRatio / wheel.slipRatioPeak;
 
-          if (this.ABS && Vector.lengthSqr(wheelVelocity) > 0.2) {
+          if (this.ABS.enabled && Vector.lengthSqr(wheelVelocity) > 0.2) {
             const targetSlip = wheel.slipRatioPeak * Math.sqrt(Math.max(0.01, 1 - a * a)) * Math.sign(forwardVelocity);
             const targetAngularVelocity = (targetSlip * Math.abs(forwardVelocity) - forwardVelocity) / wheel.radius;
             
@@ -2139,8 +2336,8 @@ function Car(scene, physicsEngine, settings = {}) {
             wheel.brakeLimit = 1;
           }
 
-          if (this.TCS) {
-            wheel.throttleLimit -= Math.abs(wheel.angularVelocity * wheel.radius + forwardVelocity) - 1;
+          if (this.TCS.enabled) {
+            wheel.throttleLimit -= Math.abs(wheel.angularVelocity * wheel.radius + forwardVelocity) - 1 - this.TCS.allowedSlip;
             wheel.throttleLimit = clamp(wheel.throttleLimit, 0, 1);
           }
           else {
@@ -2310,7 +2507,7 @@ function Car(scene, physicsEngine, settings = {}) {
         }
         else {
           wheel.brakeLimit = 1;
-          wheel.throttleLimit = 1;
+          wheel.throttleLimit = wheel.drive && this.TCS.enabled ? 0 : 1; // Disable throttle when in air (good when hitting kerbs, bad when one wheel is stuck in the air)
         }
 
         // Global throttle limit
@@ -2652,7 +2849,7 @@ function Trailer(scene, physicsEngine, settings = {}) {
   };
 
   this.fixedUpdate = function(fixedDeltaTime) {
-    if (this.frozen) {
+    if (frozen) {
       return;
     }
 
@@ -2701,7 +2898,7 @@ function Trailer(scene, physicsEngine, settings = {}) {
       Vector.multiplyTo(wheelVelocity, fixedDeltaTime);
 
       let ray = { origin: worldPos, direction: down }; // this is an object !
-      let hit = physicsEngine.Raycast(ray.origin, ray.direction);
+      let hit = physicsEngine.Raycast(ray.origin, ray.direction, null, 0b1);
 
       wheel.isGrounded = hit && hit.distance < wheel.suspensionTravel + wheel.radius;
 
@@ -3251,14 +3448,14 @@ function Graph(props = {}) {
   };
 }
 
-class CameraController {
+export class CameraController {
   update() {}
   onActivate() {}
   onDeactivate() {}
   onReset() {}
 }
 
-class TPPFollowCamera extends CameraController {
+export class TPPFollowCamera extends CameraController {
   #f = new Vector();
 
   #y = 0;
@@ -3282,6 +3479,7 @@ class TPPFollowCamera extends CameraController {
   pitch = 0.15;
   accelerationSpeed = 0.05;
   accelerationEffect = 0.3;
+  fov = 35;
 
   constructor(car) {
     super();
@@ -3293,6 +3491,8 @@ class TPPFollowCamera extends CameraController {
     this.#cameraCarForward = Matrix.getForward(this.car.gameObject.transform.worldMatrix);
     this.#yVel = 0;
     this.#y = this.car.rb.position.y + 0.15 + this.followHeight / Math.sqrt(1 + this.followHeight ** 2) * this.followDistance;
+  
+    this.#currentFollowDistance = this.followDistance;
   }
 
   onReset() {
@@ -3300,6 +3500,7 @@ class TPPFollowCamera extends CameraController {
   }
 
   onActivate() {
+    this.car.mainCamera.setFOV(this.fov);
     this.resetForward();
   }
 
@@ -3380,14 +3581,14 @@ class TPPFollowCamera extends CameraController {
     Vector.addTo(origin, this.#f);
     var dirNorm = Vector.normalize(Vector.add(currentForward, new Vector(0, followHeight, 0)));
 
-    var hit = this.car.physicsEngine.Raycast(origin, dirNorm);
+    var hit = this.car.physicsEngine.Raycast(origin, dirNorm, null, 0b1);
     if (hit && hit.distance < followDistance) {
       var d = hit.distance;
       // currentFollowDist = clamp(d - 0.2, 0.5, followDistance);
       var h = Math.sqrt(followDistance * followDistance - d * d + (followHeight * d) ** 2) / d;
 
       var newDir = Vector.normalize(Vector.add(currentForward, new Vector(0, h, 0)));
-      hit = this.car.physicsEngine.Raycast(origin, newDir);
+      hit = this.car.physicsEngine.Raycast(origin, newDir, null, 0b1);
       if (hit && hit.distance < followDistance) {
         finalCameraDir = Vector.multiply(newDir, hit.distance - 0.5);
       }
@@ -3405,11 +3606,21 @@ class TPPFollowCamera extends CameraController {
     this.#yVel += -9.82 * dt;
     this.#y += this.#yVel * dt;
 
-    camera.transform.position = Vector.add(origin, finalCameraDir);
+    const cameraPosition = Vector.add(origin, finalCameraDir);
+    if (Vector.isNaN(cameraPosition)) {
+      this.resetForward();
+      console.error("NaN is camera controller");
+      return;
+    }
+    camera.transform.position = cameraPosition;
     // camera.transform.position.y = this.#y;
-    camera.transform.matrix = Matrix.lookAt(camera.transform.position, origin);
-    
-    Matrix.rotateX(camera.transform.matrix, pitch, camera.transform.matrix);
+
+    const mat = Matrix.lookAt(camera.transform.position, origin);
+    Matrix.applyRotationX(pitch, mat);
+    camera.transform.matrix = mat;
+
+    // camera.transform.matrix = Matrix.lookAt(camera.transform.position, origin);
+    // Matrix.rotateX(camera.transform.matrix, pitch, camera.transform.matrix);
 
     // Camera shake
     var forwardSpeed = Math.abs(Vector.dot(this.car.rb.velocity, forward));
@@ -3439,7 +3650,7 @@ class TPPFollowCamera extends CameraController {
   }
 }
 
-class HoodFollowCamera extends CameraController {
+export class HoodFollowCamera extends CameraController {
   #hoodCamera = null;
   #vdt = new Vector();
   #oldFOV = 45;
@@ -3472,7 +3683,7 @@ class HoodFollowCamera extends CameraController {
   }
 }
 
-class InteriorFollowCamera extends CameraController {
+export class InteriorFollowCamera extends CameraController {
   #cameraCarForward = Vector.zero();
   #oldFOV = 45;
 
@@ -3527,13 +3738,13 @@ class InteriorFollowCamera extends CameraController {
   }
 }
 
-class PhotoCamera extends CameraController {
+export class PhotoCamera extends CameraController {
   #position = Vector.zero();
   #cameraEulerAngles = Vector.zero();
   #oldFOV = 45;
   #wheelHandler = null;
 
-  speed = 150;
+  speed = 15;
 
   constructor(car) {
     super();
@@ -3601,7 +3812,7 @@ class PhotoCamera extends CameraController {
   }
 }
 
-class SpectatorCamera extends CameraController {
+export class SpectatorCamera extends CameraController {
   #oldFOV = 45;
   #origin = new Vector();
 
@@ -3660,19 +3871,21 @@ function Horn(audioContext) {
  * Car controller does not take any input
  * @param {Car} car
  * @param {{
- * brake: boolean,
- * steer: number
+ * brake?: boolean,
+ * ebrake?: boolean,
+ * steer?: number
  * }} settings Customize controller with these settings
  */
 export function NoInputCarController(car, settings = {}) {
   this.car = car;
   this.brake = settings.brake ?? true;
+  this.ebrake = settings.ebrake ?? this.brake;
   this.steer = settings.steer ?? 0;
 
   this.setInputs = function() {
     this.car.setDriveInput(0);
     this.car.setBrakeInput(this.brake ? 1 : 0);
-    this.car.setEbrakeInput(this.brake ? 1 : 0);
+    this.car.setEbrakeInput(this.ebrake ? 1 : 0);
     this.car.setClutchInput(1);
     this.car.setRawSteerInput(this.steer);
   };
@@ -3763,9 +3976,9 @@ export function DefaultCarController(car, settings = {}) {
       this.car.nextCamera();
     }
 
-    // Toggle brights
-    if (this.keybindings.getInputDown("brights")) {
-      this.car.toggleBrights();
+    // Toggle highbeams
+    if (this.keybindings.getInputDown("highbeams")) {
+      this.car.highbeam.enabled = !this.car.highbeam.enabled;
     }
 
     // Horn
@@ -3794,7 +4007,7 @@ export function DefaultCarController(car, settings = {}) {
       }
 
       if (Vector.lengthSqr(this.car.rb.velocity) < 0.1 && (brakeInput > 0.1 || ebrakeInput > 0.1) && driveInput < 0.01) {
-        ebrakeInput = 1;
+        // ebrakeInput = 1; // Applying ebrake here will cause wheelspin when taking up because the engine has time the rev before ebrake disengages
         brakeInput = 1;
       }
       else {

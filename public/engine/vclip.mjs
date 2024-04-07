@@ -497,7 +497,7 @@ function checkDistancePrime(edge, vertexOrFace, lambda) {
   }
 }
 
-export function MeshGeometry(matrix, meshData) {
+export function MeshGeometry(matrix, meshData, hasNoOverlappingVertices = false) {
   if (!Matrix.isMatrix(matrix)) {
     throw new Error("matrix is not 'Matrix'");
   }
@@ -526,7 +526,10 @@ export function MeshGeometry(matrix, meshData) {
   const createVertex = (buffer, index) => {
     const vertexPosition = getVertexPosition(buffer, index);
 
-    const foundIndex = this.vertices.findIndex(v => Vector.distance(v.position, vertexPosition) < 0.001);
+    const foundIndex = hasNoOverlappingVertices ?
+      -1 :
+      this.vertices.findIndex(v => Vector.distance(v.position, vertexPosition) < 0.001);
+
     if (foundIndex !== -1) {
       indexReroute[index / 3] = foundIndex;
       return this.vertices[foundIndex];
@@ -541,6 +544,10 @@ export function MeshGeometry(matrix, meshData) {
   };
 
   const rerouteIndex = (index) => {
+    if (hasNoOverlappingVertices) {
+      return index;
+    }
+
     if (index in indexReroute) {
       return indexReroute[index];
     }
@@ -562,10 +569,19 @@ export function MeshGeometry(matrix, meshData) {
 
     const edge = new Edge(va, vb);
     this.edges.push(edge);
+
+    // Store neighboring edges for the two vertices
+    va.neighborEdges.push(edge);
+    vb.neighborEdges.push(edge);
+
     return edge;
   };
 
   const edgeExists = (vertexA, vertexB) => {
+    if (hasNoOverlappingVertices) {
+      return false;
+    }
+
     return this.edges.find(e => (e.a == vertexA && e.b == vertexB) || (e.b == vertexA && e.a == vertexB));
   };
 
@@ -592,6 +608,11 @@ export function MeshGeometry(matrix, meshData) {
     face.normal = normal;
     face.localNormal = Vector.copy(normal);
     this.faces.push(face);
+    
+    // Store neighboring faces for each edge
+    edgeA.neighborFaces.push(face);
+    edgeB.neighborFaces.push(face);
+    edgeC.neighborFaces.push(face);
   }
 
   // console.log(this.vertices, this.edges, this.faces);
@@ -606,23 +627,23 @@ export function MeshGeometry(matrix, meshData) {
     vertex.geometry = this;
   }
 
-  // Store neighboring edges for each vertex
-  for (const vertex of this.vertices) {
-    for (const edge of this.edges) {
-      if (edge.isConnectedToVertex(vertex)) {
-        vertex.neighborEdges.push(edge);
-      }
-    }
-  }
+  // // Store neighboring edges for each vertex
+  // for (const vertex of this.vertices) {
+  //   for (const edge of this.edges) {
+  //     if (edge.isConnectedToVertex(vertex)) {
+  //       vertex.neighborEdges.push(edge);
+  //     }
+  //   }
+  // }
 
-  // Store neighboring faces for each edge
-  for (const edge of this.edges) {
-    for (const face of this.faces) {
-      if (face.isConnectedToEdge(edge)) {
-        edge.neighborFaces.push(face);
-      }
-    }
-  }
+  // // Store neighboring faces for each edge
+  // for (const edge of this.edges) {
+  //   for (const face of this.faces) {
+  //     if (face.isConnectedToEdge(edge)) {
+  //       edge.neighborFaces.push(face);
+  //     }
+  //   }
+  // }
 
   for (let i = 0; i < this.vertices.length; i++) {
     this.localVertexPositions[i] = Vector.copy(this.vertices[i].position);

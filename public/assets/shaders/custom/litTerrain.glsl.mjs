@@ -126,6 +126,8 @@ ${lit.fogBase}
 
 ${sharedUniforms}
 
+in vec3 vNormal;
+
 const int nrTextures = 3;
 uniform sampler2D albedoTextures[nrTextures];
 uniform sampler2D normalTextures[nrTextures];

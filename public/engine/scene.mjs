@@ -24,13 +24,14 @@ export function Scene(name) {
   this.skyboxFogBlendFactor = 10;
   this.fogDensity = 0.0035;
   this.fogColor = [0.23, 0.24, 0.26, 1];
+  this.enableShadows = true;
   this.shadowQuality = 2;
   this.shadowSampleRadius = 150;
 
   this.postprocessing = new PostProcessingSettings();
   this.bloom = new BloomSettings();
 
-  var lights = [];
+  const lights = [];
 
   this.setupUBO = function() {
     // if (this.renderer.renderpipeline instanceof this.renderer.DeferredPBRRenderpipeline) {
@@ -50,15 +51,17 @@ export function Scene(name) {
   };
 
   this.updateUniformBuffers = function(projectionMatrix, viewMatrix, inverseViewMatrix) {
-    if (this.sharedUBO) {
-      var uboData = this.renderer.programContainers.lit.uniformBuffers["sharedPerScene"];
-      var gl = this.renderer.gl;
-      gl.bindBuffer(gl.UNIFORM_BUFFER, this.sharedUBO.buffer);
-
-      gl.bufferSubData(gl.UNIFORM_BUFFER, uboData.offsets[0], projectionMatrix, 0);
-      gl.bufferSubData(gl.UNIFORM_BUFFER, uboData.offsets[1], viewMatrix, 0);
-      gl.bufferSubData(gl.UNIFORM_BUFFER, uboData.offsets[2], inverseViewMatrix, 0);
+    if (!this.sharedUBO) {
+      return;
     }
+
+    const uboData = this.renderer.programContainers.lit.uniformBuffers["sharedPerScene"];
+    const gl = this.renderer.gl;
+    gl.bindBuffer(gl.UNIFORM_BUFFER, this.sharedUBO.buffer);
+
+    gl.bufferSubData(gl.UNIFORM_BUFFER, uboData.offsets[0], projectionMatrix, 0);
+    gl.bufferSubData(gl.UNIFORM_BUFFER, uboData.offsets[1], viewMatrix, 0);
+    gl.bufferSubData(gl.UNIFORM_BUFFER, uboData.offsets[2], inverseViewMatrix, 0);
   };
 
   this.loadEnvironment = async function(settings = {}) {
@@ -163,9 +166,9 @@ export function Scene(name) {
     }
   };
 
-  this.update = function(dt) {
+  this.update = function(dt, frameNumber) {
     this.updateLights(); // bruh should probably only be run when a light changes
-    this.root.update(dt);
+    this.root.update(dt, frameNumber);
   };
 
   this.render = function() {
@@ -178,10 +181,10 @@ export function Scene(name) {
   };
 
   this.updateLights = function() {
-    lights = [];
+    lights.length = 0;
 
     this.root.traverseCondition(g => {
-      let comps = g.getComponents();
+      let comps = g.getAllComponents();
       for (var light of comps) {
         if (light.componentType == "Light") {
           lights.push({

@@ -7,6 +7,10 @@ body {
   margin: 0;
 }
 
+ul {
+  padding-left: 1em;
+}
+
 .boxTitle {
   font-size: 2em;
   font-weight: bold;
@@ -15,13 +19,12 @@ body {
   margin-bottom: 0.5em;
 }
 
-.column {
-  display: flex;
-  flex-direction: column;
-}
+.row {
+  max-height: 100vh;
 
-.column > * {
-  height: 50vh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
 }
 
 .box {
@@ -29,12 +32,24 @@ body {
   flex-direction: column;
 
   padding: 10px;
+
+  overflow: auto;
 }
 
 #hierarchy,
 #inspector {
   flex: 1;
   overflow: auto;
+}
+
+#hierarchy {
+  -webkit-touch-callout: none; /* iOS Safari */
+    -webkit-user-select: none; /* Safari */
+     -khtml-user-select: none; /* Konqueror HTML */
+       -moz-user-select: none; /* Old versions of Firefox */
+        -ms-user-select: none; /* Internet Explorer/Edge */
+            user-select: none; /* Non-prefixed version, currently
+                                  supported by Chrome, Edge, Opera and Firefox */
 }
 
 .gameObjectLabel {

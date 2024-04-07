@@ -18,8 +18,8 @@ layout (location = 1) out vec2 motionVector;
 
 // Attributes
 in vec3 vPosition;
-in vec3 vNormal;
-in vec4 vTangent; // in vec3 vTangent;
+// in vec3 vNormal;
+// in vec4 vTangent; // in vec3 vTangent;
 in vec3 vColor;
 in vec2 vUV;
 in mat3 vTBN;
@@ -379,11 +379,13 @@ vec4 lit(vec4 _albedo, float _alphaCutoff, vec3 _emission, vec3 _tangentNormal, 
   vec3 V = normalize(vec3(inverseViewMatrix * vec4(0, 0, 0, 1)) - vPosition);
 
   vec3 N;
-  if (vTangent.xyz != vec3(0)) { //if (vTangent != vec3(0)) {
+  vec3 tangent = vTBN[0];
+  if (length(tangent) > 0.01) {
     N = normalize(vTBN * _tangentNormal);
   }
   else {
-    N = normalize(mat3(modelMatrix) * vNormal);
+    vec3 normal = vTBN[2];
+    N = normalize(mat3(modelMatrix) * normal);
   }
 
   if (!gl_FrontFacing) {
@@ -506,8 +508,8 @@ in vec2 uv;
 //#in
 
 out vec3 vPosition;
-out vec3 vNormal;
-out vec4 vTangent; // out vec3 vTangent;
+// out vec3 vNormal;
+// out vec4 vTangent; // out vec3 vTangent;
 out vec3 vColor;
 out vec2 vUV;
 out mat3 vTBN;
@@ -535,14 +537,14 @@ ${vertexMotionBlur}
 void main() {
   //#main
 
-  vNormal = normal;
-  vTangent = tangent;
+  // vNormal = normal;
+  // vTangent = tangent;
   vUV = uv;
   vColor = color;
 
-  vec3 _T = normalize(vec3(modelMatrix * vec4(vTangent.xyz, 0.0)));
-  vec3 _B = normalize(vec3(modelMatrix * vec4(cross(vNormal, vTangent.xyz) * vTangent.w, 0.0))); // bruh According to comment on stackoverflow (https://blender.stackexchange.com/questions/220756/why-does-blender-output-vec4-tangents-for-gltf), tangents are vec4 and .w is used for bitangent sign (who could have known... :(
-  vec3 _N = normalize(vec3(modelMatrix * vec4(vNormal, 0.0)));
+  vec3 _T = normalize(vec3(modelMatrix * vec4(tangent.xyz, 0.0)));
+  vec3 _B = normalize(vec3(modelMatrix * vec4(cross(normal, tangent.xyz) * tangent.w, 0.0))); // bruh According to comment on stackoverflow (https://blender.stackexchange.com/questions/220756/why-does-blender-output-vec4-tangents-for-gltf), tangents are vec4 and .w is used for bitangent sign (who could have known... :(
+  vec3 _N = normalize(vec3(modelMatrix * vec4(normal, 0.0)));
   vTBN = mat3(_T, _B, _N);
 
   vec4 worldPosition = modelMatrix * vec4(position, 1.0);
@@ -577,8 +579,8 @@ in mat4 modelMatrix;
 in float ditherAmount;
 
 out vec3 vPosition;
-out vec3 vNormal;
-out vec4 vTangent; //out vec3 vTangent;
+// out vec3 vNormal;
+// out vec4 vTangent; //out vec3 vTangent;
 out vec3 vColor;
 out vec2 vUV;
 out mat4 vModelMatrix;
@@ -601,16 +603,16 @@ out vec4 projectedTexcoords[levels];
 ${vertexMotionBlur}
 
 void main() {
-  vNormal = normal;
-  vTangent = tangent;
+  // vNormal = normal;
+  // vTangent = tangent;
   vUV = uv;
   vColor = 1. - color;
   vModelMatrix = modelMatrix;
   vDitherAmount = ditherAmount;
 
-  vec3 _T = normalize(vec3(modelMatrix * vec4(vTangent.xyz, 0.0)));
-  vec3 _B = normalize(vec3(modelMatrix * vec4(cross(vNormal, vTangent.xyz) * vTangent.w, 0.0)));
-  vec3 _N = normalize(vec3(modelMatrix * vec4(vNormal, 0.0)));
+  vec3 _T = normalize(vec3(modelMatrix * vec4(tangent.xyz, 0.0)));
+  vec3 _B = normalize(vec3(modelMatrix * vec4(cross(normal, tangent.xyz) * tangent.w, 0.0)));
+  vec3 _N = normalize(vec3(modelMatrix * vec4(normal, 0.0)));
   vTBN = mat3(_T, _B, _N);
 
   vec4 worldPosition = modelMatrix * vec4(position, 1.0);
@@ -638,8 +640,8 @@ in vec3 color;
 in vec2 uv;
 
 out vec3 vPosition;
-out vec3 vNormal;
-out vec4 vTangent;
+// out vec3 vNormal;
+// out vec4 vTangent;
 out vec3 vColor;
 out vec2 vUV;
 out mat3 vTBN;
@@ -688,11 +690,11 @@ out vec4 projectedTexcoords[levels];
 ${vertexMotionBlur}
 
 void main() {
-  vTangent = tangent;
+  // vTangent = tangent;
   vUV = uv;
   vColor = color;
 
-  vNormal = normal;
+  // vNormal = normal;
   // vNormal = mat3(inverse(modelMatrix * skinMatrix)) * normal;
   // vNormal = mat3(world * inverse(modelMatrix)) * normal;
 
@@ -709,8 +711,8 @@ void main() {
   // vec3 _T = normalize(vec3(TBNWorld * vec4(tangent, 0.0)));
   // vec3 _B = normalize(vec3(TBNWorld * vec4(cross(normal, tangent), 0.0)));
   // vec3 _N = normalize(vec3(TBNWorld * vec4(normal, 0.0)));
-  vec3 _T = normalize(vec3(TBNWorld * vec4(vTangent.xyz, 0.0)));
-  vec3 _B = normalize(vec3(TBNWorld * vec4(cross(normal, vTangent.xyz) * vTangent.w, 0.0))); // bruh According to comment on stackoverflow (https://blender.stackexchange.com/questions/220756/why-does-blender-output-vec4-tangents-for-gltf), tangents are vec4 and .w is used for bitangent sign (who could have known... :(
+  vec3 _T = normalize(vec3(TBNWorld * vec4(tangent.xyz, 0.0)));
+  vec3 _B = normalize(vec3(TBNWorld * vec4(cross(normal, tangent.xyz) * tangent.w, 0.0))); // bruh According to comment on stackoverflow (https://blender.stackexchange.com/questions/220756/why-does-blender-output-vec4-tangents-for-gltf), tangents are vec4 and .w is used for bitangent sign (who could have known... :(
   vec3 _N = normalize(vec3(TBNWorld * vec4(normal, 0.0)));
   vTBN = mat3(_T, _B, _N);
 
@@ -870,11 +872,13 @@ void main() {
 
   #ifdef DEBUG_MAPPED_WORLD_NORMAL
   vec3 N;
-  if (vTangent.xyz != vec3(0)) {
+  vec3 tangent = vTBN[0];
+  if (length(tangent) > 0.01) {
     N = normalize(vTBN * _tangentNormal);
   }
   else {
-    N = normalize(mat3(modelMatrix) * vNormal);
+    vec3 normal = vTBN[2];
+    N = normalize(mat3(modelMatrix) * normal);
   }
   fragColor = vec4(N * 0.5 + 0.5, 1);
   return;

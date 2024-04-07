@@ -498,6 +498,10 @@ class Vector {
 
     return dst;
   }
+
+  static toString(v) {
+    return `{x: ${v.x}, y: ${v.y}, z: ${v.z}}`;
+  }
 }
 
 const _tempVector = new Vector();
